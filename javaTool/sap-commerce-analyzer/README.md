@@ -12,10 +12,11 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 - 검색/파싱 성공/실패/이름 중복/접근 실패 수 출력
 - 특정 Extension에서 시작하는 직접·간접 의존관계 트리 출력
 - 실행 인자 없이 전체 Extension의 직접·역방향 의존관계, 누락 참조, 순환 그룹 분석 및 CSV 저장
+- `config/localextensions.xml`을 분석하여 명시 지정·자동 로딩·플랫폼 기본 포함·간접 의존 대상 구분
 - 순환 참조와 이미 방문한 공유 의존관계 구분
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
 
-`localextensions.xml` 활성화 판정, Spring XML import, ApplicationContext, Bean 분석,
+Spring XML import, ApplicationContext, Bean 분석,
 시각화 및 CallTrace는 이후 단계이며 이 버전에 포함하지 않습니다.
 
 ## Eclipse에서 가져오기
@@ -91,6 +92,8 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `reverse-dependencies.csv` | 의존 대상 → 이를 사용하는 Extension. 누락 대상도 포함 |
 | `missing-dependencies.csv` | 찾지 못한 대상과 이를 참조한 Extension 및 XML 경로 |
 | `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
+| `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 |
+| `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -115,6 +118,7 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
 ## 결과 해석
 
 - 발견 개수는 XML 파일 수이며 활성 Extension 수가 아닙니다. 622개로 고정하지 않습니다.
+  활성 대상은 별도의 설정 기반 추정으로 표시하며 실행 중인 서버 상태와 동일함을 보장하지 않습니다.
 - 트리는 XML에 선언된 Extension 의존관계이며 실제 메서드 호출이나 Bean 주입을 의미하지 않습니다.
 - `[NOT FOUND]`: 검색·파싱된 Extension 목록에 없음. 검색 범위 밖, 제외 디렉터리,
   파싱 실패 등일 수 있으며 실제 Extension 부재를 단정하지 않습니다.
@@ -128,6 +132,7 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
   표시만 하며 단독으로 종료 코드를 변경하지 않습니다.
 - 전체 분석의 누락 참조와 순환 그룹도 단독으로 종료 코드를 변경하지 않습니다.
   파싱·접근 실패 시 가능한 범위에서 CSV를 저장하고 `scan_complete=false`로 표시합니다.
+- 활성 대상 판정 문제가 있으면 CSV는 저장하고 종료 코드는 1입니다.
 - 결과는 발견된 정의를 기준으로 합니다. 비활성 Extension이나 템플릿이 포함될 수 있어,
   검출된 순환이 실행 환경의 실제 순환이라고 단정할 수 없습니다.
 - 심볼릭 링크를 따라가지 않습니다. `temp` 등 제외 경로의 정의는 검색하지 않습니다.
@@ -141,8 +146,66 @@ src/com/sapcommerce/analyzer/
 ├── ExtensionInfoParser.java
 ├── ExtensionInfo.java
 ├── ExtensionDependencyAnalyzer.java
-└── DependencyReportWriter.java
+├── DependencyReportWriter.java
+└── ActiveExtensionAnalyzer.java
 ```
 
 소스 및 Eclipse 설정만 제공하며 컴파일 산출물은 포함하지 않습니다.
 실제 SAP Commerce 환경에서의 검증은 개발 PC에서 수행하세요.
+
+## localextensions.xml 기반 활성 대상 추정
+
+기존처럼 **Program arguments 없이 실행**합니다. 기본 파일은
+`C:\hybris\config\localextensions.xml`입니다. 다른 루트를 첫 인자로 주면 그 루트의
+`config/localextensions.xml`을 읽습니다. 기존 파일은 수정하지 않습니다.
+
+다른 설정 파일을 분석하려면 VM arguments에서 지정할 수 있습니다.
+
+```text
+-Danalyzer.localextensions="C:\config-copy\localextensions.xml"
+```
+
+Console에는 `Extension Selection Analysis (STATIC INFERENCE)`가 추가됩니다.
+Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선택 근거를 기록합니다.
+
+| 상태 | 의미 |
+| --- | --- |
+| `EXPLICIT` | `<extension name="...">` 또는 `<extension dir="...">`로 지정 |
+| `AUTOLOAD` | `<path autoload="true">` 범위에서 발견 |
+| `PLATFORM` | 기본 `bin/platform/ext` 자동 포함 |
+| `DEPENDENCY` | 선택된 Extension의 `requires-extension`을 재귀적으로 따라 포함 |
+| `NOT_SELECTED` | 해석 가능한 설정·스캔 범위에서 선택되지 않음 |
+| `UNKNOWN` | 설정/스캔이 불완전해서 선택 여부를 판단할 수 없음 |
+
+이미 확인한 선택 근거는 판정 문제가 있어도 유지하며, 선택되지 않은 나머지를 UNKNOWN으로 표시합니다.
+`NOT_SELECTED`는 실행 서버의 비활성 상태를 확인했다는 뜻이 아닙니다.
+직접 지정이 자동 로딩보다 우선하며, 여러 의존 경로가 있으면 최초 선택 근거 하나를 기록합니다.
+전체 의존 간선은 기존 `dependencies.csv`에서 확인합니다.
+
+처리하는 규칙:
+
+- `name`은 검색된 정의와 lookup 경로를 함께 확인합니다.
+- `dir`은 해당 폴더의 `extensioninfo.xml`과 대조합니다. name도 있으면 일치 여부를 확인합니다.
+- `<path>`는 기본 lookup 역할이며 `autoload=true`인 경우에만 그 범위 전체를 선택합니다.
+- `depth` 기본값은 10입니다. 지정 폴더 자체는 깊이 0, 직접 하위 Extension 폴더는 깊이 1로 계산합니다.
+- `<extensions autoload="false">`이면 플랫폼 기본 자동 포함을 끕니다.
+- `${HYBRIS_BIN_DIR}`, `${HYBRIS_CONFIG_DIR}`, `${HYBRIS_PLATFORM_DIR}`를 분석 루트 기준으로 확장합니다.
+- 필수 의존 대상은 지정 lookup 경로에서 확인되어야 합니다. 이미 명시 지정된 대상도 사용할 수 있습니다.
+- XML 주석은 무시하고, 순환 의존관계에서도 탐색을 종료합니다.
+
+이 버전은 검색 루트 안에서 수집한 정의만 사용합니다. 외부 경로, 상대 경로, 알 수 없는
+`${...}` 속성은 임의 해석하지 않고 `activation-issues.csv`에 남깁니다.
+필요하면 별도의 설정 복사본에 절대 경로를 지정하고 위 VM 옵션으로 분석하세요.
+서버·Ant 설정의 속성 확장 전체, 사용자 정의 빌드 로직, 실제 테넌트/서버 로딩 결과는 재현하지 않습니다.
+파일이 없거나 XML이 잘못되면 전체 Extension 의존관계 CSV는 계속 생성하고, 활성 판정은 UNKNOWN입니다.
+`summary.csv`의 `selection_complete`는 지원하는 정적 규칙의 해석 완전성입니다.
+`scan_complete`와 구분되며 런타임 검증을 뜻하지 않습니다.
+`extensions.csv`에도 `selection_status` 열을 추가했습니다. 기존 6개 파일은 전체 발견 범위를 유지합니다.
+
+설정 규칙 참고:
+[SAP Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html),
+[SAP Extension Dependencies](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/20125f0eca6340dba918bda360e3cdfa/8bbf3a9d86691014aa4189bf3ac0eb88.html).
+
+검증용 소스는 `test/com/sapcommerce/analyzer/ActiveExtensionAnalyzerTest.java`에 있습니다.
+외부 라이브러리 없이 Java 21에서 src와 함께 별도의 작업 폴더로 컴파일해 실행할 수 있습니다.
+Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행에는 영향을 주지 않습니다.

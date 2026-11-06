@@ -26,13 +26,13 @@ public final class DependencyReportWriter {
     }
 
     public static Path write(Path reportRoot, Map<String, ExtensionInfo> extensions,
-            Analysis analysis, ScanSummary scan) throws IOException {
+            Analysis analysis, ScanSummary scan, ActiveExtensionAnalyzer.Result activation) throws IOException {
         Files.createDirectories(reportRoot);
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         // Each run gets a new directory, including runs started in the same second.
         Path directory = Files.createTempDirectory(reportRoot, timestamp + "_");
         try {
-            writeFiles(directory, extensions, analysis, scan);
+            writeFiles(directory, extensions, analysis, scan, activation);
             return directory.toAbsolutePath().normalize();
         } catch (IOException exception) {
             throw new IOException("Report write failed; partial files may exist at "
@@ -41,7 +41,7 @@ public final class DependencyReportWriter {
     }
 
     private static void writeFiles(Path directory, Map<String, ExtensionInfo> extensions,
-            Analysis analysis, ScanSummary scan) throws IOException {
+            Analysis analysis, ScanSummary scan, ActiveExtensionAnalyzer.Result activation) throws IOException {
         Map<String, Integer> incomingCount = new HashMap<>();
         Map<String, Integer> missingCount = new HashMap<>();
         Map<String, Integer> cycleIds = new HashMap<>();
@@ -60,12 +60,13 @@ public final class DependencyReportWriter {
 
         try (BufferedWriter out = csv(directory.resolve("extensions.csv"))) {
             row(out, "extension", "xml_path", "direct_dependency_count", "dependent_count",
-                    "missing_dependency_count", "cycle_group");
+                    "missing_dependency_count", "cycle_group", "selection_status");
             for (ExtensionInfo info : new TreeMap<>(extensions).values()) {
                 row(out, info.getName(), info.getXmlPath(), info.getDependencies().size(),
                         incomingCount.getOrDefault(info.getName(), 0),
                         missingCount.getOrDefault(info.getName(), 0),
-                        cycleIds.getOrDefault(info.getName(), 0));
+                        cycleIds.getOrDefault(info.getName(), 0),
+                        activation.selections().get(info.getName()).status());
             }
         }
         try (BufferedWriter out = csv(directory.resolve("dependencies.csv"))) {
@@ -112,8 +113,30 @@ public final class DependencyReportWriter {
             row(out, "missing_dependency_edges", analysis.missingCount());
             row(out, "cycle_groups", analysis.cycleGroups().size());
             row(out, "scan_complete", scan.failed() == 0 && scan.accessFailures() == 0);
-            row(out, "active_extensions_evaluated", false);
+            row(out, "active_extensions_evaluated", activation.complete());
+            row(out, "selection_attempted", true);
+            row(out, "selection_basis", "STATIC_CONFIG_INFERENCE; runtime not inspected");
+            row(out, "localextensions_file", activation.config());
+            row(out, "selection_complete", activation.complete());
+            row(out, "selected_extensions", activation.selectedCount());
+            row(out, "not_selected_extensions", activation.count("NOT_SELECTED"));
+            row(out, "unknown_extensions", activation.count("UNKNOWN"));
+            row(out, "selection_issues", activation.issues().size());
             row(out, "cycle_group_zero", "Not in a detected cycle group");
+        }
+        try (BufferedWriter out = csv(directory.resolve("extension-activation.csv"))) {
+            row(out, "extension", "selection_status", "reason", "selected_by", "xml_path", "basis");
+            for (ExtensionInfo info : new TreeMap<>(extensions).values()) {
+                ActiveExtensionAnalyzer.Selection selection = activation.selections().get(info.getName());
+                row(out, info.getName(), selection.status(), selection.reason(), selection.selectedBy(),
+                        info.getXmlPath(), "STATIC_CONFIG_INFERENCE");
+            }
+        }
+        try (BufferedWriter out = csv(directory.resolve("activation-issues.csv"))) {
+            row(out, "reference", "message");
+            for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
+                row(out, issue.reference(), issue.message());
+            }
         }
     }
 

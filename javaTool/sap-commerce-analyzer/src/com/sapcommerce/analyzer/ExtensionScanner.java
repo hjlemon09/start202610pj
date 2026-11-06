@@ -27,6 +27,8 @@ public final class ExtensionScanner {
             System.out.println("All extensions are analyzed and CSV reports are always written.");
             System.out.println("Optional extension-name additionally prints its dependency tree.");
             System.out.println("Report root: ./reports (override: -Danalyzer.output=<directory>)");
+            System.out.println("Config: <hybris-root>/config/localextensions.xml "
+                    + "(override: -Danalyzer.localextensions=<file>)");
             return;
         }
         try {
@@ -126,7 +128,7 @@ public final class ExtensionScanner {
         System.out.println("Unique names    : " + extensionMap.size());
         System.out.println("Duplicate files : " + duplicateCount);
         System.out.println("Access failures : " + accessFailures[0]);
-        System.out.println("This scan does not determine which extensions are active.");
+        System.out.println("Runtime state is not inspected; selection below is configuration-based inference.");
 
         if (!duplicateNames.isEmpty()) {
             System.err.println("[ERROR] Dependency analysis and CSV export skipped: duplicate extension "
@@ -149,10 +151,29 @@ public final class ExtensionScanner {
             System.out.println("[CYCLE GROUP " + (i + 1) + "] "
                     + String.join(", ", analysis.cycleGroups().get(i)));
         }
+        Path config = Path.of(System.getProperty("analyzer.localextensions",
+                hybrisRoot.resolve("config/localextensions.xml").toString()));
+        ActiveExtensionAnalyzer.Result activation = ActiveExtensionAnalyzer.analyze(
+                hybrisRoot, config, extensionMap, failedCount == 0 && accessFailures[0] == 0);
+        System.out.println();
+        System.out.println("=== Extension Selection Analysis (STATIC INFERENCE) ===");
+        System.out.println("Config file     : " + activation.config());
+        System.out.println("Selected        : " + activation.selectedCount());
+        System.out.println("Explicit        : " + activation.count("EXPLICIT"));
+        System.out.println("Path autoload   : " + activation.count("AUTOLOAD"));
+        System.out.println("Platform default: " + activation.count("PLATFORM"));
+        System.out.println("Dependency      : " + activation.count("DEPENDENCY"));
+        System.out.println("Not selected    : " + activation.count("NOT_SELECTED"));
+        System.out.println("Unknown         : " + activation.count("UNKNOWN"));
+        System.out.println("Selection issues: " + activation.issues().size());
+        System.out.println("Selection complete: " + activation.complete());
+        for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
+            System.out.println("[SELECTION WARN] " + issue.reference() + " - " + issue.message());
+        }
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
                 new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,
-                        failedCount, accessFailures[0]));
+                        failedCount, accessFailures[0]), activation);
         System.out.println("CSV reports: " + reports);
         if (failedCount > 0 || accessFailures[0] > 0) {
             System.out.println("[WARN] Reports are partial; review scan failures before interpretation.");
@@ -165,6 +186,7 @@ public final class ExtensionScanner {
                 return 1;
             }
         }
-        return failedCount > 0 || accessFailures[0] > 0 || duplicateCount > 0 ? 1 : 0;
+        return failedCount > 0 || accessFailures[0] > 0 || duplicateCount > 0
+                || !activation.complete() ? 1 : 0;
     }
 }
