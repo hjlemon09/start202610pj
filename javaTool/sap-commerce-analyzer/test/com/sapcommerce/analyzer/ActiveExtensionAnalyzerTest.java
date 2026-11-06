@@ -122,7 +122,7 @@ public final class ActiveExtensionAnalyzerTest {
             report = directories.findFirst().orElseThrow();
         }
         try (var files = Files.list(report)) {
-            check(files.count() == 12, "Expected eight extension reports plus four Spring reports");
+            check(files.count() == 13, "Expected eight extension reports plus five Spring reports");
         }
         String activationCsv = Files.readString(report.resolve("extension-activation.csv"));
         check(activationCsv.startsWith("\uFEFF") && activationCsv.contains("\"app\",\"EXPLICIT\""),
@@ -134,7 +134,7 @@ public final class ActiveExtensionAnalyzerTest {
         System.out.println("PASS: explicit names/dirs, transitive and cyclic closure, comments, "
                 + "platform defaults/disable, path autoload/depth, lookup boundaries, unknown names/properties, "
                 + "relative paths, bad depth, name/dir mismatch, incomplete scan, XML safety/missing/malformed, "
-                + "scanner and twelve CSV reports. Fixtures: " + root);
+                + "scanner and thirteen CSV reports. Fixtures: " + root);
     }
 
     private static void extension(String name, String dir, String... dependencies) throws Exception {

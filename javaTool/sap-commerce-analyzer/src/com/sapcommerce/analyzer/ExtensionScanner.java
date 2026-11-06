@@ -170,7 +170,7 @@ public final class ExtensionScanner {
         for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
             System.out.println("[SELECTION WARN] " + issue.reference() + " - " + issue.message());
         }
-        SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(extensionMap, activation);
+        SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(hybrisRoot, extensionMap, activation);
         System.out.println();
         System.out.println("=== Spring XML Import Analysis (SOURCE FILES) ===");
         System.out.println("Inspected XML   : " + spring.inspected());
@@ -178,10 +178,14 @@ public final class ExtensionScanner {
         System.out.println("Import declarations: " + spring.declarations());
         System.out.println("Import rows     : " + spring.imports().size());
         System.out.println("Import issues   : " + spring.issues().size());
+        System.out.println("JAR files       : " + spring.jars().archives().size());
+        System.out.println("JAR XML entries : " + spring.jars().entries().size());
+        System.out.println("JAR index issues: " + spring.jars().problems().size());
+        System.out.println("JAR target rows : " + spring.imports().stream().filter(edge -> edge.targetJar() != null).count());
         spring.issues().stream().collect(java.util.stream.Collectors.groupingBy(
                 SpringXmlAnalyzer.Issue::status, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach((status, count) -> System.out.println("  " + status + ": " + count));
-        System.out.println("Runtime loading and JAR classpath resources are not evaluated.");
+        System.out.println("JAR entry existence is indexed; JAR XML content and runtime loading are not evaluated.");
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
                 new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,

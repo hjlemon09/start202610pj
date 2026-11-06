@@ -26,10 +26,20 @@ public final class SpringXmlAnalyzer {
     public record XmlFile(String extension, Path path, String area, boolean spring,
             String parseStatus, int importCount) { }
     public record Import(Path source, int line, String resource, Path target,
-            String status, String targetStatus) { }
+            String status, String targetStatus, Path targetJar, String targetEntry) {
+        public Import(Path source, int line, String resource, Path target, String status, String targetStatus) {
+            this(source, line, resource, target, status, targetStatus, null, "");
+        }
+        public String targetLocation() {
+            if (targetJar != null) {
+                return new JarResourceIndex.Entry(targetJar, targetEntry, "", "").location();
+            }
+            return target == null ? "" : target.toString();
+        }
+    }
     public record Issue(Path source, int line, String resource, String status, String detail) { }
     public record Result(List<XmlFile> files, List<Import> imports, List<Issue> issues,
-            int inspected, int declarations) {
+            int inspected, int declarations, JarResourceIndex.Result jars) {
         public long springFiles() { return files.stream().filter(XmlFile::spring).count(); }
     }
     private record RawImport(Path source, int line, String resource) { }
@@ -40,10 +50,15 @@ public final class SpringXmlAnalyzer {
     private final List<RawImport> rawImports = new ArrayList<>();
     private final List<Import> imports = new ArrayList<>();
     private final List<Issue> issues = new ArrayList<>();
+    private JarResourceIndex.Result jars;
 
-    public static Result analyze(Map<String, ExtensionInfo> extensions,
+    public static Result analyze(Path hybrisRoot, Map<String, ExtensionInfo> extensions,
             ActiveExtensionAnalyzer.Result activation) {
         SpringXmlAnalyzer analyzer = new SpringXmlAnalyzer();
+        analyzer.jars = JarResourceIndex.scan(hybrisRoot, extensions, activation);
+        for (JarResourceIndex.Problem problem : analyzer.jars.problems()) {
+            analyzer.issues.add(new Issue(problem.path(), 0, "", "JAR_INDEX_ERROR", problem.message()));
+        }
         if (!activation.complete()) {
             analyzer.issues.add(new Issue(activation.config(), 0, "", "INCOMPLETE_SELECTION",
                     "Only positively selected extensions are inspected; UNKNOWN definitions are omitted."));
@@ -57,7 +72,7 @@ public final class SpringXmlAnalyzer {
         for (Location location : analyzer.locations.values()) { analyzer.inspect(location); }
         for (RawImport declaration : analyzer.rawImports) { analyzer.resolve(declaration); }
         return new Result(List.copyOf(analyzer.files.values()), List.copyOf(analyzer.imports),
-                List.copyOf(analyzer.issues), analyzer.locations.size(), analyzer.rawImports.size());
+                List.copyOf(analyzer.issues), analyzer.locations.size(), analyzer.rawImports.size(), analyzer.jars);
     }
 
     private void collect(String extension, Path directory, String area) {
@@ -174,6 +189,7 @@ public final class SpringXmlAnalyzer {
         boolean all = value.startsWith("classpath*:");
         boolean classpath = all || value.startsWith("classpath:");
         List<Path> candidates = new ArrayList<>();
+        List<JarResourceIndex.Entry> jarCandidates = List.of();
         String status;
         try {
             if (classpath) {
@@ -188,8 +204,9 @@ public final class SpringXmlAnalyzer {
                     String relative = location.classpathRoot().relativize(location.path()).toString().replace('\\', '/');
                     if (matcher.matcher(relative).matches()) { candidates.add(location.path()); }
                 }
+                jarCandidates = jars.matches(matcher, source.extension());
                 status = all ? "CLASSPATH_ALL_CANDIDATE"
-                        : candidates.size() > 1 ? "AMBIGUOUS_CLASSPATH" : "CLASSPATH_CANDIDATE";
+                        : candidates.size() + jarCandidates.size() > 1 ? "AMBIGUOUS_CLASSPATH" : "CLASSPATH_CANDIDATE";
             } else if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*") || value.startsWith("//")
                     || value.startsWith("\\\\")) {
                 unresolved(declaration, "UNSUPPORTED_LOCATION",
@@ -213,8 +230,9 @@ public final class SpringXmlAnalyzer {
             unresolved(declaration, "UNSUPPORTED_LOCATION", exception.getMessage());
             return;
         }
-        if (candidates.isEmpty()) {
-            unresolved(declaration, "NOT_FOUND_IN_SCOPE", "No matching XML in selected source roots; JARs/runtime resources are not inspected");
+        if (candidates.isEmpty() && jarCandidates.isEmpty()) {
+            unresolved(declaration, "NOT_FOUND_IN_SCOPE", "No matching XML in selected source roots or indexed JARs; "
+                    + "review JAR inventory/index errors and runtime classpath separately");
             return;
         }
         candidates.sort(null);
@@ -226,9 +244,13 @@ public final class SpringXmlAnalyzer {
                         target + " (" + file.parseStatus() + ")"));
             }
         }
+        for (JarResourceIndex.Entry target : jarCandidates) {
+            imports.add(new Import(declaration.source(), declaration.line(), value, null, status,
+                    "JAR_ENTRY_NOT_PARSED", target.jar(), target.resource()));
+        }
         if (status.equals("AMBIGUOUS_CLASSPATH")) {
             issues.add(new Issue(declaration.source(), declaration.line(), value, status,
-                    "Multiple source candidates; classloader ordering is unknown"));
+                    "Multiple source/JAR candidates; classloader ordering is unknown"));
         }
     }
 

@@ -99,6 +99,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-imports.csv` | import 출발 XML·줄 번호·원문 resource·대상 후보·해석 상태 |
 | `spring-reverse-imports.csv` | 대상 XML을 참조하는 출발 XML 목록 |
 | `spring-import-issues.csv` | 검색·파싱 문제, 해석 불가·누락·모호한 참조 |
+| `spring-jar-files.csv` | 검색한 JAR, 소유 Extension, 범위, 인덱싱 결과, XML 항목 수 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -217,7 +218,7 @@ Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행
 
 ## Spring XML import 분석
 
-인자 없이 실행하는 흐름에 자동 연결했습니다. 전체 CSV는 **12개**입니다.
+인자 없이 실행하는 흐름에 자동 연결했습니다. JAR 검색 확장 후 전체 CSV는 **13개**입니다.
 Console의 `Spring XML Import Analysis (SOURCE FILES)`에서 조사 XML 수, Spring XML 수,
 import 선언 수, 결과 행 수 및 문제 수를 확인할 수 있습니다.
 
@@ -236,7 +237,7 @@ Spring XML 수에는 루트는 식별했으나 이후 파싱에 실패한 파일
 | --- | --- |
 | `RESOLVED_RELATIVE` | 출발 XML의 디렉터리를 기준으로 조사 범위 내 대상 파일 확인 |
 | `RESOLVED_RELATIVE_LEADING_SLASH` | 앞의 `/`를 제외하고 출발 XML 기준 상대 경로로 대상 확인 |
-| `CLASSPATH_CANDIDATE` | `classpath:`와 일치하는 소스 파일 후보 1개 |
+| `CLASSPATH_CANDIDATE` | `classpath:`와 일치하는 일반 XML 또는 JAR 내부 후보 1개 |
 | `AMBIGUOUS_CLASSPATH` | `classpath:` 후보가 여러 개. 실행 클래스패스의 순서를 알 수 없음 |
 | `CLASSPATH_ALL_CANDIDATE` | `classpath*:`에 해당하는 조사 범위 내 후보들 |
 | `NOT_FOUND_IN_SCOPE` | 조사 범위에서 해당 XML을 찾지 못함. 실제 리소스 부재를 단정하지 않음 |
@@ -258,7 +259,8 @@ import를 분석하므로 범위 내 연결은 여러 단계를 따라 확인할
 
 **Spring XML 발견 및 import 관계는 실제 로딩의 증거가 아닙니다.** 자동 Spring 설정 수집 규칙,
 `web.xml` 진입점, properties 설정, 활성 profile 및 Core/Web ApplicationContext 소속은 후속 단계입니다.
-모든 XML의 loading_status는 NOT_EVALUATED입니다. JAR 내부와 실행 중 생성되는 리소스는
+일반 XML의 loading_status는 NOT_EVALUATED입니다. JAR 내부 XML의 경로는 검색하지만,
+본문은 파싱하지 않으며 JAR_ENTRY_NOT_PARSED로 표시합니다. 실행 중 생성되는 리소스는
 이번 범위에 포함하지 않으므로 NOT_FOUND_IN_SCOPE는 개발 환경에서 검토해야 합니다.
 Spring import 문제는 CSV의 진단 정보이며 단독으로 프로세스 종료 코드를 변경하지 않습니다.
 Console에도 문제 상태별 건수를 출력합니다.
@@ -273,3 +275,35 @@ XML 외부 엔티티와 네트워크 요청을 차단합니다. DOCTYPE 선언�
 정적 리소스 해석 참고:
 [Spring Framework Resources](https://docs.spring.io/spring-framework/reference/core/resources.html).
 검증용 소스: `test/com/sapcommerce/analyzer/SpringXmlAnalyzerTest.java`.
+
+## JAR 리소스 검색 확장
+
+`ExtensionScanner`를 실행 인자 없이 실행하면 JAR 검색도 자동 수행합니다.
+선택된 Extension의 폴더 전체와 플랫폼 공통 `bin/platform/lib`,
+`bin/platform/bootstrap/bin` 아래 JAR에서 XML 항목 이름을 수집합니다.
+`.git`, `node_modules`, `temp`와 심볼릭 링크 대상은 제외합니다.
+JAR는 압축 해제하거나 실행하지 않습니다. 내부 XML 본문 파싱 및 그 XML의 후속 import는
+이번 단계의 범위에 포함하지 않습니다.
+
+`classpath:` 및 `classpath*:`는 기존 일반 XML 후보와 JAR XML 후보를 함께 검색합니다.
+JAR 상대 경로의 정확한 일치와 `*`, `?`, `**` 패턴을 지원합니다.
+다른 Storefront의 web/webroot 아래 JAR는 후보에 섞지 않습니다.
+이 범위는 실제 클래스패스 설정을 재현한 것이 아닙니다. 백업/테스트/배포 복사본도
+선택된 Extension 아래에 있으면 후보에 들어갈 수 있어 실제 사용 여부를 단정할 수 없습니다.
+
+`spring-imports.csv`와 역방향 CSV에 다음 열을 추가했습니다.
+
+- `target_kind`: SOURCE_FILE 또는 JAR_ENTRY
+- `target_jar`: 발견한 JAR의 절대 경로
+- `target_entry`: JAR 내부의 XML 경로
+- `runtime_classpath_status`: NOT_EVALUATED
+
+JAR 대상을 가리키는 `target_xml`은 `jar:file:/...!/META-INF/example.xml` 형식입니다.
+`target_parse_status=JAR_ENTRY_NOT_PARSED`는 항목이 있다는 의미로 XML 검증 성공을 뜻하지 않습니다.
+`classpath:`에서 여러 후보가 발견되면 AMBIGUOUS_CLASSPATH로 모두 출력합니다.
+새로 발견한 JAR 때문에 결과 행 수나 모호성 문제가 늘어날 수도 있습니다.
+JAR 읽기 실패는 JAR_INDEX_ERROR로 기록하고 나머지 검색을 계속합니다.
+
+작업 배경, 이전 9건의 해석, 처리 순서, 출력 예시, 검증 및 재실행 확인 방법은
+`docs/JAR_RESOURCE_SEARCH.md`에 기록했습니다.
+테스트 소스는 `test/com/sapcommerce/analyzer/JarResourceIndexTest.java`입니다.

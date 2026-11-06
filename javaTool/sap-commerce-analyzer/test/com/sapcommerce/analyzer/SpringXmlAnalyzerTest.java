@@ -57,7 +57,7 @@ public final class SpringXmlAnalyzerTest {
                 + "<beans>&hidden;</beans>");
         var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
                 Map.copyOf(selections), List.of());
-        var result = SpringXmlAnalyzer.analyze(extensions, activation);
+        var result = SpringXmlAnalyzer.analyze(root, extensions, activation);
         check(result.files().stream().noneMatch(file -> file.extension().equals("off")), "Unselected extension leaked");
         check(result.files().stream().noneMatch(file -> file.path().toString().contains("node_modules")), "Excluded subtree leaked");
         check(edges(result, "classpath:/shared.xml", "AMBIGUOUS_CLASSPATH") == 2, "Single classpath duplicate ambiguity");

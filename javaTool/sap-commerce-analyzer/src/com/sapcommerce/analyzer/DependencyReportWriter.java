@@ -42,6 +42,10 @@ public final class DependencyReportWriter {
                 row(out, "spring_import_declarations", spring.declarations());
                 row(out, "spring_import_rows", spring.imports().size());
                 row(out, "spring_import_issues", spring.issues().size());
+                row(out, "jar_files", spring.jars().archives().size());
+                row(out, "jar_xml_entries", spring.jars().entries().size());
+                row(out, "jar_index_issues", spring.jars().problems().size());
+                row(out, "jar_target_rows", spring.imports().stream().filter(edge -> edge.targetJar() != null).count());
                 row(out, "spring_runtime_loading_evaluated", false);
             }
             return directory.toAbsolutePath().normalize();
