@@ -26,13 +26,24 @@ public final class DependencyReportWriter {
     }
 
     public static Path write(Path reportRoot, Map<String, ExtensionInfo> extensions,
-            Analysis analysis, ScanSummary scan, ActiveExtensionAnalyzer.Result activation) throws IOException {
+            Analysis analysis, ScanSummary scan, ActiveExtensionAnalyzer.Result activation,
+            SpringXmlAnalyzer.Result spring) throws IOException {
         Files.createDirectories(reportRoot);
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         // Each run gets a new directory, including runs started in the same second.
         Path directory = Files.createTempDirectory(reportRoot, timestamp + "_");
         try {
             writeFiles(directory, extensions, analysis, scan, activation);
+            SpringXmlReportWriter.write(directory, spring);
+            try (BufferedWriter out = Files.newBufferedWriter(directory.resolve("summary.csv"),
+                    StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
+                row(out, "spring_xml_inspected", spring.inspected());
+                row(out, "spring_xml_files", spring.springFiles());
+                row(out, "spring_import_declarations", spring.declarations());
+                row(out, "spring_import_rows", spring.imports().size());
+                row(out, "spring_import_issues", spring.issues().size());
+                row(out, "spring_runtime_loading_evaluated", false);
+            }
             return directory.toAbsolutePath().normalize();
         } catch (IOException exception) {
             throw new IOException("Report write failed; partial files may exist at "
@@ -140,13 +151,13 @@ public final class DependencyReportWriter {
         }
     }
 
-    private static BufferedWriter csv(Path path) throws IOException {
+    static BufferedWriter csv(Path path) throws IOException {
         BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8);
         writer.write('\uFEFF');
         return writer;
     }
 
-    private static void row(BufferedWriter out, Object... values) throws IOException {
+    static void row(BufferedWriter out, Object... values) throws IOException {
         for (int i = 0; i < values.length; i++) {
             if (i != 0) {
                 out.write(',');

@@ -13,10 +13,11 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 - 특정 Extension에서 시작하는 직접·간접 의존관계 트리 출력
 - 실행 인자 없이 전체 Extension의 직접·역방향 의존관계, 누락 참조, 순환 그룹 분석 및 CSV 저장
 - `config/localextensions.xml`을 분석하여 명시 지정·자동 로딩·플랫폼 기본 포함·간접 의존 대상 구분
+- 선택된 Extension의 Spring XML 및 import 정방향·역방향 관계 분석
 - 순환 참조와 이미 방문한 공유 의존관계 구분
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
 
-Spring XML import, ApplicationContext, Bean 분석,
+ApplicationContext, Bean 분석,
 시각화 및 CallTrace는 이후 단계이며 이 버전에 포함하지 않습니다.
 
 ## Eclipse에서 가져오기
@@ -94,6 +95,10 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
 | `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 |
 | `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 |
+| `spring-xml-files.csv` | 선택된 Extension에서 조사한 XML, Spring 여부, 파싱 결과, import 수 |
+| `spring-imports.csv` | import 출발 XML·줄 번호·원문 resource·대상 후보·해석 상태 |
+| `spring-reverse-imports.csv` | 대상 XML을 참조하는 출발 XML 목록 |
+| `spring-import-issues.csv` | 검색·파싱 문제, 해석 불가·누락·모호한 참조 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -209,3 +214,54 @@ Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선
 검증용 소스는 `test/com/sapcommerce/analyzer/ActiveExtensionAnalyzerTest.java`에 있습니다.
 외부 라이브러리 없이 Java 21에서 src와 함께 별도의 작업 폴더로 컴파일해 실행할 수 있습니다.
 Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행에는 영향을 주지 않습니다.
+
+## Spring XML import 분석
+
+인자 없이 실행하는 흐름에 자동 연결했습니다. 전체 CSV는 **12개**입니다.
+Console의 `Spring XML Import Analysis (SOURCE FILES)`에서 조사 XML 수, Spring XML 수,
+import 선언 수, 결과 행 수 및 문제 수를 확인할 수 있습니다.
+
+수집 범위는 선택 상태가 EXPLICIT/AUTOLOAD/PLATFORM/DEPENDENCY인 Extension의
+`resources/`와 `web/webroot/` 아래 XML입니다. `.git`, `node_modules`, `temp` 및
+심볼릭 링크 대상은 따라가지 않습니다. 기본 Spring namespace의 `<beans>` 루트와
+namespace 없는 `<beans>`를 Spring XML로 식별합니다. 그 안의 beans/import만 추출하며,
+주석과 다른 namespace의 import는 무시합니다. 프로파일별 중첩 beans의 import도
+잠재적 관계로 수집하며 활성 프로파일 판정은 하지 않습니다.
+
+`spring-xml-files.csv`에는 조사한 일반 XML도 포함됩니다. 일반 XML은 루트만 확인하고
+NOT_SPRING으로 표시하며 전체 문법을 검증하지 않습니다. Spring XML은 끝까지 읽습니다.
+Spring XML 수에는 루트는 식별했으나 이후 파싱에 실패한 파일도 포함됩니다.
+
+| 상태 | 의미 |
+| --- | --- |
+| `RESOLVED_RELATIVE` | 출발 XML의 디렉터리를 기준으로 조사 범위 내 대상 파일 확인 |
+| `CLASSPATH_CANDIDATE` | `classpath:`와 일치하는 소스 파일 후보 1개 |
+| `AMBIGUOUS_CLASSPATH` | `classpath:` 후보가 여러 개. 실행 클래스패스의 순서를 알 수 없음 |
+| `CLASSPATH_ALL_CANDIDATE` | `classpath*:`에 해당하는 조사 범위 내 후보들 |
+| `NOT_FOUND_IN_SCOPE` | 조사 범위에서 해당 XML을 찾지 못함. 실제 리소스 부재를 단정하지 않음 |
+| `UNRESOLVED_PROPERTY` | 빈 resource 또는 `${...}`, `#{...}` 런타임 표현식 |
+| `UNSUPPORTED_LOCATION` | 절대 경로·file/HTTP/JAR URL 등 실행 ResourceContext가 필요한 위치 |
+
+클래스패스 후보의 루트는 각 Extension의 `resources/`와 같은 Extension의
+`web/webroot/WEB-INF/classes/`입니다. 다른 Storefront의 WEB-INF/classes는 섞지 않습니다.
+이는 실제 Core/Web Context의 클래스패스를 재현한 것이 아닙니다.
+`*`, `?`, `**` 형태의 경로 패턴을 지원합니다. `classpath*:`의 모든 후보를 행으로 출력하며,
+`classpath:` 후보가 여러 개여도 하나를 임의로 선택하지 않습니다.
+import 대상이 일반 XML이거나 파싱 실패인 경우 target_parse_status 및 문제 목록에 표시합니다.
+
+각 XML은 한 번만 조사하므로 순환 import에서도 종료됩니다. 수집된 모든 Spring XML의
+import를 분석하므로 범위 내 연결은 여러 단계를 따라 확인할 수 있습니다.
+이 버전은 각 단계의 직접 간선 목록을 출력하며 전체 경로를 펼친 트리나 순환 그룹은 출력하지 않습니다.
+원본 resource가 여러 대상에 매칭될 수 있어 import 선언 수와 결과 행 수는 다를 수 있습니다.
+역방향 CSV에는 대상 파일 후보가 있는 행만 포함하고, 미해석 참조는 정방향/문제 CSV에 남깁니다.
+
+**Spring XML 발견 및 import 관계는 실제 로딩의 증거가 아닙니다.** 자동 Spring 설정 수집 규칙,
+`web.xml` 진입점, properties 설정, 활성 profile 및 Core/Web ApplicationContext 소속은 후속 단계입니다.
+모든 XML의 loading_status는 NOT_EVALUATED입니다. JAR 내부와 실행 중 생성되는 리소스는
+이번 범위에 포함하지 않으므로 NOT_FOUND_IN_SCOPE는 개발 환경에서 검토해야 합니다.
+Spring import 문제는 CSV의 진단 정보이며 단독으로 프로세스 종료 코드를 변경하지 않습니다.
+XML 외부 엔티티와 네트워크 요청을 차단합니다. DOCTYPE가 있는 Spring XML은 파싱 문제로 남깁니다.
+
+정적 리소스 해석 참고:
+[Spring Framework Resources](https://docs.spring.io/spring-framework/reference/core/resources.html).
+검증용 소스: `test/com/sapcommerce/analyzer/SpringXmlAnalyzerTest.java`.

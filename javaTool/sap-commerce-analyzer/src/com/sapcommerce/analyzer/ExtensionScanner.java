@@ -170,10 +170,19 @@ public final class ExtensionScanner {
         for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
             System.out.println("[SELECTION WARN] " + issue.reference() + " - " + issue.message());
         }
+        SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(extensionMap, activation);
+        System.out.println();
+        System.out.println("=== Spring XML Import Analysis (SOURCE FILES) ===");
+        System.out.println("Inspected XML   : " + spring.inspected());
+        System.out.println("Spring XML      : " + spring.springFiles());
+        System.out.println("Import declarations: " + spring.declarations());
+        System.out.println("Import rows     : " + spring.imports().size());
+        System.out.println("Import issues   : " + spring.issues().size());
+        System.out.println("Runtime loading and JAR classpath resources are not evaluated.");
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
                 new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,
-                        failedCount, accessFailures[0]), activation);
+                        failedCount, accessFailures[0]), activation, spring);
         System.out.println("CSV reports: " + reports);
         if (failedCount > 0 || accessFailures[0] > 0) {
             System.out.println("[WARN] Reports are partial; review scan failures before interpretation.");
