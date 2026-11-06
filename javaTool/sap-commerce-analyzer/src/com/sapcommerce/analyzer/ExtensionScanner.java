@@ -24,7 +24,9 @@ public final class ExtensionScanner {
                 && ("--help".equals(args[0]) || "-h".equals(args[0])))) {
             System.out.println("Usage: ExtensionScanner [hybris-root] [extension-name]");
             System.out.println("Default root: C:\\hybris");
-            System.out.println("Without extension-name, only the scan summary is printed.");
+            System.out.println("All extensions are analyzed and CSV reports are always written.");
+            System.out.println("Optional extension-name additionally prints its dependency tree.");
+            System.out.println("Report root: ./reports (override: -Danalyzer.output=<directory>)");
             return;
         }
         try {
@@ -126,15 +128,39 @@ public final class ExtensionScanner {
         System.out.println("Access failures : " + accessFailures[0]);
         System.out.println("This scan does not determine which extensions are active.");
 
+        if (!duplicateNames.isEmpty()) {
+            System.err.println("[ERROR] Dependency analysis and CSV export skipped: duplicate extension "
+                    + "names must be resolved by narrowing the scan root or removing duplicate copies.");
+            return 1;
+        }
+        ExtensionDependencyAnalyzer analyzer = new ExtensionDependencyAnalyzer(extensionMap);
+        ExtensionDependencyAnalyzer.Analysis analysis = analyzer.analyzeAll();
+        System.out.println();
+        System.out.println("=== Full Dependency Analysis ===");
+        System.out.println("Dependency edges: " + analysis.dependencies().size());
+        System.out.println("Missing edges   : " + analysis.missingCount());
+        System.out.println("Cycle groups    : " + analysis.cycleGroups().size());
+        for (ExtensionDependencyAnalyzer.Dependency edge : analysis.dependencies()) {
+            if (!edge.found()) {
+                System.out.println("[NOT FOUND] " + edge.source() + " -> " + edge.target());
+            }
+        }
+        for (int i = 0; i < analysis.cycleGroups().size(); i++) {
+            System.out.println("[CYCLE GROUP " + (i + 1) + "] "
+                    + String.join(", ", analysis.cycleGroups().get(i)));
+        }
+        Path reports = DependencyReportWriter.write(
+                Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
+                new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,
+                        failedCount, accessFailures[0]));
+        System.out.println("CSV reports: " + reports);
+        if (failedCount > 0 || accessFailures[0] > 0) {
+            System.out.println("[WARN] Reports are partial; review scan failures before interpretation.");
+        }
         if (extensionName != null) {
             System.out.println();
-            if (!duplicateNames.isEmpty()) {
-                System.err.println("[ERROR] Dependency analysis skipped: duplicate extension names "
-                        + "must be resolved by narrowing the scan root or removing duplicate copies.");
-                return 1;
-            }
             System.out.println("=== Extension Dependency Analysis ===");
-            new ExtensionDependencyAnalyzer(extensionMap).printDependencies(extensionName);
+            analyzer.printDependencies(extensionName);
             if (!extensionMap.containsKey(extensionName)) {
                 return 1;
             }

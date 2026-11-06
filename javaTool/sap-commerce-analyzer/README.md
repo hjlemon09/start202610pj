@@ -1,6 +1,6 @@
 # SAP Commerce Analyzer
 
-첨부 문서의 STEP 10-2까지 구현한 독립 Java 분석 도구입니다.
+첨부 문서의 STEP 10-2에서 전체 Extension 의존관계 분석 및 CSV 출력까지 확장한 독립 Java 분석 도구입니다.
 Java 21 표준 API만 사용하며 Maven, Gradle, Spring Boot 및 외부 라이브러리는 필요하지 않습니다.
 SAP Commerce의 소스와 설정은 읽기만 합니다.
 
@@ -11,11 +11,12 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 - Extension 이름과 직접 `requires-extension` 목록 파싱
 - 검색/파싱 성공/실패/이름 중복/접근 실패 수 출력
 - 특정 Extension에서 시작하는 직접·간접 의존관계 트리 출력
+- 실행 인자 없이 전체 Extension의 직접·역방향 의존관계, 누락 참조, 순환 그룹 분석 및 CSV 저장
 - 순환 참조와 이미 방문한 공유 의존관계 구분
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
 
 `localextensions.xml` 활성화 판정, Spring XML import, ApplicationContext, Bean 분석,
-시각화, CallTrace 및 CSV 출력은 이후 단계이며 이 버전에 포함하지 않습니다.
+시각화 및 CallTrace는 이후 단계이며 이 버전에 포함하지 않습니다.
 
 ## Eclipse에서 가져오기
 
@@ -32,6 +33,9 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 
 ## 실행 인자
 
+전체 분석은 **Program arguments를 비운 상태로 실행**하면 됩니다. 기본 분석 루트는 `C:\hybris`입니다.
+경로만 바꾸려면 첫 번째 인자만 입력하세요. 다음 예시는 특정 Extension의 트리도 추가로 보고 싶은 경우입니다.
+
 **Run → Run Configurations → Java Application → ExtensionScanner → Arguments → Program arguments**:
 
 ```text
@@ -41,9 +45,9 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 `mmmcore`는 익명화된 예시입니다. 실제 `extensioninfo.xml`의 `extension name`으로 바꾸세요.
 경로에 공백이 있으면 큰따옴표로 감쌉니다.
 
-- 인자 없음: 기본 경로 `C:\hybris` 검색 및 요약만 출력
+- 인자 없음: 기본 경로 `C:\hybris` 전체 검색·파싱·의존관계 분석 및 CSV 저장
 - 첫 번째 인자: 검색할 SAP Commerce 루트
-- 두 번째 인자: 의존관계 트리의 시작 Extension 이름 (대소문자 구분)
+- 두 번째 인자: 선택 사항. 지정한 Extension의 트리를 추가 출력 (대소문자 구분)
 - `--help`: 사용법 출력
 
 예상 출력 형태:
@@ -57,12 +61,53 @@ Unique names    : ...
 Duplicate files : 0
 Access failures : 0
 
+=== Full Dependency Analysis ===
+Dependency edges: ...
+Missing edges   : ...
+Cycle groups    : ...
+CSV reports: ...
+
 === Extension Dependency Analysis ===
 === Dependency Tree ===
 mmmcore
   -> acceleratorcms
     -> ...
 ```
+
+위 트리는 두 번째 인자를 입력했을 때만 추가 출력됩니다.
+기본 실행에는 `Analysis Summary` 다음에 `Full Dependency Analysis`와 CSV 저장 경로가 출력됩니다.
+
+## 전체 분석 결과 파일
+
+기본 저장 위치는 실행 작업 디렉터리의 `reports/yyyyMMdd_HHmmss_고유값/`입니다.
+Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실행 완료 시 출력되는 절대 경로를 확인하세요.
+매 실행마다 새 폴더를 만들어 이전 결과를 덮어쓰지 않습니다. `reports/`는 Git에서 제외합니다.
+
+| 파일 | 내용 |
+| --- | --- |
+| `summary.csv` | 검색·파싱·접근 실패, Extension·의존관계·누락·순환 그룹 수, 스캔 완전성 |
+| `extensions.csv` | 모든 Extension의 XML 경로, 직접 의존 수, 자신을 참조하는 Extension 수, 누락 수, 순환 그룹 |
+| `dependencies.csv` | 출발 Extension → 직접 의존 Extension, 대상 발견 여부, 순환 그룹 |
+| `reverse-dependencies.csv` | 의존 대상 → 이를 사용하는 Extension. 누락 대상도 포함 |
+| `missing-dependencies.csv` | 찾지 못한 대상과 이를 참조한 Extension 및 XML 경로 |
+| `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
+
+CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
+의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
+각 목록은 이름순으로 정렬하므로 실행 간 비교할 수 있습니다.
+`extensions.csv`에는 의존하거나 참조하는 대상이 없는 Extension도 포함됩니다.
+
+저장 위치를 바꾸려면 Program arguments가 아닌 **VM arguments**에 입력하세요.
+
+```text
+-Danalyzer.output="C:\analysis-results"
+```
+
+순환 그룹은 강하게 연결된 컴포넌트(SCC)입니다. 그룹 안의 모든 Extension은 서로 도달할 수 있습니다.
+자기 자신만 참조하는 경우도 순환으로 검출합니다. `cycles.csv`의 이름순 나열은 호출 순서나
+하나의 순환 경로가 아닙니다. 그룹 내부의 실제 간선은 `dependencies.csv`에서 확인합니다.
+`cycle_group=0`은 검출된 순환 그룹에 해당하지 않는다는 뜻입니다.
+전체 CSV의 관계는 직접 의존관계이며, 모든 간접 경로를 펼쳐서 저장하지 않습니다.
 
 단일 XML만 확인하려면 `ExtensionInfoParser`를 실행하고 Program arguments에
 `"C:\hybris\bin\custom\mmm\mmmcore\extensioninfo.xml"`을 입력합니다.
@@ -77,9 +122,14 @@ mmmcore
 - `[CYCLE]`: 현재 탐색 경로에 있는 Extension을 다시 참조합니다.
 - 동일 이름의 XML이 여러 개면 경로를 출력하고 트리 분석을 중단합니다.
   복사본이나 템플릿이 있는지 확인하고 분석 루트를 좁히세요. 임의의 정의를 선택하지 않습니다.
+  이 경우 전체 의존관계 분석과 CSV 저장도 생략합니다.
 - 파싱 또는 접근 실패가 있으면 결과가 불완전할 수 있습니다. 정상 종료 코드는 0,
   검색·파싱 오류/중복/시작 Extension 누락은 1입니다. 하위 의존관계의 `[NOT FOUND]`는
   표시만 하며 단독으로 종료 코드를 변경하지 않습니다.
+- 전체 분석의 누락 참조와 순환 그룹도 단독으로 종료 코드를 변경하지 않습니다.
+  파싱·접근 실패 시 가능한 범위에서 CSV를 저장하고 `scan_complete=false`로 표시합니다.
+- 결과는 발견된 정의를 기준으로 합니다. 비활성 Extension이나 템플릿이 포함될 수 있어,
+  검출된 순환이 실행 환경의 실제 순환이라고 단정할 수 없습니다.
 - 심볼릭 링크를 따라가지 않습니다. `temp` 등 제외 경로의 정의는 검색하지 않습니다.
 - DOCTYPE가 있는 XML은 이 버전의 파서에서 거부합니다.
 
@@ -90,7 +140,8 @@ src/com/sapcommerce/analyzer/
 ├── ExtensionScanner.java
 ├── ExtensionInfoParser.java
 ├── ExtensionInfo.java
-└── ExtensionDependencyAnalyzer.java
+├── ExtensionDependencyAnalyzer.java
+└── DependencyReportWriter.java
 ```
 
 소스 및 Eclipse 설정만 제공하며 컴파일 산출물은 포함하지 않습니다.
