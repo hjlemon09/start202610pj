@@ -1,0 +1,9 @@
+/bin/
+*.class
+/reports/
+
+# Keep Eclipse project configuration under version control.
+!/.classpath
+!/.project
+!/.settings/
+!/.settings/**
