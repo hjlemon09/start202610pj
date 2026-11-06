@@ -39,6 +39,8 @@ public final class DependencyReportWriter {
                     StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
                 row(out, "spring_xml_inspected", spring.inspected());
                 row(out, "spring_xml_files", spring.springFiles());
+                row(out, "skipped_rootless_xml", spring.files().stream()
+                        .filter(file -> file.parseStatus().equals("SKIPPED_NO_ROOT_ELEMENT")).count());
                 row(out, "spring_import_declarations", spring.declarations());
                 row(out, "spring_import_rows", spring.imports().size());
                 row(out, "spring_import_issues", spring.issues().size());

@@ -377,3 +377,17 @@ Spring의 커스텀 PropertySource, 서버 실행 중 변경, HYBRIS_RUNTIME_PRO
 
 기록: `docs/IMPORT_PROPERTY_RESOLUTION.md`.
 검증: `test/com/sapcommerce/analyzer/ImportPropertyResolverTest.java`.
+
+## 선언·주석만 있는 XML
+
+widgets 설정 전체가 주석 처리된 파일처럼 루트 요소가 없는 파일은
+`SKIPPED_NO_ROOT_ELEMENT`로 구분합니다. 이는 정상 XML 파싱 성공을 뜻하지 않으며,
+단독 XML 문서로는 루트 요소가 없는 상태임을 명시한 제외 사유입니다.
+파일 목록과 문제 목록에 기록하고 Spring XML/import 분석에서는 제외합니다.
+원본 파일은 수정하지 않습니다. 따라서 문제 총수가 그대로여도 XML_INSPECTION_ERROR가
+SKIPPED_NO_ROOT_ELEMENT로 바뀌었다면 재분류된 것입니다.
+
+주석만 있는지 추가 검증한 경우에만 분류하며, 깨진 주석·태그·일반 텍스트 오류는 유지합니다.
+재검증은 1MB 이하 파일에만 적용하고 그보다 큰 실패는 기존 오류로 남깁니다.
+콘솔과 summary.csv에 제외 건수를 추가했습니다. CSV 개수는 14개로 유지합니다.
+작업 기록: `docs/ROOTLESS_XML_CLASSIFICATION.md`.

@@ -157,10 +157,12 @@ public final class SpringXmlAnalyzer {
         boolean spring = false;
         boolean rootSeen = false;
         boolean doctype = false;
+        String encoding = "UTF-8";
         XMLStreamReader reader = null;
         List<RawImport> declarations = new ArrayList<>();
         try (InputStream input = Files.newInputStream(location.path())) {
             reader = factory.createXMLStreamReader(input);
+            if (reader.getEncoding() != null) { encoding = reader.getEncoding(); }
             List<Boolean> beanParents = new ArrayList<>();
             while (reader.hasNext()) {
                 int event = reader.next();
@@ -193,6 +195,14 @@ public final class SpringXmlAnalyzer {
                     declarations.size()));
             rawImports.addAll(declarations);
         } catch (Exception exception) {
+            if (!rootSeen && reader != null && hasOnlyPrologAndComments(location.path(), encoding, factory)) {
+                files.put(location.path(), new XmlFile(location.extension(), location.path(), location.area(),
+                        false, "SKIPPED_NO_ROOT_ELEMENT", 0));
+                issues.add(new Issue(location.path(), 0, "", "SKIPPED_NO_ROOT_ELEMENT",
+                        "Only XML declaration/comments/whitespace/processing instructions; no root element. "
+                                + "Excluded from Spring analysis; not a well-formed standalone XML document."));
+                return;
+            }
             files.put(location.path(), new XmlFile(location.extension(), location.path(), location.area(),
                     spring, "PARSE_ERROR", 0));
             issues.add(new Issue(location.path(), reader == null ? 0 : reader.getLocation().getLineNumber(),
@@ -200,6 +210,43 @@ public final class SpringXmlAnalyzer {
         } finally {
             if (reader != null) {
                 try { reader.close(); } catch (Exception ignored) { /* Input stream already closed. */ }
+            }
+        }
+    }
+
+    /** Validate the remaining fragment inside a synthetic root without accepting broken comments/tags. */
+    private static boolean hasOnlyPrologAndComments(Path path, String encoding, XMLInputFactory factory) {
+        XMLStreamReader fragment = null;
+        try {
+            // Classification is optional; large failures remain ordinary inspection errors.
+            if (Files.size(path) > 1024 * 1024) { return false; }
+            String text = Files.readString(path, java.nio.charset.Charset.forName(encoding));
+            if (text.startsWith("\uFEFF")) { text = text.substring(1); }
+            if (text.startsWith("<?xml") && text.length() > 5 && Character.isWhitespace(text.charAt(5))) {
+                int end = text.indexOf("?>");
+                if (end < 0) { return false; }
+                text = text.substring(end + 2);
+            }
+            if (text.contains("<![CDATA[")) { return false; }
+            fragment = factory.createXMLStreamReader(new java.io.StringReader("<inspection-root>" + text + "</inspection-root>"));
+            boolean wrapperSeen = false;
+            while (fragment.hasNext()) {
+                int event = fragment.next();
+                if (event == XMLStreamConstants.START_ELEMENT) {
+                    if (wrapperSeen) { return false; }
+                    wrapperSeen = true;
+                } else if (event == XMLStreamConstants.CHARACTERS || event == XMLStreamConstants.CDATA) {
+                    if (!fragment.isWhiteSpace()) { return false; }
+                } else if (event == XMLStreamConstants.DTD || event == XMLStreamConstants.ENTITY_REFERENCE) {
+                    return false;
+                }
+            }
+            return wrapperSeen;
+        } catch (Exception ignored) {
+            return false;
+        } finally {
+            if (fragment != null) {
+                try { fragment.close(); } catch (Exception ignored) { /* String reader only. */ }
             }
         }
     }

@@ -175,6 +175,8 @@ public final class ExtensionScanner {
         System.out.println("=== Spring XML Import Analysis (SOURCE FILES) ===");
         System.out.println("Inspected XML   : " + spring.inspected());
         System.out.println("Spring XML      : " + spring.springFiles());
+        System.out.println("Skipped rootless XML: " + spring.files().stream()
+                .filter(file -> file.parseStatus().equals("SKIPPED_NO_ROOT_ELEMENT")).count());
         System.out.println("Import declarations: " + spring.declarations());
         System.out.println("Import rows     : " + spring.imports().size());
         System.out.println("Import issues   : " + spring.issues().size());
