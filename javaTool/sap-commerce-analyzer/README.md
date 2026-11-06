@@ -102,6 +102,9 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-jar-files.csv` | 검색한 JAR, 소유 Extension, 범위, 인덱싱 결과, XML 항목 수 |
 | `spring-property-resolutions.csv` | import 속성 표현식의 원문, 해석 경로, 값 선택 근거 및 실패 사유 |
 | `spring-jar-xml-files.csv` | 도달한 JAR 내부 XML의 위치·분석 문맥·파싱 상태·import 수 |
+| `spring-loading-entrypoints.csv` | 로딩 진입점 선언·규칙과 대상 후보 |
+| `spring-loading-reachability.csv` | 진입점별 XML 도달 관계, 이전 XML과 깊이 |
+| `spring-loading-issues.csv` | 진입점/로더/도달 관계 해석의 한계 및 문제 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -220,7 +223,7 @@ Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행
 
 ## Spring XML import 분석
 
-인자 없이 실행하는 흐름에 자동 연결했습니다. JAR 본문 추적 확장 후 전체 CSV는 **15개**입니다.
+인자 없이 실행하는 흐름에 자동 연결했습니다. 로딩 진입점 확장 후 전체 CSV는 **18개**입니다.
 Console의 `Spring XML Import Analysis (SOURCE AND REACHABLE JAR XML)`에서 조사 XML 수, Spring XML 수,
 import 선언 수, 결과 행 수 및 문제 수를 확인할 수 있습니다.
 
@@ -336,7 +339,7 @@ UNKNOWN 대상은 NOT_SELECTED로 간주하지 않고 보조 검색에서 제외
 줄어도 Import issues 총수는 같을 수 있습니다. 보조 검색 후에도 못 찾은 항목은
 NOT_FOUND_IN_SCOPE로 유지합니다. 접근 실패와 JAR 읽기 실패도 별도 진단으로 남깁니다.
 수집된 비선택 XML의 내부 import를 따라가거나 소유 Extension을 활성 대상으로 승격하지 않습니다.
-비선택 보조 검색 자체는 CSV를 추가하지 않습니다. 현재 전체 CSV는 JAR 본문 조사 목록을 포함해 **15개**입니다.
+비선택 보조 검색 자체는 CSV를 추가하지 않습니다. 현재 전체 CSV는 로딩 진입점 결과를 포함해 **18개**입니다.
 
 작업 기록: `docs/UNSELECTED_RESOURCE_SEARCH.md`.
 검증 소스: `test/com/sapcommerce/analyzer/UnselectedResourceSearchTest.java`.
@@ -423,3 +426,50 @@ Runtime 로딩은 여전히 NOT_EVALUATED이고 모호한 클래스패스 후보
 
 기록: `docs/JAR_XML_TRAVERSAL.md`.
 검증: `test/com/sapcommerce/analyzer/JarXmlTraversalTest.java`.
+
+## Spring 로딩 진입점과 잠재 도달 관계
+
+ExtensionScanner를 인자 없이 실행하면 import 분석 후
+`Spring Loading Entry Analysis (STATIC CANDIDATES)`를 출력합니다. 전체 CSV는 18개입니다.
+
+선택된 Extension에서 다음 근거를 수집합니다.
+
+- `<extension>.application-context` 속성: Core 설정 후보 (값은 쉼표/공백/세미콜론으로 구분)
+- `<extension>.global-context` 속성: Global 설정 후보
+- 명시 application-context 속성이 없고 resources/<extension>-application-context.xml이 존재하면 관례 후보
+- web/webroot/WEB-INF/web.xml의 context-param/contextConfigLocation: 웹 루트 후보
+- Servlet의 init-param/contextConfigLocation: 별도 Servlet 후보
+- 표준 Listener/DispatcherServlet의 XML 설정 기본 경로: 기본 규칙에 따른 후보
+- web.xml의 display-name 기반 additionalWebSpringConfigs 및 하위 키: SAP 웹 추가 설정 후보
+
+Core 설정의 접두사 없는 값은 우선 classpath로 검색합니다. 파일시스템 fallback 전체는 재현하지 않습니다.
+웹의 접두사 없는 경로는 webroot 기준으로 검색합니다.
+진입점이 JAR만 가리키는 경우에도 해당 XML 본문과 후속 import를 조사합니다.
+진입점은 XML import 선언이 아니므로 기존 import 선언 수에 섞지 않습니다.
+다만 진입점 때문에 새로 도달한 JAR의 실제 import는 선언 수에 추가될 수 있습니다.
+
+`spring-loading-entrypoints.csv`는 설정이 어디에 선언됐는지, loader 이름, modeled_context,
+evidence_kind, 경로 매칭 및 대상 파싱 상태를 담습니다. 선언된 설정과 관례 추론을 구분합니다.
+추정 Context ID는 CORE, GLOBAL, WEB:<extension>, SERVLET:<extension>:<servlet-name>이며
+실제 tenant별 ApplicationContext ID나 부모/자식 연결을 확인한 결과가 아닙니다.
+
+`spring-loading-reachability.csv`는 각 진입점에서 import를 따라 도달할 수 있는 XML을 기록합니다.
+depth=0은 시작 XML, parent_location은 직전 XML 또는 진입점 선언 근거입니다.
+순환 시 같은 진입점/리소스/분석 문맥은 한 번만 기록합니다. 하나의 대표 도달 경로만 보존하며
+모든 경로나 실제 로딩 순서를 나열한 것은 아닙니다.
+모호한 classpath 후보도 잠재 경로로 유지하며 확정된 로딩으로 표시하지 않습니다.
+비선택 진단 후보, 파싱 실패 및 미해석 참조는 도달 경로를 계속 확장하지 않습니다.
+
+`spring-loading-issues.csv`에는 커스텀 loader 미검증, 비XML Context, 미해석 설정,
+시작 XML 미발견 및 경로 확장 중단 등을 남깁니다.
+*-spring.xml이 있어도 명시 속성 또는 지원하는 관례로 등록 근거를 찾지 못하면
+REGISTRATION_NOT_ESTABLISHED로 기록하고 임의 로딩 진입점으로 삼지 않습니다.
+
+이 분석은 **설정 선언과 규칙에 근거한 로딩 후보/잠재 도달성**입니다.
+실제 서버 로딩, Listener 구현, 활성 Spring profile, Context 부모/자식 관계, Bean 최종 등록을
+검증하지 않았습니다. 모든 runtime_loading_status는 NOT_EVALUATED로 유지합니다.
+소스별 분석 문맥은 기존 소유 Extension 기준이고 실제 Core/Web 클래스패스와 같다고 보장하지 않습니다.
+Spring Java Config/코드에 의한 동적 등록 및 전체 서버 속성 계층도 재현하지 않습니다.
+
+상세 기록: `docs/SPRING_LOADING_ENTRYPOINTS.md`.
+검증: `test/com/sapcommerce/analyzer/SpringLoadingAnalyzerTest.java`.

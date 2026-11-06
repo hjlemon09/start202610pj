@@ -35,6 +35,8 @@ public final class DependencyReportWriter {
         try {
             writeFiles(directory, extensions, analysis, scan, activation);
             SpringXmlReportWriter.write(directory, spring);
+            SpringLoadingAnalyzer.Result loading = SpringLoadingAnalyzer.trace(spring);
+            SpringLoadingReportWriter.write(directory, loading);
             try (BufferedWriter out = Files.newBufferedWriter(directory.resolve("summary.csv"),
                     StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
                 row(out, "spring_xml_inspected", spring.inspected());
@@ -63,6 +65,11 @@ public final class DependencyReportWriter {
                 row(out, "unresolved_property_imports", spring.propertyResolutions().stream()
                         .filter(item -> !item.resolution().complete()).count());
                 row(out, "spring_runtime_loading_evaluated", false);
+                row(out, "loading_entry_declarations", spring.loadingPlan().declarations().size());
+                row(out, "loading_entry_target_rows", loading.entries().size());
+                row(out, "loading_reachability_rows", loading.reachability().size());
+                row(out, "loading_reachable_unique_xml", loading.reachability().stream().map(SpringLoadingAnalyzer.Reach::location).distinct().count());
+                row(out, "loading_issues", loading.problems().size());
             }
             return directory.toAbsolutePath().normalize();
         } catch (IOException exception) {

@@ -46,6 +46,14 @@ public final class ImportPropertyResolver {
     }
 
     public List<Problem> problems() { return List.copyOf(problems); }
+    public boolean hasDefinition(String key) {
+        return local.containsKey(key) || extension.containsKey(key) || platform.containsKey(key);
+    }
+    public List<String> keysWithPrefix(String prefix) {
+        Set<String> keys = new java.util.TreeSet<>();
+        keys.addAll(local.keySet()); keys.addAll(extension.keySet()); keys.addAll(platform.keySet());
+        return keys.stream().filter(key -> key.startsWith(prefix)).toList();
+    }
 
     private Map<String, Definition> read(Path file) {
         Map<String, Definition> definitions = new LinkedHashMap<>();

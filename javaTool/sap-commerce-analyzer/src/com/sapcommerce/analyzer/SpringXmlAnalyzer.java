@@ -49,7 +49,8 @@ public final class SpringXmlAnalyzer {
     public record Result(List<XmlFile> files, List<Import> imports, List<Issue> issues,
             int inspected, int declarations, JarResourceIndex.Result jars,
             boolean supplementarySearched, int supplementaryXmlCandidates, JarResourceIndex.Result supplementaryJars,
-            List<PropertyResolution> propertyResolutions, List<JarXmlFile> jarXmlFiles) {
+            List<PropertyResolution> propertyResolutions, List<JarXmlFile> jarXmlFiles,
+            SpringLoadingAnalyzer.Plan loadingPlan, List<SpringLoadingAnalyzer.EntryMatch> loadingEntries) {
         public long springFiles() { return files.stream().filter(XmlFile::spring).count(); }
         public long sourceDeclarations() {
             return propertyResolutions.stream().filter(item -> !item.source().startsWith("jar:")).count();
@@ -75,6 +76,8 @@ public final class SpringXmlAnalyzer {
     private ImportPropertyResolver properties;
     private final List<PropertyResolution> propertyResolutions = new ArrayList<>();
     private final Map<JarKey, JarXmlFile> jarXmlFiles = new LinkedHashMap<>();
+    private final List<SpringLoadingAnalyzer.EntryMatch> loadingEntries = new ArrayList<>();
+    private final List<SpringLoadingAnalyzer.Problem> loadingProblems = new ArrayList<>();
 
     public static Result analyze(Path hybrisRoot, Map<String, ExtensionInfo> extensions,
             ActiveExtensionAnalyzer.Result activation) {
@@ -82,6 +85,8 @@ public final class SpringXmlAnalyzer {
         analyzer.hybrisRoot = hybrisRoot;
         analyzer.extensions = extensions;
         analyzer.activation = activation;
+        SpringLoadingAnalyzer.Plan loadingPlan = SpringLoadingAnalyzer.discover(hybrisRoot, extensions, activation);
+        analyzer.loadingProblems.addAll(loadingPlan.problems());
         analyzer.properties = ImportPropertyResolver.load(hybrisRoot, extensions, activation);
         for (ImportPropertyResolver.Problem problem : analyzer.properties.problems()) {
             analyzer.issues.add(new Issue(problem.path(), 0, "", "PROPERTY_FILE_ERROR", problem.detail()));
@@ -101,6 +106,9 @@ public final class SpringXmlAnalyzer {
             analyzer.collect(name, directory.resolve("web/webroot"), "WEB");
         }
         for (Location location : analyzer.locations.values()) { analyzer.inspect(location); }
+        for (SpringLoadingAnalyzer.Declaration declaration : loadingPlan.declarations()) {
+            analyzer.resolveLoadingEntry(declaration);
+        }
         // Newly parsed JAR XML appends imports to this queue. No recursive graph walk is needed.
         for (int cursor = 0; cursor < analyzer.rawImports.size(); cursor++) {
             analyzer.resolve(analyzer.rawImports.get(cursor));
@@ -109,7 +117,28 @@ public final class SpringXmlAnalyzer {
                 List.copyOf(analyzer.issues), analyzer.locations.size(), analyzer.rawImports.size(), analyzer.jars,
                 analyzer.supplementary != null,
                 analyzer.supplementary == null ? 0 : analyzer.supplementary.locations.size(), analyzer.supplementaryJars,
-                List.copyOf(analyzer.propertyResolutions), List.copyOf(analyzer.jarXmlFiles.values()));
+                List.copyOf(analyzer.propertyResolutions), List.copyOf(analyzer.jarXmlFiles.values()),
+                new SpringLoadingAnalyzer.Plan(loadingPlan.declarations(), List.copyOf(analyzer.loadingProblems)),
+                List.copyOf(analyzer.loadingEntries));
+    }
+
+    private void resolveLoadingEntry(SpringLoadingAnalyzer.Declaration declaration) {
+        // Reuse matching/JAR parsing but keep entry declarations out of the XML import counts.
+        String source = declaration.baseDirectory().resolve("_loading_entrypoint_.xml").toString();
+        RawImport request = new RawImport(source, 0, declaration.searchLocation(), declaration.location(), declaration.extension(), null);
+        int start = imports.size();
+        int issueStart = issues.size();
+        resolveExpanded(request);
+        List<Import> matches = List.copyOf(imports.subList(start, imports.size()));
+        imports.subList(start, imports.size()).clear();
+        for (Import match : matches) { loadingEntries.add(new SpringLoadingAnalyzer.EntryMatch(declaration, match)); }
+        // Replace synthetic request paths in entry diagnostics; genuine JAR parse issues stay in the import issue report.
+        issues.subList(issueStart, issues.size()).removeIf(issue -> {
+            if (!issue.source().equals(source)) { return false; }
+            loadingProblems.add(new SpringLoadingAnalyzer.Problem(declaration.source(), issue.status(),
+                    declaration.id() + ": " + issue.detail()));
+            return true;
+        });
     }
 
     private void collect(String extension, Path directory, String area) {

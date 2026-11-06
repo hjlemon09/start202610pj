@@ -205,6 +205,18 @@ public final class ExtensionScanner {
                 SpringXmlAnalyzer.Issue::status, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach((status, count) -> System.out.println("  " + status + ": " + count));
         System.out.println("Reachable selected JAR XML content is analyzed; runtime loading is not evaluated.");
+        SpringLoadingAnalyzer.Result loading = SpringLoadingAnalyzer.trace(spring);
+        System.out.println();
+        System.out.println("=== Spring Loading Entry Analysis (STATIC CANDIDATES) ===");
+        System.out.println("Entry declarations: " + spring.loadingPlan().declarations().size());
+        System.out.println("Entry target rows : " + loading.entries().size());
+        System.out.println("Reachability rows : " + loading.reachability().size());
+        System.out.println("Reachable unique XML: " + loading.reachability().stream().map(SpringLoadingAnalyzer.Reach::location).distinct().count());
+        System.out.println("Loading issues    : " + loading.problems().size());
+        loading.problems().stream().collect(java.util.stream.Collectors.groupingBy(SpringLoadingAnalyzer.Problem::status,
+                java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                .forEach((status, count) -> System.out.println("  " + status + ": " + count));
+        System.out.println("Declared/configuration-convention candidates only; runtime loading/Context hierarchy are not verified.");
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
                 new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,
