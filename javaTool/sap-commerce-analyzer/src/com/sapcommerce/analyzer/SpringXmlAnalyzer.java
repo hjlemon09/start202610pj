@@ -109,7 +109,9 @@ public final class SpringXmlAnalyzer {
     private void inspect(Location location) {
         XMLInputFactory factory = XMLInputFactory.newFactory();
         factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+        factory.setProperty(XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES, false);
         factory.setProperty("javax.xml.stream.isSupportingExternalEntities", false);
+        factory.setProperty(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setXMLResolver((publicId, systemId, base, namespace) -> {
             throw new javax.xml.stream.XMLStreamException("External XML resources are disabled");
         });
@@ -124,6 +126,9 @@ public final class SpringXmlAnalyzer {
             while (reader.hasNext()) {
                 int event = reader.next();
                 if (event == XMLStreamConstants.DTD) { doctype = true; }
+                if (event == XMLStreamConstants.ENTITY_REFERENCE) {
+                    throw new IOException("Custom entity references require DTD expansion and are not supported");
+                }
                 if (event == XMLStreamConstants.START_ELEMENT) {
                     String name = reader.getLocalName();
                     boolean beans = name.equals("beans") && beansNamespace(reader.getNamespaceURI());
@@ -131,7 +136,6 @@ public final class SpringXmlAnalyzer {
                         rootSeen = true;
                         spring = beans;
                         if (!spring) { break; }
-                        if (doctype) { throw new IOException("Spring DOCTYPE is unsupported; no external DTD is loaded"); }
                     }
                     if (name.equals("import") && beansNamespace(reader.getNamespaceURI())
                             && !beanParents.isEmpty() && beanParents.getLast()) {
@@ -146,7 +150,8 @@ public final class SpringXmlAnalyzer {
             }
             if (!rootSeen) { throw new IOException("XML root element not found"); }
             files.put(location.path(), new XmlFile(location.extension(), location.path(), location.area(),
-                    spring, spring ? "PARSED" : "NOT_SPRING", declarations.size()));
+                    spring, spring ? (doctype ? "PARSED_DTD_SKIPPED" : "PARSED") : "NOT_SPRING",
+                    declarations.size()));
             rawImports.addAll(declarations);
         } catch (Exception exception) {
             files.put(location.path(), new XmlFile(location.extension(), location.path(), location.area(),
@@ -185,18 +190,24 @@ public final class SpringXmlAnalyzer {
                 }
                 status = all ? "CLASSPATH_ALL_CANDIDATE"
                         : candidates.size() > 1 ? "AMBIGUOUS_CLASSPATH" : "CLASSPATH_CANDIDATE";
-            } else if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*") || value.startsWith("/")) {
+            } else if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*") || value.startsWith("//")
+                    || value.startsWith("\\\\")) {
                 unresolved(declaration, "UNSUPPORTED_LOCATION",
                         "Absolute/file/URL/servlet-root imports require runtime resource context; no fetch performed");
                 return;
             } else {
-                String absolutePattern = declaration.source().getParent().resolve(value.replace('\\', '/'))
+                // Spring XML imports may start with a slash that is ignored for relative resources.
+                // Preserve the source directory rather than treating it as a filesystem root.
+                String relative = value.replace('\\', '/');
+                boolean leadingSlash = relative.startsWith("/");
+                if (leadingSlash) { relative = relative.substring(1); }
+                String absolutePattern = declaration.source().getParent().resolve(relative)
                         .normalize().toString().replace('\\', '/');
                 Pattern matcher = antPattern(absolutePattern);
                 for (Path path : locations.keySet()) {
                     if (matcher.matcher(path.toString().replace('\\', '/')).matches()) { candidates.add(path); }
                 }
-                status = "RESOLVED_RELATIVE";
+                status = leadingSlash ? "RESOLVED_RELATIVE_LEADING_SLASH" : "RESOLVED_RELATIVE";
             }
         } catch (Exception exception) {
             unresolved(declaration, "UNSUPPORTED_LOCATION", exception.getMessage());
@@ -210,7 +221,7 @@ public final class SpringXmlAnalyzer {
         for (Path target : candidates) {
             XmlFile file = files.get(target);
             imports.add(new Import(declaration.source(), declaration.line(), value, target, status, file.parseStatus()));
-            if (!file.spring() || !file.parseStatus().equals("PARSED")) {
+            if (!file.spring() || !file.parseStatus().startsWith("PARSED")) {
                 issues.add(new Issue(declaration.source(), declaration.line(), value, "TARGET_NOT_PARSED_SPRING",
                         target + " (" + file.parseStatus() + ")"));
             }

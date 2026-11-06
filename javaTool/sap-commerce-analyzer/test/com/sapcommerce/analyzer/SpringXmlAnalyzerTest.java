@@ -31,6 +31,7 @@ public final class SpringXmlAnalyzerTest {
                 + "<import resource='missing.xml'/>"
                 + "<import resource='data.xml'/>"
                 + "<import resource='broken.xml'/>"
+                + "<import resource='/sub/child.xml'/>"
                 + "<!-- <import resource='comment.xml'/> -->"
                 + "<other:import xmlns:other='urn:other' resource='not-spring.xml'/>"));
         put(root.resolve("a/resources/sub/child.xml"), beans("<import resource='../main.xml'/>"));
@@ -47,7 +48,13 @@ public final class SpringXmlAnalyzerTest {
         put(root.resolve("b/web/webroot/WEB-INF/classes/private.xml"), beans(""));
         put(root.resolve("a/resources/private-import.xml"), beans("<import resource='classpath:/private.xml'/>"));
         put(root.resolve("a/resources/doctype.xml"), "<!DOCTYPE beans SYSTEM 'https://example.invalid/never.dtd'>"
-                + "<beans/>");
+                + "<beans><import resource='shared.xml'/></beans>");
+        put(root.resolve("a/resources/external-entity.xml"),
+                "<!DOCTYPE beans [<!ENTITY leak SYSTEM 'file:///never-read-secret'>]>"
+                + "<beans>&leak;</beans>");
+        put(root.resolve("a/resources/internal-entity.xml"),
+                "<!DOCTYPE beans [<!ENTITY hidden \"<import resource='hidden.xml'/>\">]>"
+                + "<beans>&hidden;</beans>");
         var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
                 Map.copyOf(selections), List.of());
         var result = SpringXmlAnalyzer.analyze(extensions, activation);
@@ -57,6 +64,8 @@ public final class SpringXmlAnalyzerTest {
         check(edges(result, "classpath*:/shared.xml", "CLASSPATH_ALL_CANDIDATE") == 2, "Classpath all matches");
         check(edges(result, "classpath*:/patterns/**/*.xml", "CLASSPATH_ALL_CANDIDATE") == 2, "Ant ** zero or nested directories");
         check(edges(result, "sub/child.xml", "RESOLVED_RELATIVE") == 1, "Relative import");
+        check(edges(result, "/sub/child.xml", "RESOLVED_RELATIVE_LEADING_SLASH") == 1,
+                "Leading slash must preserve source-relative directory");
         check(edges(result, "../main.xml", "RESOLVED_RELATIVE") == 1, "Cyclic import must terminate and retain edge");
         check(edges(result, "child.xml", "RESOLVED_RELATIVE") == 1, "Storefront relative import");
         check(edges(result, "${dynamic}/file.xml", "UNRESOLVED_PROPERTY") == 1, "Dynamic property must not be guessed");
@@ -68,8 +77,15 @@ public final class SpringXmlAnalyzerTest {
                 && edge.targetStatus().equals("NOT_SPRING")), "Non-Spring target classification");
         check(result.imports().stream().anyMatch(edge -> edge.resource().equals("broken.xml")
                 && edge.targetStatus().equals("PARSE_ERROR")), "Malformed target classification");
-        check(result.issues().stream().anyMatch(issue -> issue.source().endsWith("doctype.xml")
-                && issue.status().equals("XML_INSPECTION_ERROR")), "External DTD must not be loaded");
+        check(result.files().stream().anyMatch(file -> file.path().endsWith("doctype.xml")
+                && file.parseStatus().equals("PARSED_DTD_SKIPPED")), "Legacy Spring DOCTYPE parsing");
+        check(result.issues().stream().noneMatch(issue -> issue.source().endsWith("doctype.xml")),
+                "DOCTYPE declaration alone must not be an error");
+        check(result.issues().stream().anyMatch(issue -> issue.source().endsWith("external-entity.xml")
+                && issue.status().equals("XML_INSPECTION_ERROR")), "External entity reference must be rejected");
+        check(result.issues().stream().anyMatch(issue -> issue.source().endsWith("internal-entity.xml")
+                && issue.status().equals("XML_INSPECTION_ERROR")), "Internal entity expansion must not hide imports");
+        check(result.imports().stream().noneMatch(edge -> edge.resource().equals("hidden.xml")), "Entity content expanded");
         check(result.imports().stream().filter(edge -> edge.source().equals(main)).allMatch(edge -> edge.line() > 0),
                 "Source lines missing");
         Path reports = root.resolve("reports");
@@ -79,7 +95,7 @@ public final class SpringXmlAnalyzerTest {
         String reverse = Files.readString(reports.resolve("spring-reverse-imports.csv"));
         check(forward.startsWith("\uFEFF") && forward.contains("AMBIGUOUS_CLASSPATH"), "Forward CSV");
         check(reverse.contains("../main.xml") && reverse.contains("CLASSPATH_ALL_CANDIDATE"), "Reverse CSV");
-        check(result.declarations() == 12, "Incorrect declaration count: " + result.declarations());
+        check(result.declarations() == 14, "Incorrect declaration count: " + result.declarations());
         System.out.println("PASS: selected scope, relative/transitive/cyclic imports, web relative imports, "
                 + "classpath ambiguity/all/patterns, web classpath isolation, XML namespaces/comments, "
                 + "dynamic/missing/remote resources, malformed XML/DTD, line numbers and CSV. Fixtures: " + root);

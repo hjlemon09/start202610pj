@@ -235,12 +235,13 @@ Spring XML 수에는 루트는 식별했으나 이후 파싱에 실패한 파일
 | 상태 | 의미 |
 | --- | --- |
 | `RESOLVED_RELATIVE` | 출발 XML의 디렉터리를 기준으로 조사 범위 내 대상 파일 확인 |
+| `RESOLVED_RELATIVE_LEADING_SLASH` | 앞의 `/`를 제외하고 출발 XML 기준 상대 경로로 대상 확인 |
 | `CLASSPATH_CANDIDATE` | `classpath:`와 일치하는 소스 파일 후보 1개 |
 | `AMBIGUOUS_CLASSPATH` | `classpath:` 후보가 여러 개. 실행 클래스패스의 순서를 알 수 없음 |
 | `CLASSPATH_ALL_CANDIDATE` | `classpath*:`에 해당하는 조사 범위 내 후보들 |
 | `NOT_FOUND_IN_SCOPE` | 조사 범위에서 해당 XML을 찾지 못함. 실제 리소스 부재를 단정하지 않음 |
 | `UNRESOLVED_PROPERTY` | 빈 resource 또는 `${...}`, `#{...}` 런타임 표현식 |
-| `UNSUPPORTED_LOCATION` | 절대 경로·file/HTTP/JAR URL 등 실행 ResourceContext가 필요한 위치 |
+| `UNSUPPORTED_LOCATION` | file/HTTP/JAR URL, UNC 경로 등 실행 ResourceContext가 필요한 위치 |
 
 클래스패스 후보의 루트는 각 Extension의 `resources/`와 같은 Extension의
 `web/webroot/WEB-INF/classes/`입니다. 다른 Storefront의 WEB-INF/classes는 섞지 않습니다.
@@ -260,7 +261,14 @@ import를 분석하므로 범위 내 연결은 여러 단계를 따라 확인할
 모든 XML의 loading_status는 NOT_EVALUATED입니다. JAR 내부와 실행 중 생성되는 리소스는
 이번 범위에 포함하지 않으므로 NOT_FOUND_IN_SCOPE는 개발 환경에서 검토해야 합니다.
 Spring import 문제는 CSV의 진단 정보이며 단독으로 프로세스 종료 코드를 변경하지 않습니다.
-XML 외부 엔티티와 네트워크 요청을 차단합니다. DOCTYPE가 있는 Spring XML은 파싱 문제로 남깁니다.
+Console에도 문제 상태별 건수를 출력합니다.
+XML 외부 엔티티와 네트워크 요청을 차단합니다. DOCTYPE 선언만 있는 Spring XML은 외부 DTD를
+읽거나 검증하지 않고 본문을 분석하며 `PARSED_DTD_SKIPPED`로 표시합니다.
+사용자 정의 엔티티 참조는 확장하지 않고 파싱 문제로 남깁니다.
+
+`/mmmcore/processes/example.xml`과 같은 import는 Spring의 상대 리소스 규칙에 따라 앞의 `/`를
+제외하고 출발 파일의 디렉터리를 기준으로 검색합니다. 실제 로딩 Context가 다른 경우의
+서블릿 루트/파일시스템 절대경로 해석까지 보장하지 않으며, 대상을 못 찾으면 NOT_FOUND_IN_SCOPE입니다.
 
 정적 리소스 해석 참고:
 [Spring Framework Resources](https://docs.spring.io/spring-framework/reference/core/resources.html).

@@ -178,6 +178,9 @@ public final class ExtensionScanner {
         System.out.println("Import declarations: " + spring.declarations());
         System.out.println("Import rows     : " + spring.imports().size());
         System.out.println("Import issues   : " + spring.issues().size());
+        spring.issues().stream().collect(java.util.stream.Collectors.groupingBy(
+                SpringXmlAnalyzer.Issue::status, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                .forEach((status, count) -> System.out.println("  " + status + ": " + count));
         System.out.println("Runtime loading and JAR classpath resources are not evaluated.");
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
