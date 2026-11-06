@@ -100,6 +100,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-reverse-imports.csv` | 대상 XML을 참조하는 출발 XML 목록 |
 | `spring-import-issues.csv` | 검색·파싱 문제, 해석 불가·누락·모호한 참조 |
 | `spring-jar-files.csv` | 검색한 JAR, 소유 Extension, 범위, 인덱싱 결과, XML 항목 수 |
+| `spring-property-resolutions.csv` | import 속성 표현식의 원문, 해석 경로, 값 선택 근거 및 실패 사유 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -218,7 +219,7 @@ Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행
 
 ## Spring XML import 분석
 
-인자 없이 실행하는 흐름에 자동 연결했습니다. JAR 검색 확장 후 전체 CSV는 **13개**입니다.
+인자 없이 실행하는 흐름에 자동 연결했습니다. 속성 해석 확장 후 전체 CSV는 **14개**입니다.
 Console의 `Spring XML Import Analysis (SOURCE FILES)`에서 조사 XML 수, Spring XML 수,
 import 선언 수, 결과 행 수 및 문제 수를 확인할 수 있습니다.
 
@@ -241,7 +242,7 @@ Spring XML 수에는 루트는 식별했으나 이후 파싱에 실패한 파일
 | `AMBIGUOUS_CLASSPATH` | `classpath:` 후보가 여러 개. 실행 클래스패스의 순서를 알 수 없음 |
 | `CLASSPATH_ALL_CANDIDATE` | `classpath*:`에 해당하는 조사 범위 내 후보들 |
 | `NOT_FOUND_IN_SCOPE` | 조사 범위에서 해당 XML을 찾지 못함. 실제 리소스 부재를 단정하지 않음 |
-| `UNRESOLVED_PROPERTY` | 빈 resource 또는 `${...}`, `#{...}` 런타임 표현식 |
+| `UNRESOLVED_PROPERTY` | 빈 경로, 해석할 수 없는 속성/충돌/순환 참조 또는 미지원 SpEL 표현식 |
 | `UNSUPPORTED_LOCATION` | file/HTTP/JAR URL, UNC 경로 등 실행 ResourceContext가 필요한 위치 |
 
 클래스패스 후보의 루트는 각 Extension의 `resources/`와 같은 Extension의
@@ -258,7 +259,7 @@ import를 분석하므로 범위 내 연결은 여러 단계를 따라 확인할
 역방향 CSV에는 대상 파일 후보가 있는 행만 포함하고, 미해석 참조는 정방향/문제 CSV에 남깁니다.
 
 **Spring XML 발견 및 import 관계는 실제 로딩의 증거가 아닙니다.** 자동 Spring 설정 수집 규칙,
-`web.xml` 진입점, properties 설정, 활성 profile 및 Core/Web ApplicationContext 소속은 후속 단계입니다.
+`web.xml` 진입점, 전체 런타임 properties 재현, 활성 profile 및 Core/Web ApplicationContext 소속은 후속 단계입니다.
 일반 XML의 loading_status는 NOT_EVALUATED입니다. JAR 내부 XML의 경로는 검색하지만,
 본문은 파싱하지 않으며 JAR_ENTRY_NOT_PARSED로 표시합니다. 실행 중 생성되는 리소스는
 이번 범위에 포함하지 않으므로 NOT_FOUND_IN_SCOPE는 개발 환경에서 검토해야 합니다.
@@ -332,7 +333,47 @@ UNKNOWN 대상은 NOT_SELECTED로 간주하지 않고 보조 검색에서 제외
 줄어도 Import issues 총수는 같을 수 있습니다. 보조 검색 후에도 못 찾은 항목은
 NOT_FOUND_IN_SCOPE로 유지합니다. 접근 실패와 JAR 읽기 실패도 별도 진단으로 남깁니다.
 수집된 비선택 XML의 내부 import를 따라가거나 소유 Extension을 활성 대상으로 승격하지 않습니다.
-CSV 개수는 **13개로 유지**합니다.
+비선택 보조 검색 자체는 CSV를 추가하지 않습니다. 이후 속성 해석 파일 추가로 현재 총 **14개**입니다.
 
 작업 기록: `docs/UNSELECTED_RESOURCE_SEARCH.md`.
 검증 소스: `test/com/sapcommerce/analyzer/UnselectedResourceSearchTest.java`.
+
+## import 속성 표현식 해석
+
+`ExtensionScanner`를 인자 없이 실행하면 `${key:default}` 및 `${key}`를 해석한 뒤
+기존 소스/JAR/비선택 보조 검색에 연결합니다. 기본값은 읽은 설정 범위에서 키가 없을 때만 사용합니다.
+
+높은 우선순위부터 다음 파일을 읽습니다.
+
+1. 분석 루트의 config/local.properties
+2. 선택된 Extension의 project.properties
+3. 분석 루트의 bin/platform/project.properties
+
+같은 키를 여러 선택 Extension에서 다른 값으로 정의하면 순서를 임의로 정하지 않고 미해결로 둡니다.
+local.properties에서 해당 키를 정의하면 Extension 충돌보다 우선합니다.
+여러 Extension의 값이 동일하면 같은 값으로 처리하되 근거 파일을 모두 남깁니다.
+키의 값이 빈 문자열인 경우 기본값으로 대체하지 않습니다. 최종 import 경로가 빈 경우는 미해결입니다.
+중첩/다중 표현식과 설정값 안의 표현식을 재귀 해석하며 순환 참조와 과도한 깊이를 차단합니다.
+파일 읽기/문법 오류는 PROPERTY_FILE_ERROR로 남기고 표현식을 임의 기본값으로 처리하지 않습니다.
+UNKNOWN 등으로 Extension 선택이 불완전하면 local.properties에 없는 키의 하위 설정/기본값 선택은 보류합니다.
+
+정방향/역방향 CSV의 resource는 원문을 유지하고 아래 열을 추가합니다.
+
+- resolved_resource: 실제 검색에 사용한 경로
+- property_status: LITERAL, PROPERTY, DEFAULT, PROPERTY_AND_DEFAULT 또는 UNRESOLVED
+- property_evidence: 사용한 키와 정의 파일 또는 XML_DEFAULT
+
+spring-property-resolutions.csv는 표현식이 있는 선언과 해석 실패만 기록합니다.
+참조하지 않은 일반 properties 키/값 전체를 출력하지 않습니다.
+값이 해석됐어도 대상 파일 검색에 성공했다는 뜻은 아닙니다. resolution_status를 함께 확인하세요.
+
+properties는 Java Properties.load(InputStream)의 ISO-8859-1/Unicode escape 규칙을 사용합니다.
+분석 PC의 JVM 시스템 속성/환경변수를 SAP 서버의 값으로 간주하지 않습니다.
+Spring의 커스텀 PropertySource, 서버 실행 중 변경, HYBRIS_RUNTIME_PROPERTIES, optional config,
+임의 추가 properties 파일은 이번 모델에 자동 병합하지 않습니다. SpEL과 이스케이프된 표현식도 평가하지 않습니다.
+따라서 결과는 지정 파일 범위의 정적 추정입니다. runtime 검증 상태는 계속 NOT_EVALUATED입니다.
+필요할 경우 VM arguments의 `-Danalyzer.localproperties="C:\config-copy\local.properties"`로
+분석할 local.properties 복사본을 지정할 수 있습니다. 원본 설정을 수정할 필요는 없습니다.
+
+기록: `docs/IMPORT_PROPERTY_RESOLUTION.md`.
+검증: `test/com/sapcommerce/analyzer/ImportPropertyResolverTest.java`.

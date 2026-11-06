@@ -22,28 +22,30 @@ final class SpringXmlReportWriter {
         try (BufferedWriter out = csv(directory.resolve("spring-imports.csv"))) {
             row(out, "source_xml", "line", "resource", "target_xml", "resolution_status", "target_parse_status",
                     "target_kind", "target_jar", "target_entry", "runtime_classpath_status",
-                    "target_extension", "target_selection_status");
+                    "target_extension", "target_selection_status", "resolved_resource", "property_status", "property_evidence");
             for (var edge : result.imports()) {
+                var resolution = resolutionFor(result, edge);
                 row(out, edge.source(), edge.line(), edge.resource(), edge.targetLocation(),
                         edge.status(), edge.targetStatus(), edge.targetJar() != null ? "JAR_ENTRY"
                                 : edge.target() != null ? "SOURCE_FILE" : "",
                         edge.targetJar() == null ? "" : edge.targetJar(), edge.targetEntry(), "NOT_EVALUATED",
-                        edge.targetExtension(), edge.targetSelectionStatus());
+                        edge.targetExtension(), edge.targetSelectionStatus(), resolution.value(), resolution.status(), resolution.evidence());
             }
         }
         try (BufferedWriter out = csv(directory.resolve("spring-reverse-imports.csv"))) {
             row(out, "target_xml", "source_xml", "line", "resource", "resolution_status", "target_parse_status",
                     "target_kind", "target_jar", "target_entry", "runtime_classpath_status",
-                    "target_extension", "target_selection_status");
+                    "target_extension", "target_selection_status", "resolved_resource", "property_status", "property_evidence");
             var reverse = result.imports().stream().filter(edge -> !edge.targetLocation().isEmpty())
                     .sorted(Comparator.comparing(SpringXmlAnalyzer.Import::targetLocation)
                             .thenComparing(edge -> edge.source().toString()).thenComparingInt(SpringXmlAnalyzer.Import::line))
                     .toList();
             for (var edge : reverse) {
+                var resolution = resolutionFor(result, edge);
                 row(out, edge.targetLocation(), edge.source(), edge.line(), edge.resource(), edge.status(), edge.targetStatus(),
                         edge.targetJar() == null ? "SOURCE_FILE" : "JAR_ENTRY",
                         edge.targetJar() == null ? "" : edge.targetJar(), edge.targetEntry(), "NOT_EVALUATED",
-                        edge.targetExtension(), edge.targetSelectionStatus());
+                        edge.targetExtension(), edge.targetSelectionStatus(), resolution.value(), resolution.status(), resolution.evidence());
             }
         }
         try (BufferedWriter out = csv(directory.resolve("spring-import-issues.csv"))) {
@@ -63,5 +65,21 @@ final class SpringXmlReportWriter {
                 row(out, jar.path(), jar.extension(), jar.scope(), jar.status(), jar.xmlEntries(), "NOT_EVALUATED", "NOT_SELECTED");
             }
         }
+        try (BufferedWriter out = csv(directory.resolve("spring-property-resolutions.csv"))) {
+            row(out, "source_xml", "line", "resource", "resolved_resource", "property_status", "property_evidence", "detail", "basis");
+            for (var item : result.propertyResolutions()) {
+                var resolution = item.resolution();
+                if (resolution.status().equals("LITERAL")) { continue; }
+                row(out, item.source(), item.line(), item.resource(), resolution.value(), resolution.status(),
+                        resolution.evidence(), resolution.detail(), "STATIC_CONFIG_INFERENCE");
+            }
+        }
+    }
+
+    private static ImportPropertyResolver.Resolution resolutionFor(SpringXmlAnalyzer.Result result,
+            SpringXmlAnalyzer.Import edge) {
+        return result.propertyResolutions().stream().filter(item -> item.source().equals(edge.source())
+                && item.line() == edge.line() && item.resource().equals(edge.resource()))
+                .findFirst().orElseThrow().resolution();
     }
 }

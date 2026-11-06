@@ -188,6 +188,10 @@ public final class ExtensionScanner {
         System.out.println("Unselected JAR index issues: " + spring.supplementaryJars().problems().size());
         System.out.println("Unselected target rows: " + spring.imports().stream()
                 .filter(edge -> edge.status().equals("FOUND_IN_UNSELECTED_EXTENSION")).count());
+        System.out.println("Resolved property imports: " + spring.propertyResolutions().stream()
+                .filter(item -> !item.resolution().status().equals("LITERAL") && item.resolution().complete()).count());
+        System.out.println("Unresolved property imports: " + spring.propertyResolutions().stream()
+                .filter(item -> !item.resolution().complete()).count());
         spring.issues().stream().collect(java.util.stream.Collectors.groupingBy(
                 SpringXmlAnalyzer.Issue::status, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach((status, count) -> System.out.println("  " + status + ": " + count));

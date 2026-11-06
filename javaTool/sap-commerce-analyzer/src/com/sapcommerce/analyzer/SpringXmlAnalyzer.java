@@ -39,12 +39,17 @@ public final class SpringXmlAnalyzer {
         }
     }
     public record Issue(Path source, int line, String resource, String status, String detail) { }
+    public record PropertyResolution(Path source, int line, String resource,
+            ImportPropertyResolver.Resolution resolution) { }
     public record Result(List<XmlFile> files, List<Import> imports, List<Issue> issues,
             int inspected, int declarations, JarResourceIndex.Result jars,
-            boolean supplementarySearched, int supplementaryXmlCandidates, JarResourceIndex.Result supplementaryJars) {
+            boolean supplementarySearched, int supplementaryXmlCandidates, JarResourceIndex.Result supplementaryJars,
+            List<PropertyResolution> propertyResolutions) {
         public long springFiles() { return files.stream().filter(XmlFile::spring).count(); }
     }
-    private record RawImport(Path source, int line, String resource) { }
+    private record RawImport(Path source, int line, String resource, String originalResource) {
+        private RawImport(Path source, int line, String resource) { this(source, line, resource, resource); }
+    }
     private record Location(String extension, Path path, Path classpathRoot, String area) { }
 
     private final Map<Path, Location> locations = new LinkedHashMap<>();
@@ -58,6 +63,8 @@ public final class SpringXmlAnalyzer {
     private Path hybrisRoot;
     private Map<String, ExtensionInfo> extensions;
     private ActiveExtensionAnalyzer.Result activation;
+    private ImportPropertyResolver properties;
+    private final List<PropertyResolution> propertyResolutions = new ArrayList<>();
 
     public static Result analyze(Path hybrisRoot, Map<String, ExtensionInfo> extensions,
             ActiveExtensionAnalyzer.Result activation) {
@@ -65,6 +72,10 @@ public final class SpringXmlAnalyzer {
         analyzer.hybrisRoot = hybrisRoot;
         analyzer.extensions = extensions;
         analyzer.activation = activation;
+        analyzer.properties = ImportPropertyResolver.load(hybrisRoot, extensions, activation);
+        for (ImportPropertyResolver.Problem problem : analyzer.properties.problems()) {
+            analyzer.issues.add(new Issue(problem.path(), 0, "", "PROPERTY_FILE_ERROR", problem.detail()));
+        }
         analyzer.jars = JarResourceIndex.scan(hybrisRoot, extensions, activation);
         for (JarResourceIndex.Problem problem : analyzer.jars.problems()) {
             analyzer.issues.add(new Issue(problem.path(), 0, "", "JAR_INDEX_ERROR", problem.message()));
@@ -84,7 +95,8 @@ public final class SpringXmlAnalyzer {
         return new Result(List.copyOf(analyzer.files.values()), List.copyOf(analyzer.imports),
                 List.copyOf(analyzer.issues), analyzer.locations.size(), analyzer.rawImports.size(), analyzer.jars,
                 analyzer.supplementary != null,
-                analyzer.supplementary == null ? 0 : analyzer.supplementary.locations.size(), analyzer.supplementaryJars);
+                analyzer.supplementary == null ? 0 : analyzer.supplementary.locations.size(), analyzer.supplementaryJars,
+                List.copyOf(analyzer.propertyResolutions));
     }
 
     private void collect(String extension, Path directory, String area) {
@@ -193,6 +205,16 @@ public final class SpringXmlAnalyzer {
     }
 
     private void resolve(RawImport declaration) {
+        var resolution = properties.resolve(declaration.resource());
+        propertyResolutions.add(new PropertyResolution(declaration.source(), declaration.line(), declaration.originalResource(), resolution));
+        if (!resolution.complete()) {
+            unresolved(declaration, "UNRESOLVED_PROPERTY", resolution.detail());
+            return;
+        }
+        resolveExpanded(new RawImport(declaration.source(), declaration.line(), resolution.value(), declaration.originalResource()));
+    }
+
+    private void resolveExpanded(RawImport declaration) {
         String value = declaration.resource();
         if (value.isEmpty() || value.contains("${") || value.contains("#{")) {
             unresolved(declaration, "UNRESOLVED_PROPERTY", "Empty resource or runtime expression");
@@ -251,21 +273,21 @@ public final class SpringXmlAnalyzer {
         candidates.sort(null);
         for (Path target : candidates) {
             XmlFile file = files.get(target);
-            imports.add(new Import(declaration.source(), declaration.line(), value, target, status, file.parseStatus(),
+            imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), target, status, file.parseStatus(),
                     null, "", file.extension(), activation.selections().get(file.extension()).status()));
             if (!file.spring() || !file.parseStatus().startsWith("PARSED")) {
-                issues.add(new Issue(declaration.source(), declaration.line(), value, "TARGET_NOT_PARSED_SPRING",
+                issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(), "TARGET_NOT_PARSED_SPRING",
                         target + " (" + file.parseStatus() + ")"));
             }
         }
         for (JarResourceIndex.Entry target : jarCandidates) {
-            imports.add(new Import(declaration.source(), declaration.line(), value, null, status,
+            imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null, status,
                     "JAR_ENTRY_NOT_PARSED", target.jar(), target.resource(), target.extension(),
                     target.extension().isEmpty() ? "PLATFORM_SHARED"
                             : activation.selections().get(target.extension()).status()));
         }
         if (status.equals("AMBIGUOUS_CLASSPATH")) {
-            issues.add(new Issue(declaration.source(), declaration.line(), value, status,
+            issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(), status,
                     "Multiple source/JAR candidates; classloader ordering is unknown"));
         }
     }
@@ -309,7 +331,7 @@ public final class SpringXmlAnalyzer {
             String candidate = classpath ? location.classpathRoot().relativize(location.path()).toString()
                     : location.path().toString();
             if (matcher.matcher(candidate.replace('\\', '/')).matches()) {
-                imports.add(new Import(declaration.source(), declaration.line(), declaration.resource(), location.path(),
+                imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), location.path(),
                         "FOUND_IN_UNSELECTED_EXTENSION", "SOURCE_FILE_NOT_PARSED", null, "",
                         location.extension(), "NOT_SELECTED"));
                 owners.add(location.extension());
@@ -319,7 +341,7 @@ public final class SpringXmlAnalyzer {
         if (classpath) {
             for (JarResourceIndex.Entry entry : supplementaryJars.entries()) {
                 if (matcher.matcher(entry.resource()).matches()) {
-                    imports.add(new Import(declaration.source(), declaration.line(), declaration.resource(), null,
+                    imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null,
                             "FOUND_IN_UNSELECTED_EXTENSION", "JAR_ENTRY_NOT_PARSED", entry.jar(), entry.resource(),
                             entry.extension(), "NOT_SELECTED"));
                     owners.add(entry.extension());
@@ -328,7 +350,7 @@ public final class SpringXmlAnalyzer {
             }
         }
         if (count > 0) {
-            issues.add(new Issue(declaration.source(), declaration.line(), declaration.resource(),
+            issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(),
                     "FOUND_IN_UNSELECTED_EXTENSION", "Presence only: " + count + " match(es) in "
                             + String.join(", ", owners) + "; owners remain NOT_SELECTED; runtime visibility is not evaluated"));
         }
@@ -336,8 +358,8 @@ public final class SpringXmlAnalyzer {
     }
 
     private void unresolved(RawImport declaration, String status, String detail) {
-        imports.add(new Import(declaration.source(), declaration.line(), declaration.resource(), null, status, ""));
-        issues.add(new Issue(declaration.source(), declaration.line(), declaration.resource(), status, detail));
+        imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null, status, ""));
+        issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(), status, detail));
     }
 
     /** Segment-aware Ant patterns, including zero-or-more directory segments. */

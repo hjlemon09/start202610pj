@@ -51,6 +51,10 @@ public final class DependencyReportWriter {
                 row(out, "unselected_jar_files", spring.supplementaryJars().archives().size());
                 row(out, "unselected_target_rows", spring.imports().stream()
                         .filter(edge -> edge.status().equals("FOUND_IN_UNSELECTED_EXTENSION")).count());
+                row(out, "resolved_property_imports", spring.propertyResolutions().stream()
+                        .filter(item -> !item.resolution().status().equals("LITERAL") && item.resolution().complete()).count());
+                row(out, "unresolved_property_imports", spring.propertyResolutions().stream()
+                        .filter(item -> !item.resolution().complete()).count());
                 row(out, "spring_runtime_loading_evaluated", false);
             }
             return directory.toAbsolutePath().normalize();
