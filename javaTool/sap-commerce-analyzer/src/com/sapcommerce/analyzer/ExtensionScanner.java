@@ -182,6 +182,12 @@ public final class ExtensionScanner {
         System.out.println("JAR XML entries : " + spring.jars().entries().size());
         System.out.println("JAR index issues: " + spring.jars().problems().size());
         System.out.println("JAR target rows : " + spring.imports().stream().filter(edge -> edge.targetJar() != null).count());
+        System.out.println("Unselected search: " + spring.supplementarySearched());
+        System.out.println("Unselected XML candidates: " + spring.supplementaryXmlCandidates());
+        System.out.println("Unselected JAR files: " + spring.supplementaryJars().archives().size());
+        System.out.println("Unselected JAR index issues: " + spring.supplementaryJars().problems().size());
+        System.out.println("Unselected target rows: " + spring.imports().stream()
+                .filter(edge -> edge.status().equals("FOUND_IN_UNSELECTED_EXTENSION")).count());
         spring.issues().stream().collect(java.util.stream.Collectors.groupingBy(
                 SpringXmlAnalyzer.Issue::status, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach((status, count) -> System.out.println("  " + status + ": " + count));

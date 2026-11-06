@@ -57,10 +57,14 @@ public final class JarResourceIndexTest {
                 && edge.status().equals("AMBIGUOUS_CLASSPATH")).count() == 3, "Mixed source/JAR duplicates");
         check(result.imports().stream().filter(edge -> edge.resource().equals("classpath*:META-INF/**/*.xml")
                 && edge.targetJar() != null).count() == 3, "JAR Ant patterns");
-        for (String name : List.of("private.xml", "off.xml", "excluded.xml", "not-real.xml")) {
+        for (String name : List.of("private.xml", "excluded.xml", "not-real.xml")) {
             check(result.imports().stream().anyMatch(edge -> edge.resource().equals("classpath:" + name)
                     && edge.status().equals("NOT_FOUND_IN_SCOPE")), "Scope boundary: " + name);
         }
+        check(result.imports().stream().anyMatch(edge -> edge.resource().equals("classpath:off.xml")
+                && edge.status().equals("FOUND_IN_UNSELECTED_EXTENSION")
+                && edge.targetExtension().equals("off") && edge.targetSelectionStatus().equals("NOT_SELECTED")),
+                "Unselected JAR presence lookup");
         for (String name : List.of("platform.xml", "bootstrap.xml", "own-web.xml")) {
             check(result.imports().stream().anyMatch(edge -> edge.resource().equals("classpath:" + name)
                     && edge.targetJar() != null), "Configured search roots: " + name);

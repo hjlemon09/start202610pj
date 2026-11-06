@@ -42,14 +42,27 @@ public final class JarResourceIndex {
 
     public static Result scan(Path root, Map<String, ExtensionInfo> extensions,
             ActiveExtensionAnalyzer.Result activation) {
+        return scan(root, extensions, activation, false);
+    }
+
+    public static Result scanUnselected(Path root, Map<String, ExtensionInfo> extensions,
+            ActiveExtensionAnalyzer.Result activation) {
+        return scan(root, extensions, activation, true);
+    }
+
+    private static Result scan(Path root, Map<String, ExtensionInfo> extensions,
+            ActiveExtensionAnalyzer.Result activation, boolean unselected) {
         JarResourceIndex index = new JarResourceIndex();
         for (String name : extensions.keySet().stream().sorted().toList()) {
-            if (activation.selections().get(name).selected()) {
+            var selection = activation.selections().get(name);
+            if (unselected ? selection.status().equals("NOT_SELECTED") : selection.selected()) {
                 index.collect(extensions.get(name).getXmlPath().getParent(), name, "EXTENSION_LIBRARY");
             }
         }
-        index.collect(root.resolve("bin/platform/lib"), "", "PLATFORM_SHARED");
-        index.collect(root.resolve("bin/platform/bootstrap/bin"), "", "PLATFORM_SHARED");
+        if (!unselected) {
+            index.collect(root.resolve("bin/platform/lib"), "", "PLATFORM_SHARED");
+            index.collect(root.resolve("bin/platform/bootstrap/bin"), "", "PLATFORM_SHARED");
+        }
         List<Entry> entries = new ArrayList<>();
         List<Archive> archives = new ArrayList<>();
         for (Path path : index.jars.keySet().stream().sorted().toList()) {

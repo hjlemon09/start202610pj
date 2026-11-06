@@ -307,3 +307,32 @@ JAR 읽기 실패는 JAR_INDEX_ERROR로 기록하고 나머지 검색을 계속�
 작업 배경, 이전 9건의 해석, 처리 순서, 출력 예시, 검증 및 재실행 확인 방법은
 `docs/JAR_RESOURCE_SEARCH.md`에 기록했습니다.
 테스트 소스는 `test/com/sapcommerce/analyzer/JarResourceIndexTest.java`입니다.
+
+## 비선택 Extension 보조 검색
+
+선택된 소스/JAR에서 참조를 찾지 못한 경우에만 NOT_SELECTED Extension의 소스와 JAR를
+보조 검색합니다. 처음 필요할 때 목록을 한 번 만들고 같은 실행에서 재사용합니다.
+선택된 영역에서 이미 찾은 참조에는 비선택 후보를 추가하지 않습니다.
+보조 검색의 소스 범위는 resources와 web/webroot 아래 XML, JAR 범위는 해당 Extension
+전체입니다. 기존 제외 디렉터리와 심볼릭 링크 미추적 규칙을 유지합니다.
+
+발견 시 `resolution_status=FOUND_IN_UNSELECTED_EXTENSION`으로 표시합니다.
+정방향/역방향 CSV의 `target_extension`, `target_selection_status`에서 소유자와 NOT_SELECTED를
+확인할 수 있습니다. 기존 활성 판정, 선택된 XML 조사 수 및 import 선언 수는 바뀌지 않습니다.
+후보를 여러 개 찾으면 모두 출력하며, 한 선언에 대한 진단은 문제 CSV에 한 건 남깁니다.
+실제 파일/JAR 경로는 각 정방향 결과 행에서 확인합니다.
+
+소스 후보도 본문을 파싱하지 않고 SOURCE_FILE_NOT_PARSED로 표시합니다.
+JAR는 JAR_ENTRY_NOT_PARSED이며 spring-jar-files.csv의 selection_scope=NOT_SELECTED로 구분합니다.
+보조 검색은 실행 가시성이 아닌 존재 여부를 조사하므로 다른 웹 Extension의 후보도 기록할 수 있습니다.
+선택된 영역의 일반 클래스패스 검색에 적용하던 다른 Storefront 제외 규칙을 대체하지 않습니다.
+UNKNOWN 대상은 NOT_SELECTED로 간주하지 않고 보조 검색에서 제외합니다.
+
+이 진단은 미발견을 설명하는 단서로 문제 목록에 유지합니다. 따라서 NOT_FOUND_IN_SCOPE가
+줄어도 Import issues 총수는 같을 수 있습니다. 보조 검색 후에도 못 찾은 항목은
+NOT_FOUND_IN_SCOPE로 유지합니다. 접근 실패와 JAR 읽기 실패도 별도 진단으로 남깁니다.
+수집된 비선택 XML의 내부 import를 따라가거나 소유 Extension을 활성 대상으로 승격하지 않습니다.
+CSV 개수는 **13개로 유지**합니다.
+
+작업 기록: `docs/UNSELECTED_RESOURCE_SEARCH.md`.
+검증 소스: `test/com/sapcommerce/analyzer/UnselectedResourceSearchTest.java`.
