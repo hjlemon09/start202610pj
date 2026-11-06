@@ -86,7 +86,7 @@ public final class SpringXmlAnalyzerTest {
         check(result.issues().stream().anyMatch(issue -> issue.source().endsWith("internal-entity.xml")
                 && issue.status().equals("XML_INSPECTION_ERROR")), "Internal entity expansion must not hide imports");
         check(result.imports().stream().noneMatch(edge -> edge.resource().equals("hidden.xml")), "Entity content expanded");
-        check(result.imports().stream().filter(edge -> edge.source().equals(main)).allMatch(edge -> edge.line() > 0),
+        check(result.imports().stream().filter(edge -> edge.source().equals(main.toString())).allMatch(edge -> edge.line() > 0),
                 "Source lines missing");
         Path reports = root.resolve("reports");
         Files.createDirectories(reports);

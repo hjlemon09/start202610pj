@@ -70,7 +70,9 @@ public final class JarResourceIndexTest {
                     && edge.targetJar() != null), "Configured search roots: " + name);
         }
         check(result.imports().stream().filter(edge -> edge.targetJar() != null)
-                .allMatch(edge -> edge.targetStatus().equals("JAR_ENTRY_NOT_PARSED")), "Entry existence is not XML validation");
+                .allMatch(edge -> edge.targetSelectionStatus().equals("NOT_SELECTED")
+                        ? edge.targetStatus().equals("JAR_ENTRY_NOT_PARSED") : edge.targetStatus().equals("PARSED")),
+                "Selected JAR content parsed; unselected entries remain presence-only");
         var first = result.imports().stream().filter(edge -> firstJar.equals(edge.targetJar())).findFirst().orElseThrow();
         check(first.targetLocation().contains("%20") && first.targetLocation().contains("%23")
                 && first.targetLocation().contains("%25"), "JAR URI escaping");
@@ -81,7 +83,7 @@ public final class JarResourceIndexTest {
         String forward = Files.readString(report.resolve("spring-imports.csv"));
         String reverse = Files.readString(report.resolve("spring-reverse-imports.csv"));
         String inventory = Files.readString(report.resolve("spring-jar-files.csv"));
-        check(forward.contains("JAR_ENTRY_NOT_PARSED") && forward.contains("META-INF/cockpitcore-spring.xml"), "JAR forward output");
+        check(forward.contains("PARSED") && forward.contains("META-INF/cockpitcore-spring.xml"), "JAR forward output");
         check(reverse.contains("jar:file:") && reverse.contains("target_jar"), "JAR reverse output");
         check(inventory.contains("INDEX_ERROR") && inventory.contains("PLATFORM_SHARED"), "Archive inventory");
         System.out.println("PASS: JAR entry lookup, duplicates, Ant patterns, selected/web/excluded scope, platform shared roots, "
@@ -93,8 +95,7 @@ public final class JarResourceIndexTest {
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(path))) {
             for (String resource : resources) {
                 zip.putNextEntry(new ZipEntry(resource));
-                // Deliberately invalid XML demonstrates that this stage checks entry existence only.
-                zip.write("entry existence only".getBytes(StandardCharsets.UTF_8));
+                zip.write("<beans/>".getBytes(StandardCharsets.UTF_8));
                 zip.closeEntry();
             }
         }

@@ -101,6 +101,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-import-issues.csv` | 검색·파싱 문제, 해석 불가·누락·모호한 참조 |
 | `spring-jar-files.csv` | 검색한 JAR, 소유 Extension, 범위, 인덱싱 결과, XML 항목 수 |
 | `spring-property-resolutions.csv` | import 속성 표현식의 원문, 해석 경로, 값 선택 근거 및 실패 사유 |
+| `spring-jar-xml-files.csv` | 도달한 JAR 내부 XML의 위치·분석 문맥·파싱 상태·import 수 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -219,8 +220,8 @@ Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행
 
 ## Spring XML import 분석
 
-인자 없이 실행하는 흐름에 자동 연결했습니다. 속성 해석 확장 후 전체 CSV는 **14개**입니다.
-Console의 `Spring XML Import Analysis (SOURCE FILES)`에서 조사 XML 수, Spring XML 수,
+인자 없이 실행하는 흐름에 자동 연결했습니다. JAR 본문 추적 확장 후 전체 CSV는 **15개**입니다.
+Console의 `Spring XML Import Analysis (SOURCE AND REACHABLE JAR XML)`에서 조사 XML 수, Spring XML 수,
 import 선언 수, 결과 행 수 및 문제 수를 확인할 수 있습니다.
 
 수집 범위는 선택 상태가 EXPLICIT/AUTOLOAD/PLATFORM/DEPENDENCY인 Extension의
@@ -238,6 +239,7 @@ Spring XML 수에는 루트는 식별했으나 이후 파싱에 실패한 파일
 | --- | --- |
 | `RESOLVED_RELATIVE` | 출발 XML의 디렉터리를 기준으로 조사 범위 내 대상 파일 확인 |
 | `RESOLVED_RELATIVE_LEADING_SLASH` | 앞의 `/`를 제외하고 출발 XML 기준 상대 경로로 대상 확인 |
+| `RESOLVED_JAR_RELATIVE` | 같은 JAR의 출발 entry 디렉터리를 기준으로 대상 확인 |
 | `CLASSPATH_CANDIDATE` | `classpath:`와 일치하는 일반 XML 또는 JAR 내부 후보 1개 |
 | `AMBIGUOUS_CLASSPATH` | `classpath:` 후보가 여러 개. 실행 클래스패스의 순서를 알 수 없음 |
 | `CLASSPATH_ALL_CANDIDATE` | `classpath*:`에 해당하는 조사 범위 내 후보들 |
@@ -252,7 +254,7 @@ Spring XML 수에는 루트는 식별했으나 이후 파싱에 실패한 파일
 `classpath:` 후보가 여러 개여도 하나를 임의로 선택하지 않습니다.
 import 대상이 일반 XML이거나 파싱 실패인 경우 target_parse_status 및 문제 목록에 표시합니다.
 
-각 XML은 한 번만 조사하므로 순환 import에서도 종료됩니다. 수집된 모든 Spring XML의
+소스 XML은 한 번, 도달한 JAR XML은 리소스/분석 문맥당 한 번 조사하므로 순환 import에서도 종료됩니다. 수집된 모든 Spring XML의
 import를 분석하므로 범위 내 연결은 여러 단계를 따라 확인할 수 있습니다.
 이 버전은 각 단계의 직접 간선 목록을 출력하며 전체 경로를 펼친 트리나 순환 그룹은 출력하지 않습니다.
 원본 resource가 여러 대상에 매칭될 수 있어 import 선언 수와 결과 행 수는 다를 수 있습니다.
@@ -260,8 +262,8 @@ import를 분석하므로 범위 내 연결은 여러 단계를 따라 확인할
 
 **Spring XML 발견 및 import 관계는 실제 로딩의 증거가 아닙니다.** 자동 Spring 설정 수집 규칙,
 `web.xml` 진입점, 전체 런타임 properties 재현, 활성 profile 및 Core/Web ApplicationContext 소속은 후속 단계입니다.
-일반 XML의 loading_status는 NOT_EVALUATED입니다. JAR 내부 XML의 경로는 검색하지만,
-본문은 파싱하지 않으며 JAR_ENTRY_NOT_PARSED로 표시합니다. 실행 중 생성되는 리소스는
+일반 XML의 loading_status는 NOT_EVALUATED입니다. 선택된 JAR에서 참조로 도달한 XML은 본문과 import를 분석합니다.
+비선택 JAR 후보는 존재만 확인하고 JAR_ENTRY_NOT_PARSED로 표시합니다. 실행 중 생성되는 리소스는
 이번 범위에 포함하지 않으므로 NOT_FOUND_IN_SCOPE는 개발 환경에서 검토해야 합니다.
 Spring import 문제는 CSV의 진단 정보이며 단독으로 프로세스 종료 코드를 변경하지 않습니다.
 Console에도 문제 상태별 건수를 출력합니다.
@@ -283,8 +285,8 @@ XML 외부 엔티티와 네트워크 요청을 차단합니다. DOCTYPE 선언�
 선택된 Extension의 폴더 전체와 플랫폼 공통 `bin/platform/lib`,
 `bin/platform/bootstrap/bin` 아래 JAR에서 XML 항목 이름을 수집합니다.
 `.git`, `node_modules`, `temp`와 심볼릭 링크 대상은 제외합니다.
-JAR는 압축 해제하거나 실행하지 않습니다. 내부 XML 본문 파싱 및 그 XML의 후속 import는
-이번 단계의 범위에 포함하지 않습니다.
+JAR는 디스크에 압축 해제하거나 실행하지 않습니다. 도달한 선택 JAR XML만 스트림으로 읽고
+내부 import를 추적합니다. 인덱스에 있는 모든 XML을 무조건 파싱하지는 않습니다.
 
 `classpath:` 및 `classpath*:`는 기존 일반 XML 후보와 JAR XML 후보를 함께 검색합니다.
 JAR 상대 경로의 정확한 일치와 `*`, `?`, `**` 패턴을 지원합니다.
@@ -300,7 +302,8 @@ JAR 상대 경로의 정확한 일치와 `*`, `?`, `**` 패턴을 지원합니�
 - `runtime_classpath_status`: NOT_EVALUATED
 
 JAR 대상을 가리키는 `target_xml`은 `jar:file:/...!/META-INF/example.xml` 형식입니다.
-`target_parse_status=JAR_ENTRY_NOT_PARSED`는 항목이 있다는 의미로 XML 검증 성공을 뜻하지 않습니다.
+선택된 JAR 대상은 본문 조사 결과인 PARSED/PARSED_DTD_SKIPPED/NOT_SPRING/PARSE_ERROR로 표시합니다.
+비선택 후보의 `target_parse_status=JAR_ENTRY_NOT_PARSED`는 존재만 확인했다는 뜻입니다.
 `classpath:`에서 여러 후보가 발견되면 AMBIGUOUS_CLASSPATH로 모두 출력합니다.
 새로 발견한 JAR 때문에 결과 행 수나 모호성 문제가 늘어날 수도 있습니다.
 JAR 읽기 실패는 JAR_INDEX_ERROR로 기록하고 나머지 검색을 계속합니다.
@@ -333,7 +336,7 @@ UNKNOWN 대상은 NOT_SELECTED로 간주하지 않고 보조 검색에서 제외
 줄어도 Import issues 총수는 같을 수 있습니다. 보조 검색 후에도 못 찾은 항목은
 NOT_FOUND_IN_SCOPE로 유지합니다. 접근 실패와 JAR 읽기 실패도 별도 진단으로 남깁니다.
 수집된 비선택 XML의 내부 import를 따라가거나 소유 Extension을 활성 대상으로 승격하지 않습니다.
-비선택 보조 검색 자체는 CSV를 추가하지 않습니다. 이후 속성 해석 파일 추가로 현재 총 **14개**입니다.
+비선택 보조 검색 자체는 CSV를 추가하지 않습니다. 현재 전체 CSV는 JAR 본문 조사 목록을 포함해 **15개**입니다.
 
 작업 기록: `docs/UNSELECTED_RESOURCE_SEARCH.md`.
 검증 소스: `test/com/sapcommerce/analyzer/UnselectedResourceSearchTest.java`.
@@ -389,5 +392,34 @@ SKIPPED_NO_ROOT_ELEMENT로 바뀌었다면 재분류된 것입니다.
 
 주석만 있는지 추가 검증한 경우에만 분류하며, 깨진 주석·태그·일반 텍스트 오류는 유지합니다.
 재검증은 1MB 이하 파일에만 적용하고 그보다 큰 실패는 기존 오류로 남깁니다.
-콘솔과 summary.csv에 제외 건수를 추가했습니다. CSV 개수는 14개로 유지합니다.
+콘솔과 summary.csv에 제외 건수를 추가했습니다. 이 분류는 별도 CSV를 추가하지 않습니다.
 작업 기록: `docs/ROOTLESS_XML_CLASSIFICATION.md`.
+
+## 도달한 JAR XML 본문과 후속 import 추적
+
+실행 방법은 같습니다. ExtensionScanner를 인자 없이 실행합니다.
+ZipFile.getInputStream으로 JAR 내부의 XML을 읽고 기존과 같은 namespace/import 및 속성 해석 규칙을 적용합니다.
+디스크에 XML을 추출하지 않습니다. 상대 import는 같은 JAR의 출발 entry 디렉터리에서 찾고,
+클래스패스 import는 선택된 소스/JAR에서 찾습니다. 미발견 클래스패스는 비선택 보조 검색에도 연결하지만,
+그곳에서 발견한 XML의 본문/후속 import는 분석하지 않습니다.
+
+작업 대기열에 새 import를 추가하고 각 JAR 경로+entry+분석 문맥 Extension을 캐시합니다.
+순환 참조를 따라 무한 재귀하지 않으며 반복 간선 자체는 결과에 유지합니다.
+분석 문맥은 최초 출발 소스의 Extension을 사용한 정적 가시성 기준이며 실제 ApplicationContext ID가 아닙니다.
+소스 XML은 기존처럼 소유 Extension 문맥으로 먼저 분석합니다.
+
+새 CSV `spring-jar-xml-files.csv`에서 JAR/entry/문맥별 파싱 상태와 import 수를 확인합니다.
+정방향/역방향 CSV의 source_xml도 JAR 내부이면 jar:file:/...!/entry.xml 형식이며,
+source_context_extension으로 분석 문맥을 구분합니다. 속성 해석 CSV에도 같은 문맥을 기록합니다.
+JAR XML이 깨졌거나 사용자 정의 엔티티가 있으면 JAR_XML_INSPECTION_ERROR를 기록합니다.
+외부 DTD/엔티티/네트워크 로딩은 차단하고 DOCTYPE 선언만 있는 파일은 DTD를 생략하고 읽습니다.
+JAR XML 1개는 압축 해제 기준 최대 16MiB까지 읽으며 초과하면 진단으로 남깁니다.
+
+기존 Inspected XML/Spring XML은 소스 기준을 유지합니다. Import declarations는 소스+JAR 선언 합계이며
+Source import declarations와 JAR import declarations를 별도로 출력합니다.
+JAR XML parsed contexts는 실패·비Spring 포함 조사 건수, JAR XML unique resources는 중복 문맥을 제외한 리소스 수입니다.
+같은 entry를 여러 문맥에서 분석하면 선언과 행 수도 문맥별로 증가할 수 있습니다.
+Runtime 로딩은 여전히 NOT_EVALUATED이고 모호한 클래스패스 후보도 확정하지 않습니다.
+
+기록: `docs/JAR_XML_TRAVERSAL.md`.
+검증: `test/com/sapcommerce/analyzer/JarXmlTraversalTest.java`.

@@ -172,18 +172,25 @@ public final class ExtensionScanner {
         }
         SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(hybrisRoot, extensionMap, activation);
         System.out.println();
-        System.out.println("=== Spring XML Import Analysis (SOURCE FILES) ===");
+        System.out.println("=== Spring XML Import Analysis (SOURCE AND REACHABLE JAR XML) ===");
         System.out.println("Inspected XML   : " + spring.inspected());
         System.out.println("Spring XML      : " + spring.springFiles());
         System.out.println("Skipped rootless XML: " + spring.files().stream()
                 .filter(file -> file.parseStatus().equals("SKIPPED_NO_ROOT_ELEMENT")).count());
         System.out.println("Import declarations: " + spring.declarations());
+        System.out.println("Source import declarations: " + spring.sourceDeclarations());
+        System.out.println("JAR import declarations: " + spring.jarDeclarations());
         System.out.println("Import rows     : " + spring.imports().size());
         System.out.println("Import issues   : " + spring.issues().size());
         System.out.println("JAR files       : " + spring.jars().archives().size());
         System.out.println("JAR XML entries : " + spring.jars().entries().size());
         System.out.println("JAR index issues: " + spring.jars().problems().size());
         System.out.println("JAR target rows : " + spring.imports().stream().filter(edge -> edge.targetJar() != null).count());
+        System.out.println("JAR XML parsed contexts: " + spring.jarXmlFiles().size());
+        System.out.println("JAR XML unique resources: " + spring.jarXmlFiles().stream()
+                .map(SpringXmlAnalyzer.JarXmlFile::location).distinct().count());
+        System.out.println("JAR XML parse errors: " + spring.jarXmlFiles().stream()
+                .filter(file -> file.parseStatus().equals("PARSE_ERROR")).count());
         System.out.println("Unselected search: " + spring.supplementarySearched());
         System.out.println("Unselected XML candidates: " + spring.supplementaryXmlCandidates());
         System.out.println("Unselected JAR files: " + spring.supplementaryJars().archives().size());
@@ -197,7 +204,7 @@ public final class ExtensionScanner {
         spring.issues().stream().collect(java.util.stream.Collectors.groupingBy(
                 SpringXmlAnalyzer.Issue::status, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach((status, count) -> System.out.println("  " + status + ": " + count));
-        System.out.println("JAR entry existence is indexed; JAR XML content and runtime loading are not evaluated.");
+        System.out.println("Reachable selected JAR XML content is analyzed; runtime loading is not evaluated.");
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
                 new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,

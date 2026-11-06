@@ -42,12 +42,17 @@ public final class DependencyReportWriter {
                 row(out, "skipped_rootless_xml", spring.files().stream()
                         .filter(file -> file.parseStatus().equals("SKIPPED_NO_ROOT_ELEMENT")).count());
                 row(out, "spring_import_declarations", spring.declarations());
+                row(out, "source_import_declarations", spring.sourceDeclarations());
+                row(out, "jar_import_declarations", spring.jarDeclarations());
                 row(out, "spring_import_rows", spring.imports().size());
                 row(out, "spring_import_issues", spring.issues().size());
                 row(out, "jar_files", spring.jars().archives().size());
                 row(out, "jar_xml_entries", spring.jars().entries().size());
                 row(out, "jar_index_issues", spring.jars().problems().size());
                 row(out, "jar_target_rows", spring.imports().stream().filter(edge -> edge.targetJar() != null).count());
+                row(out, "jar_xml_parsed_contexts", spring.jarXmlFiles().size());
+                row(out, "jar_xml_unique_resources", spring.jarXmlFiles().stream().map(SpringXmlAnalyzer.JarXmlFile::location).distinct().count());
+                row(out, "jar_xml_parse_errors", spring.jarXmlFiles().stream().filter(file -> file.parseStatus().equals("PARSE_ERROR")).count());
                 row(out, "unselected_search_performed", spring.supplementarySearched());
                 row(out, "unselected_xml_candidates", spring.supplementaryXmlCandidates());
                 row(out, "unselected_jar_files", spring.supplementaryJars().archives().size());

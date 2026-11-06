@@ -25,12 +25,9 @@ public final class SpringXmlAnalyzer {
 
     public record XmlFile(String extension, Path path, String area, boolean spring,
             String parseStatus, int importCount) { }
-    public record Import(Path source, int line, String resource, Path target,
+    public record Import(String source, int line, String resource, Path target,
             String status, String targetStatus, Path targetJar, String targetEntry,
-            String targetExtension, String targetSelectionStatus) {
-        public Import(Path source, int line, String resource, Path target, String status, String targetStatus) {
-            this(source, line, resource, target, status, targetStatus, null, "", "", "");
-        }
+            String targetExtension, String targetSelectionStatus, String sourceContextExtension) {
         public String targetLocation() {
             if (targetJar != null) {
                 return new JarResourceIndex.Entry(targetJar, targetEntry, "", "").location();
@@ -38,18 +35,30 @@ public final class SpringXmlAnalyzer {
             return target == null ? "" : target.toString();
         }
     }
-    public record Issue(Path source, int line, String resource, String status, String detail) { }
-    public record PropertyResolution(Path source, int line, String resource,
+    public record Issue(String source, int line, String resource, String status, String detail) {
+        public Issue(Path source, int line, String resource, String status, String detail) {
+            this(source.toString(), line, resource, status, detail);
+        }
+    }
+    public record PropertyResolution(String source, int line, String resource, String contextExtension,
             ImportPropertyResolver.Resolution resolution) { }
+    public record JarXmlFile(String extension, Path jar, String entry, String contextExtension,
+            boolean spring, String parseStatus, int importCount) {
+        public String location() { return new JarResourceIndex.Entry(jar, entry, extension, "").location(); }
+    }
     public record Result(List<XmlFile> files, List<Import> imports, List<Issue> issues,
             int inspected, int declarations, JarResourceIndex.Result jars,
             boolean supplementarySearched, int supplementaryXmlCandidates, JarResourceIndex.Result supplementaryJars,
-            List<PropertyResolution> propertyResolutions) {
+            List<PropertyResolution> propertyResolutions, List<JarXmlFile> jarXmlFiles) {
         public long springFiles() { return files.stream().filter(XmlFile::spring).count(); }
+        public long sourceDeclarations() {
+            return propertyResolutions.stream().filter(item -> !item.source().startsWith("jar:")).count();
+        }
+        public long jarDeclarations() { return declarations - sourceDeclarations(); }
     }
-    private record RawImport(Path source, int line, String resource, String originalResource) {
-        private RawImport(Path source, int line, String resource) { this(source, line, resource, resource); }
-    }
+    private record RawImport(String source, int line, String resource, String originalResource,
+            String contextExtension, JarResourceIndex.Entry sourceJar) { }
+    private record JarKey(Path jar, String entry, String contextExtension) { }
     private record Location(String extension, Path path, Path classpathRoot, String area) { }
 
     private final Map<Path, Location> locations = new LinkedHashMap<>();
@@ -65,6 +74,7 @@ public final class SpringXmlAnalyzer {
     private ActiveExtensionAnalyzer.Result activation;
     private ImportPropertyResolver properties;
     private final List<PropertyResolution> propertyResolutions = new ArrayList<>();
+    private final Map<JarKey, JarXmlFile> jarXmlFiles = new LinkedHashMap<>();
 
     public static Result analyze(Path hybrisRoot, Map<String, ExtensionInfo> extensions,
             ActiveExtensionAnalyzer.Result activation) {
@@ -91,12 +101,15 @@ public final class SpringXmlAnalyzer {
             analyzer.collect(name, directory.resolve("web/webroot"), "WEB");
         }
         for (Location location : analyzer.locations.values()) { analyzer.inspect(location); }
-        for (RawImport declaration : analyzer.rawImports) { analyzer.resolve(declaration); }
+        // Newly parsed JAR XML appends imports to this queue. No recursive graph walk is needed.
+        for (int cursor = 0; cursor < analyzer.rawImports.size(); cursor++) {
+            analyzer.resolve(analyzer.rawImports.get(cursor));
+        }
         return new Result(List.copyOf(analyzer.files.values()), List.copyOf(analyzer.imports),
                 List.copyOf(analyzer.issues), analyzer.locations.size(), analyzer.rawImports.size(), analyzer.jars,
                 analyzer.supplementary != null,
                 analyzer.supplementary == null ? 0 : analyzer.supplementary.locations.size(), analyzer.supplementaryJars,
-                List.copyOf(analyzer.propertyResolutions));
+                List.copyOf(analyzer.propertyResolutions), List.copyOf(analyzer.jarXmlFiles.values()));
     }
 
     private void collect(String extension, Path directory, String area) {
@@ -146,14 +159,7 @@ public final class SpringXmlAnalyzer {
     }
 
     private void inspect(Location location) {
-        XMLInputFactory factory = XMLInputFactory.newFactory();
-        factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
-        factory.setProperty(XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES, false);
-        factory.setProperty("javax.xml.stream.isSupportingExternalEntities", false);
-        factory.setProperty(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
-        factory.setXMLResolver((publicId, systemId, base, namespace) -> {
-            throw new javax.xml.stream.XMLStreamException("External XML resources are disabled");
-        });
+        XMLInputFactory factory = secureXmlFactory();
         boolean spring = false;
         boolean rootSeen = false;
         boolean doctype = false;
@@ -181,8 +187,9 @@ public final class SpringXmlAnalyzer {
                     if (name.equals("import") && beansNamespace(reader.getNamespaceURI())
                             && !beanParents.isEmpty() && beanParents.getLast()) {
                         String resource = reader.getAttributeValue(null, "resource");
-                        declarations.add(new RawImport(location.path(), reader.getLocation().getLineNumber(),
-                                resource == null ? "" : resource.trim()));
+                        String value = resource == null ? "" : resource.trim();
+                        declarations.add(new RawImport(location.path().toString(), reader.getLocation().getLineNumber(),
+                                value, value, location.extension(), null));
                     }
                     beanParents.add(beans);
                 } else if (event == XMLStreamConstants.END_ELEMENT && !beanParents.isEmpty()) {
@@ -211,6 +218,109 @@ public final class SpringXmlAnalyzer {
             if (reader != null) {
                 try { reader.close(); } catch (Exception ignored) { /* Input stream already closed. */ }
             }
+        }
+    }
+
+    private static XMLInputFactory secureXmlFactory() {
+        XMLInputFactory factory = XMLInputFactory.newFactory();
+        factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+        factory.setProperty(XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES, false);
+        factory.setProperty("javax.xml.stream.isSupportingExternalEntities", false);
+        factory.setProperty(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setXMLResolver((publicId, systemId, base, namespace) -> {
+            throw new javax.xml.stream.XMLStreamException("External XML resources are disabled");
+        });
+        return factory;
+    }
+
+    private JarXmlFile inspectJar(JarResourceIndex.Entry entry, String context) {
+        JarKey key = new JarKey(entry.jar(), entry.resource(), context);
+        JarXmlFile previous = jarXmlFiles.get(key);
+        if (previous != null) { return previous; }
+        boolean spring = false;
+        boolean rootSeen = false;
+        boolean doctype = false;
+        XMLStreamReader reader = null;
+        List<RawImport> declarations = new ArrayList<>();
+        JarXmlFile result;
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(entry.jar().toFile())) {
+            java.util.zip.ZipEntry member = zip.getEntry(entry.resource());
+            if (member == null || member.isDirectory()) { throw new IOException("Indexed JAR entry no longer exists"); }
+            if (member.getSize() > LimitedXmlStream.MAX_BYTES) { throw new IOException("JAR XML exceeds 16 MiB limit"); }
+            try (InputStream input = new LimitedXmlStream(zip.getInputStream(member))) {
+            reader = secureXmlFactory().createXMLStreamReader(input);
+            List<Boolean> beanParents = new ArrayList<>();
+            while (reader.hasNext()) {
+                int event = reader.next();
+                if (event == XMLStreamConstants.DTD) { doctype = true; }
+                if (event == XMLStreamConstants.ENTITY_REFERENCE) {
+                    throw new IOException("Custom entity references require DTD expansion and are not supported");
+                }
+                if (event == XMLStreamConstants.START_ELEMENT) {
+                    String name = reader.getLocalName();
+                    boolean beans = name.equals("beans") && beansNamespace(reader.getNamespaceURI());
+                    if (!rootSeen) {
+                        rootSeen = true;
+                        spring = beans;
+                        if (!spring) { break; }
+                    }
+                    if (name.equals("import") && beansNamespace(reader.getNamespaceURI())
+                            && !beanParents.isEmpty() && beanParents.getLast()) {
+                        String resource = reader.getAttributeValue(null, "resource");
+                        String value = resource == null ? "" : resource.trim();
+                        declarations.add(new RawImport(entry.location(), reader.getLocation().getLineNumber(),
+                                value, value, context, entry));
+                    }
+                    beanParents.add(beans);
+                } else if (event == XMLStreamConstants.END_ELEMENT && !beanParents.isEmpty()) {
+                    beanParents.removeLast();
+                }
+            }
+            if (!rootSeen) { throw new IOException("XML root element not found"); }
+            result = new JarXmlFile(entry.extension(), entry.jar(), entry.resource(), context, spring,
+                    spring ? (doctype ? "PARSED_DTD_SKIPPED" : "PARSED") : "NOT_SPRING", declarations.size());
+            rawImports.addAll(declarations);
+            }
+        } catch (Exception exception) {
+            result = new JarXmlFile(entry.extension(), entry.jar(), entry.resource(), context, spring, "PARSE_ERROR", 0);
+            issues.add(new Issue(entry.location(), reader == null ? 0 : reader.getLocation().getLineNumber(),
+                    "", "JAR_XML_INSPECTION_ERROR", "Context " + context + ": " + exception.getMessage()));
+        } finally {
+            if (reader != null) {
+                try { reader.close(); } catch (Exception ignored) { /* Input stream already closed. */ }
+            }
+        }
+        jarXmlFiles.put(key, result);
+        return result;
+    }
+
+    private static String jarRelativePattern(String sourceEntry, String relative) throws IOException {
+        int slash = sourceEntry.lastIndexOf('/');
+        String combined = (slash < 0 ? "" : sourceEntry.substring(0, slash + 1)) + relative;
+        java.util.Deque<String> segments = new java.util.ArrayDeque<>();
+        for (String segment : combined.split("/")) {
+            if (segment.isEmpty() || segment.equals(".")) { continue; }
+            if (segment.equals("..")) {
+                if (segments.isEmpty()) { throw new IOException("Relative import escapes JAR root"); }
+                segments.removeLast();
+            } else { segments.addLast(segment); }
+        }
+        return String.join("/", segments);
+    }
+
+    private static final class LimitedXmlStream extends java.io.FilterInputStream {
+        private static final long MAX_BYTES = 16L * 1024 * 1024;
+        private long count;
+        private LimitedXmlStream(InputStream input) { super(input); }
+        @Override public int read() throws IOException {
+            int value = in.read();
+            if (value >= 0 && ++count > MAX_BYTES) { throw new IOException("JAR XML exceeds 16 MiB limit"); }
+            return value;
+        }
+        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+            int read = in.read(buffer, offset, (int) Math.min(length, MAX_BYTES - count + 1));
+            if (read > 0 && (count += read) > MAX_BYTES) { throw new IOException("JAR XML exceeds 16 MiB limit"); }
+            return read;
         }
     }
 
@@ -253,12 +363,14 @@ public final class SpringXmlAnalyzer {
 
     private void resolve(RawImport declaration) {
         var resolution = properties.resolve(declaration.resource());
-        propertyResolutions.add(new PropertyResolution(declaration.source(), declaration.line(), declaration.originalResource(), resolution));
+        propertyResolutions.add(new PropertyResolution(declaration.source(), declaration.line(), declaration.originalResource(),
+                declaration.contextExtension(), resolution));
         if (!resolution.complete()) {
             unresolved(declaration, "UNRESOLVED_PROPERTY", resolution.detail());
             return;
         }
-        resolveExpanded(new RawImport(declaration.source(), declaration.line(), resolution.value(), declaration.originalResource()));
+        resolveExpanded(new RawImport(declaration.source(), declaration.line(), resolution.value(), declaration.originalResource(),
+                declaration.contextExtension(), declaration.sourceJar()));
     }
 
     private void resolveExpanded(RawImport declaration) {
@@ -277,15 +389,14 @@ public final class SpringXmlAnalyzer {
                 String pattern = value.substring(value.indexOf(':') + 1).replace('\\', '/');
                 while (pattern.startsWith("/")) { pattern = pattern.substring(1); }
                 Pattern matcher = antPattern(pattern);
-                Location source = locations.get(declaration.source());
                 for (Location location : locations.values()) {
                     if (location.classpathRoot() == null) { continue; }
                     // A storefront's WEB-INF/classes belongs only to its own web context.
-                    if (location.area().equals("WEB") && !location.extension().equals(source.extension())) { continue; }
+                    if (location.area().equals("WEB") && !location.extension().equals(declaration.contextExtension())) { continue; }
                     String relative = location.classpathRoot().relativize(location.path()).toString().replace('\\', '/');
                     if (matcher.matcher(relative).matches()) { candidates.add(location.path()); }
                 }
-                jarCandidates = jars.matches(matcher, source.extension());
+                jarCandidates = jars.matches(matcher, declaration.contextExtension());
                 status = all ? "CLASSPATH_ALL_CANDIDATE"
                         : candidates.size() + jarCandidates.size() > 1 ? "AMBIGUOUS_CLASSPATH" : "CLASSPATH_CANDIDATE";
             } else if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*") || value.startsWith("//")
@@ -299,13 +410,22 @@ public final class SpringXmlAnalyzer {
                 String relative = value.replace('\\', '/');
                 boolean leadingSlash = relative.startsWith("/");
                 if (leadingSlash) { relative = relative.substring(1); }
-                String absolutePattern = declaration.source().getParent().resolve(relative)
+                if (declaration.sourceJar() != null) {
+                    String pattern = jarRelativePattern(declaration.sourceJar().resource(), relative);
+                    Pattern matcher = antPattern(pattern);
+                    jarCandidates = jars.entries().stream()
+                            .filter(entry -> entry.jar().equals(declaration.sourceJar().jar()))
+                            .filter(entry -> matcher.matcher(entry.resource()).matches()).toList();
+                    status = "RESOLVED_JAR_RELATIVE";
+                } else {
+                String absolutePattern = Path.of(declaration.source()).getParent().resolve(relative)
                         .normalize().toString().replace('\\', '/');
                 Pattern matcher = antPattern(absolutePattern);
                 for (Path path : locations.keySet()) {
                     if (matcher.matcher(path.toString().replace('\\', '/')).matches()) { candidates.add(path); }
                 }
                 status = leadingSlash ? "RESOLVED_RELATIVE_LEADING_SLASH" : "RESOLVED_RELATIVE";
+                }
             }
         } catch (Exception exception) {
             unresolved(declaration, "UNSUPPORTED_LOCATION", exception.getMessage());
@@ -321,17 +441,22 @@ public final class SpringXmlAnalyzer {
         for (Path target : candidates) {
             XmlFile file = files.get(target);
             imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), target, status, file.parseStatus(),
-                    null, "", file.extension(), activation.selections().get(file.extension()).status()));
+                    null, "", file.extension(), activation.selections().get(file.extension()).status(), declaration.contextExtension()));
             if (!file.spring() || !file.parseStatus().startsWith("PARSED")) {
                 issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(), "TARGET_NOT_PARSED_SPRING",
                         target + " (" + file.parseStatus() + ")"));
             }
         }
         for (JarResourceIndex.Entry target : jarCandidates) {
+            JarXmlFile parsed = inspectJar(target, declaration.contextExtension());
             imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null, status,
-                    "JAR_ENTRY_NOT_PARSED", target.jar(), target.resource(), target.extension(),
+                    parsed.parseStatus(), target.jar(), target.resource(), target.extension(),
                     target.extension().isEmpty() ? "PLATFORM_SHARED"
-                            : activation.selections().get(target.extension()).status()));
+                            : activation.selections().get(target.extension()).status(), declaration.contextExtension()));
+            if (!parsed.spring() || !parsed.parseStatus().startsWith("PARSED")) {
+                issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(),
+                        "TARGET_NOT_PARSED_SPRING", target.location() + " (" + parsed.parseStatus() + ")"));
+            }
         }
         if (status.equals("AMBIGUOUS_CLASSPATH")) {
             issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(), status,
@@ -360,6 +485,8 @@ public final class SpringXmlAnalyzer {
 
     /** Diagnostic presence search only: never promotes definitions to selected/runtime candidates. */
     private boolean findInUnselected(RawImport declaration, boolean classpath) {
+        // A JAR-relative miss cannot be satisfied by an unrelated archive's entry.
+        if (!classpath && declaration.sourceJar() != null) { return false; }
         prepareSupplementarySearch();
         String value = declaration.resource().replace('\\', '/');
         String pattern;
@@ -368,7 +495,7 @@ public final class SpringXmlAnalyzer {
             while (pattern.startsWith("/")) { pattern = pattern.substring(1); }
         } else {
             if (value.startsWith("/")) { value = value.substring(1); }
-            pattern = declaration.source().getParent().resolve(value).normalize().toString().replace('\\', '/');
+            pattern = Path.of(declaration.source()).getParent().resolve(value).normalize().toString().replace('\\', '/');
         }
         Pattern matcher = antPattern(pattern);
         int count = 0;
@@ -380,7 +507,7 @@ public final class SpringXmlAnalyzer {
             if (matcher.matcher(candidate.replace('\\', '/')).matches()) {
                 imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), location.path(),
                         "FOUND_IN_UNSELECTED_EXTENSION", "SOURCE_FILE_NOT_PARSED", null, "",
-                        location.extension(), "NOT_SELECTED"));
+                        location.extension(), "NOT_SELECTED", declaration.contextExtension()));
                 owners.add(location.extension());
                 count++;
             }
@@ -390,7 +517,7 @@ public final class SpringXmlAnalyzer {
                 if (matcher.matcher(entry.resource()).matches()) {
                     imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null,
                             "FOUND_IN_UNSELECTED_EXTENSION", "JAR_ENTRY_NOT_PARSED", entry.jar(), entry.resource(),
-                            entry.extension(), "NOT_SELECTED"));
+                            entry.extension(), "NOT_SELECTED", declaration.contextExtension()));
                     owners.add(entry.extension());
                     count++;
                 }
@@ -405,7 +532,8 @@ public final class SpringXmlAnalyzer {
     }
 
     private void unresolved(RawImport declaration, String status, String detail) {
-        imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null, status, ""));
+        imports.add(new Import(declaration.source(), declaration.line(), declaration.originalResource(), null, status, "",
+                null, "", "", "", declaration.contextExtension()));
         issues.add(new Issue(declaration.source(), declaration.line(), declaration.originalResource(), status, detail));
     }
 
