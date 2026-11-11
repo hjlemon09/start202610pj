@@ -76,6 +76,11 @@ public final class SpringBeanAnalyzer {
         });
         Element root = builder.parse(new ByteArrayInputStream(content)).getDocumentElement();
         rejectEntities(root);
+        if (root.getLocalName().equals("beans") && BeanXmlDocuments.generationSchema(root.getNamespaceURI(),
+                root.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "noNamespaceSchemaLocation"))) {
+            issues.add(new Issue(xml,"SKIPPED_BEAN_GENERATION_XML","Namespace-free beans.xsd document; not a Spring Bean definition"));
+            return;
+        }
         if (!standard(root) || !root.getLocalName().equals("beans")) throw new IOException("Expected Spring beans root");
         ordinal = 0;
         customElements.clear();
@@ -141,7 +146,10 @@ public final class SpringBeanAnalyzer {
         if (!target.isBlank()) refs.add(new Reference(xml,owner,kind,member,target,profiles));
     }
     private static String attr(Element e,String name) { return e.getAttribute(name); }
-    private static boolean standard(Element e) { return BEANS.equals(e.getNamespaceURI()); }
+    private static boolean standard(Element e) {
+        String namespace=e.getNamespaceURI();
+        return namespace==null || namespace.isEmpty() || BEANS.equals(namespace);
+    }
     private static String append(String a,String b) { return a.isEmpty() ? b : a + " -> " + b; }
     private static void rejectEntities(Node node) throws IOException {
         if (node.getNodeType() == Node.ENTITY_REFERENCE_NODE) throw new IOException("Custom entities are unsupported");

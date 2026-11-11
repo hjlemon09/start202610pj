@@ -191,6 +191,7 @@ public final class SpringXmlAnalyzer {
         XMLInputFactory factory = secureXmlFactory();
         boolean spring = false;
         boolean rootSeen = false;
+        boolean beanGeneration = false;
         boolean doctype = false;
         String encoding = "UTF-8";
         XMLStreamReader reader = null;
@@ -210,7 +211,9 @@ public final class SpringXmlAnalyzer {
                     boolean beans = name.equals("beans") && beansNamespace(reader.getNamespaceURI());
                     if (!rootSeen) {
                         rootSeen = true;
-                        spring = beans;
+                        beanGeneration = name.equals("beans") && BeanXmlDocuments.generationSchema(reader.getNamespaceURI(),
+                                reader.getAttributeValue("http://www.w3.org/2001/XMLSchema-instance", "noNamespaceSchemaLocation"));
+                        spring = beans && !beanGeneration;
                         if (!spring) { break; }
                     }
                     if (name.equals("import") && beansNamespace(reader.getNamespaceURI())
@@ -227,7 +230,7 @@ public final class SpringXmlAnalyzer {
             }
             if (!rootSeen) { throw new IOException("XML root element not found"); }
             files.put(location.path(), new XmlFile(location.extension(), location.path(), location.area(),
-                    spring, spring ? (doctype ? "PARSED_DTD_SKIPPED" : "PARSED") : "NOT_SPRING",
+                    spring, spring ? (doctype ? "PARSED_DTD_SKIPPED" : "PARSED") : beanGeneration ? "NOT_SPRING_BEAN_GENERATION_XML" : "NOT_SPRING",
                     declarations.size()));
             rawImports.addAll(declarations);
         } catch (Exception exception) {
@@ -268,6 +271,7 @@ public final class SpringXmlAnalyzer {
         if (previous != null) { return previous; }
         boolean spring = false;
         boolean rootSeen = false;
+        boolean beanGeneration = false;
         boolean doctype = false;
         XMLStreamReader reader = null;
         List<RawImport> declarations = new ArrayList<>();
@@ -290,7 +294,9 @@ public final class SpringXmlAnalyzer {
                     boolean beans = name.equals("beans") && beansNamespace(reader.getNamespaceURI());
                     if (!rootSeen) {
                         rootSeen = true;
-                        spring = beans;
+                        beanGeneration = name.equals("beans") && BeanXmlDocuments.generationSchema(reader.getNamespaceURI(),
+                                reader.getAttributeValue("http://www.w3.org/2001/XMLSchema-instance", "noNamespaceSchemaLocation"));
+                        spring = beans && !beanGeneration;
                         if (!spring) { break; }
                     }
                     if (name.equals("import") && beansNamespace(reader.getNamespaceURI())
@@ -307,7 +313,7 @@ public final class SpringXmlAnalyzer {
             }
             if (!rootSeen) { throw new IOException("XML root element not found"); }
             result = new JarXmlFile(entry.extension(), entry.jar(), entry.resource(), context, spring,
-                    spring ? (doctype ? "PARSED_DTD_SKIPPED" : "PARSED") : "NOT_SPRING", declarations.size());
+                    spring ? (doctype ? "PARSED_DTD_SKIPPED" : "PARSED") : beanGeneration ? "NOT_SPRING_BEAN_GENERATION_XML" : "NOT_SPRING", declarations.size());
             rawImports.addAll(declarations);
             }
         } catch (Exception exception) {
