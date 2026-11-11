@@ -17,8 +17,8 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 - 순환 참조와 이미 방문한 공유 의존관계 구분
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
 
-ApplicationContext, Bean 분석,
-시각화 및 CallTrace는 이후 단계이며 이 버전에 포함하지 않습니다.
+Spring 로딩 진입점과 XML Bean 선언·명시적 참조의 정적 목록을 포함합니다.
+최종 Bean 연결 결정, 시각화 및 실행 중 메서드 CallTrace는 이후 단계입니다.
 
 ## Eclipse에서 가져오기
 
@@ -477,5 +477,18 @@ Spring Java Config/코드에 의한 동적 등록 및 전체 서버 속성 계�
 미발견 진입점에 대해 다른 진입점에서 같은 파일명의 XML이 발견·파싱되면,
 `spring-loading-issues.csv`의 `related_entries`와 `assessment` 열에 관련 설정·컨텍스트·실제 경로를 함께 표시합니다.
 같은 파일명의 참고 후보이며 원래 미발견 상태, CORE/WEB 구분, 실제 로딩 미검증 상태는 유지합니다.
-`spring-loading-entrypoints.csv`에도 같은 관련 정보가 추가됩니다. CSV 개수는 18개로 유지됩니다.
+`spring-loading-entrypoints.csv`에도 같은 관련 정보가 추가됩니다. 이 관련 정보 기능 자체는 CSV를 추가하지 않습니다.
 상세 설명과 확인 절차: `docs/RELATED_LOADING_ENTRIES.md`.
+
+## XML Bean 선언과 명시적 참조 목록
+
+ExtensionScanner의 기본 실행에 Bean 목록 작성을 추가했습니다. 현재 CSV 총수는 **21개**입니다.
+
+| 신규 파일 | 내용 |
+| --- | --- |
+| spring-beans.csv | XML의 Bean 원문 이름/클래스/부모/factory/profile 및 잠재 진입점·컨텍스트 |
+| spring-bean-references.csv | property/constructor/ref/alias/parent/factory 등의 명시 참조 |
+| spring-bean-issues.csv | 파싱 실패, custom namespace 등 미해석 범위 |
+
+Bean 참조는 실제 메서드 호출이 아닙니다. Annotation 스캔과 최종 Bean 선택/연결은 아직 처리하지 않습니다.
+자세한 목적, 범위, 결과 해석과 검증: `docs/BEAN_INVENTORY.md`.

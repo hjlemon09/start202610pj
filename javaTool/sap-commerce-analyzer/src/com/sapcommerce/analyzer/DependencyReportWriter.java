@@ -37,9 +37,22 @@ public final class DependencyReportWriter {
             SpringXmlReportWriter.write(directory, spring);
             SpringLoadingAnalyzer.Result loading = SpringLoadingAnalyzer.trace(spring);
             SpringLoadingReportWriter.write(directory, loading);
+            SpringBeanAnalyzer.Result beans = SpringBeanAnalyzer.analyze(spring, loading);
+            SpringBeanReportWriter.write(directory, beans);
+            System.out.println();
+            System.out.println("=== Spring Bean Declaration Inventory (STATIC XML) ===");
+            System.out.println("XML inspected    : " + beans.inspected());
+            System.out.println("Bean declarations: " + beans.beans().size());
+            System.out.println("Explicit references: " + beans.references().size());
+            System.out.println("Inventory issues : " + beans.issues().size());
+            System.out.println("Declarations only; effective wiring, runtime registration and method calls are not evaluated.");
             try (BufferedWriter out = Files.newBufferedWriter(directory.resolve("summary.csv"),
                     StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
                 row(out, "spring_xml_inspected", spring.inspected());
+                row(out, "bean_inventory_xml_inspected", beans.inspected());
+                row(out, "bean_declarations", beans.beans().size());
+                row(out, "bean_explicit_references", beans.references().size());
+                row(out, "bean_inventory_issues", beans.issues().size());
                 row(out, "spring_xml_files", spring.springFiles());
                 row(out, "skipped_rootless_xml", spring.files().stream()
                         .filter(file -> file.parseStatus().equals("SKIPPED_NO_ROOT_ELEMENT")).count());
