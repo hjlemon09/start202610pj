@@ -61,7 +61,7 @@ public final class SpringBeanAnalyzerTest {
                 "PROPERTY_REF","REF_PARENT","REF_BEAN","MAP_KEY_REF","MAP_VALUE_REF","IDREF_NAME_BEAN","LOOKUP_METHOD","REPLACED_METHOD","INNER_BEAN"))
             check(result.references().stream().anyMatch(r->r.kind().equals(kind)),"Reference kind: "+kind);
         check(result.beans().stream().anyMatch(b->b.profiles().equals("test") && b.className().equals("${service.class}")),"Profiles and raw placeholders retained");
-        check(result.issues().stream().anyMatch(i->i.status().equals("CUSTOM_NAMESPACE_NOT_MODELED")),"Component scan limit reported");
+        check(result.issues().stream().anyMatch(i->i.status().equals("COMPONENT_SCAN_NOT_MODELED")),"Component scan limit reported");
         Path output=Files.createDirectories(root.resolve("report")); SpringBeanReportWriter.write(output,result);
         String beans=Files.readString(output.resolve("spring-beans.csv"));
         String references=Files.readString(output.resolve("spring-bean-references.csv"));

@@ -43,14 +43,19 @@ public final class DependencyReportWriter {
             System.out.println("=== Spring Bean Declaration Inventory (STATIC XML) ===");
             System.out.println("XML inspected    : " + beans.inspected());
             System.out.println("Bean declarations: " + beans.beans().size());
+            System.out.println("Util declarations: " + beans.beans().stream().filter(bean -> bean.declarationKind().startsWith("UTIL_")).count());
             System.out.println("Explicit references: " + beans.references().size());
             System.out.println("Inventory issues : " + beans.issues().size());
+            beans.issues().stream().collect(java.util.stream.Collectors.groupingBy(SpringBeanAnalyzer.Issue::status,
+                    java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                    .forEach((status, count) -> System.out.println("  " + status + ": " + count));
             System.out.println("Declarations only; effective wiring, runtime registration and method calls are not evaluated.");
             try (BufferedWriter out = Files.newBufferedWriter(directory.resolve("summary.csv"),
                     StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
                 row(out, "spring_xml_inspected", spring.inspected());
                 row(out, "bean_inventory_xml_inspected", beans.inspected());
                 row(out, "bean_declarations", beans.beans().size());
+                row(out, "bean_util_declarations", beans.beans().stream().filter(bean -> bean.declarationKind().startsWith("UTIL_")).count());
                 row(out, "bean_explicit_references", beans.references().size());
                 row(out, "bean_inventory_issues", beans.issues().size());
                 row(out, "spring_xml_files", spring.springFiles());

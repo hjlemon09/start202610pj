@@ -14,10 +14,12 @@ import org.w3c.dom.*;
 /** XML declaration inventory only. Does not instantiate beans or resolve effective wiring. */
 public final class SpringBeanAnalyzer {
     private static final String BEANS = "http://www.springframework.org/schema/beans";
+    private static final String UTIL = "http://www.springframework.org/schema/util";
+    private static final Set<String> UTIL_DECLARATIONS = Set.of("list", "set", "map", "constant");
     private static final int LIMIT = 16 * 1024 * 1024;
     public record Bean(String key, String xml, String extension, int ordinal, String id, String names, String className,
             String parent, String scope, String abstractValue, String factoryBean, String factoryMethod,
-            String enclosingBean, String profiles, String defaultAttributes) { }
+            String enclosingBean, String profiles, String defaultAttributes, String declarationKind, String declaredAttributes) { }
     public record Reference(String xml, String ownerKey, String kind, String member, String target, String profiles) { }
     public record Issue(String xml, String status, String detail) { }
     public record Result(List<Bean> beans, List<Reference> references, List<Issue> issues, Map<String,String> reachability, int inspected) { }
@@ -102,7 +104,7 @@ public final class SpringBeanAnalyzer {
                 String key = xml + "#bean-" + (++ordinal);
                 beans.add(new Bean(key, xml, extension, ordinal, attr(element,"id"), attr(element,"name"), attr(element,"class"),
                         attr(element,"parent"), attr(element,"scope"), attr(element,"abstract"), attr(element,"factory-bean"),
-                        attr(element,"factory-method"), owner, profiles, defaults));
+                        attr(element,"factory-method"), owner, profiles, defaults, "BEAN", ""));
                 if (!owner.isEmpty()) refs.add(new Reference(xml, owner, "INNER_BEAN", member, key, profiles));
                 owner = key;
                 member = "";
@@ -134,9 +136,25 @@ public final class SpringBeanAnalyzer {
                 addRef(xml,owner,name.equals("lookup-method") ? "LOOKUP_METHOD" : "REPLACED_METHOD",attr(element,"name"),
                         attr(element,name.equals("lookup-method") ? "bean" : "replacer"),profiles);
             }
+        } else if (UTIL.equals(element.getNamespaceURI()) && UTIL_DECLARATIONS.contains(name)) {
+            // Namespace declarations have no explicit class attribute; do not invent a declared class.
+            String key = xml + "#bean-" + (++ordinal);
+            String attributes = utilAttributes(element, name);
+            beans.add(new Bean(key, xml, extension, ordinal, attr(element,"id"), "", "", "", attr(element,"scope"), "", "", "",
+                    owner, profiles, defaults, "UTIL_" + name.toUpperCase(Locale.ROOT), attributes));
+            if (!owner.isEmpty()) refs.add(new Reference(xml, owner, "INNER_UTIL_DECLARATION", member, key, profiles));
+            owner = key;
+            member = "util:" + name;
+            // Constants are metadata, not Bean refs. Never reflectively read the field.
+            if (name.equals("constant") && attr(element,"static-field").isBlank()) {
+                issues.add(new Issue(xml,"UTIL_DECLARATION_INCOMPLETE", key + ": util:constant has no static-field attribute"));
+            }
         } else {
             String type = "{" + element.getNamespaceURI() + "}" + name;
-            if (customElements.add(type)) issues.add(new Issue(xml,"CUSTOM_NAMESPACE_NOT_MODELED", type + ": dynamically registered beans are not inventoried"));
+            if (customElements.add(type)) {
+                String status = namespaceStatus(element.getNamespaceURI(), name);
+                issues.add(new Issue(xml,status, type + ": " + namespaceExplanation(status)));
+            }
         }
         for (Node child=element.getFirstChild(); child!=null; child=child.getNextSibling()) {
             if (child instanceof Element nested) walk(nested,xml,extension,owner,profiles,defaults,member);
@@ -144,6 +162,40 @@ public final class SpringBeanAnalyzer {
     }
     private void addRef(String xml,String owner,String kind,String member,String target,String profiles) {
         if (!target.isBlank()) refs.add(new Reference(xml,owner,kind,member,target,profiles));
+    }
+    private static String utilAttributes(Element element, String type) {
+        List<String> allowed = switch (type) {
+            case "list" -> List.of("list-class", "value-type");
+            case "set" -> List.of("set-class", "value-type");
+            case "map" -> List.of("map-class", "key-type", "value-type");
+            default -> List.of("static-field");
+        };
+        List<String> values = new ArrayList<>();
+        for (String attribute : allowed) if (element.hasAttribute(attribute)) values.add(attribute + "=" + attr(element,attribute));
+        return String.join("; ", values);
+    }
+    private static String namespaceStatus(String namespace, String name) {
+        if ("http://www.springframework.org/schema/context".equals(namespace)) {
+            if (name.equals("annotation-config")) return "ANNOTATION_PROCESSING_NOT_MODELED";
+            if (name.equals("component-scan")) return "COMPONENT_SCAN_NOT_MODELED";
+            return "CONTEXT_CONFIGURATION_NOT_MODELED";
+        }
+        if ("http://www.springframework.org/schema/aop".equals(namespace)) return "AOP_CONFIGURATION_NOT_MODELED";
+        String integration = "http://www.springframework.org/schema/integration";
+        if (namespace != null && (namespace.equals(integration) || namespace.startsWith(integration + "/"))) return "INTEGRATION_FLOW_NOT_MODELED";
+        if (UTIL.equals(namespace)) return "UTIL_TAG_NOT_MODELED";
+        return "CUSTOM_NAMESPACE_NOT_MODELED";
+    }
+    private static String namespaceExplanation(String status) {
+        return switch (status) {
+            case "ANNOTATION_PROCESSING_NOT_MODELED" -> "Annotation 처리 활성화 설정입니다. Annotation 주입 및 내부 처리기 등록은 분석하지 않습니다.";
+            case "COMPONENT_SCAN_NOT_MODELED" -> "클래스 스캔 설정입니다. 스캔으로 등록되는 Bean은 현재 목록에 포함하지 않습니다.";
+            case "CONTEXT_CONFIGURATION_NOT_MODELED" -> "Spring context 설정입니다. 이 태그의 설정 효과와 등록 대상은 아직 해석하지 않습니다.";
+            case "AOP_CONFIGURATION_NOT_MODELED" -> "AOP/프록시 설정입니다. 프록시 생성과 적용 대상은 현재 분석하지 않습니다.";
+            case "INTEGRATION_FLOW_NOT_MODELED" -> "Integration 흐름 설정입니다. 채널과 처리기 연결 및 자동 등록 Bean은 아직 분석하지 않습니다.";
+            case "UTIL_TAG_NOT_MODELED" -> "지원 범위(list/set/map/constant) 밖의 util 태그입니다. 등록 선언은 아직 수집하지 않습니다.";
+            default -> "미지원 네임스페이스입니다. 이 태그가 만드는 등록 정보는 아직 해석하지 않습니다.";
+        };
     }
     private static String attr(Element e,String name) { return e.getAttribute(name); }
     private static boolean standard(Element e) {

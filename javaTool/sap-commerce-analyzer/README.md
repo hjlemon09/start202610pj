@@ -492,3 +492,12 @@ ExtensionScanner의 기본 실행에 Bean 목록 작성을 추가했습니다. �
 
 Bean 참조는 실제 메서드 호출이 아닙니다. Annotation 스캔과 최종 Bean 선택/연결은 아직 처리하지 않습니다.
 자세한 목적, 범위, 결과 해석과 검증: `docs/BEAN_INVENTORY.md`.
+
+## util 네임스페이스 지원
+
+util:list/set/map/constant를 선언 목록에 포함하고 내부 명시 참조를 해당 선언에 연결합니다.
+spring-beans.csv 끝에 declaration_kind와 declared_namespace_attributes 열을 추가했습니다.
+미지원 범위는 Annotation/Component scan/Context/AOP/Integration/기타로 구분합니다.
+콘솔에서 Util declarations 및 상태별 이슈 수를 확인할 수 있습니다. CSV 총수는 21개입니다.
+최종 대상 바인딩과 실제 등록/호출은 계속 미검증입니다.
+상세 기록과 검증 절차: docs/UTIL_NAMESPACE_SUPPORT.md.

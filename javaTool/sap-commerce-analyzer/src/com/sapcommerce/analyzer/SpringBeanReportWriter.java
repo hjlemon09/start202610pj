@@ -12,10 +12,12 @@ final class SpringBeanReportWriter {
         try (BufferedWriter out=csv(directory.resolve("spring-beans.csv"))) {
             row(out,"declaration_key","source_xml","owner_extension","bean_ordinal","declared_id","declared_names","declared_class",
                     "declared_parent","declared_scope","declared_abstract","declared_factory_bean","declared_factory_method",
-                    "enclosing_bean_key","declared_profile_chain","declared_defaults_chain","potential_entry_contexts","reachability_status","runtime_registration_status");
+                    "enclosing_bean_key","declared_profile_chain","declared_defaults_chain","potential_entry_contexts","reachability_status","runtime_registration_status",
+                    "declaration_kind","declared_namespace_attributes");
             for (var b : result.beans()) row(out,b.key(),b.xml(),b.extension(),b.ordinal(),b.id(),b.names(),b.className(),b.parent(),b.scope(),b.abstractValue(),
                     b.factoryBean(),b.factoryMethod(),b.enclosingBean(),b.profiles(),b.defaultAttributes(),result.reachability().getOrDefault(b.xml(),""),
-                    result.reachability().containsKey(b.xml()) ? "POTENTIALLY_REACHABLE" : "NO_MODELED_ENTRY_REACHES_XML","NOT_EVALUATED");
+                    result.reachability().containsKey(b.xml()) ? "POTENTIALLY_REACHABLE" : "NO_MODELED_ENTRY_REACHES_XML","NOT_EVALUATED",
+                    b.declarationKind(),b.declaredAttributes());
         }
         try (BufferedWriter out=csv(directory.resolve("spring-bean-references.csv"))) {
             row(out,"source_xml","owner_declaration_key","relation_kind","member_or_alias","declared_target","declared_profile_chain",
