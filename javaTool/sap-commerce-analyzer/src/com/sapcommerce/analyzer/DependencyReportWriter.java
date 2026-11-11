@@ -38,7 +38,8 @@ public final class DependencyReportWriter {
             SpringLoadingAnalyzer.Result loading = SpringLoadingAnalyzer.trace(spring);
             SpringLoadingReportWriter.write(directory, loading);
             SpringBeanAnalyzer.Result beans = SpringBeanAnalyzer.analyze(spring, loading);
-            SpringBeanReportWriter.write(directory, beans);
+            SpringBeanReferenceResolver.Result bindings = SpringBeanReferenceResolver.analyze(beans);
+            SpringBeanReportWriter.write(directory, beans, bindings);
             System.out.println();
             System.out.println("=== Spring Bean Declaration Inventory (STATIC XML) ===");
             System.out.println("XML inspected    : " + beans.inspected());
@@ -50,6 +51,13 @@ public final class DependencyReportWriter {
                     java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                     .forEach((status, count) -> System.out.println("  " + status + ": " + count));
             System.out.println("Declarations only; effective wiring, runtime registration and method calls are not evaluated.");
+            System.out.println();
+            System.out.println("=== Spring Bean Reference Candidates (STATIC) ===");
+            System.out.println("Reference/context rows: " + bindings.resolutions().size());
+            bindings.resolutions().stream().collect(java.util.stream.Collectors.groupingBy(SpringBeanReferenceResolver.Resolution::status,
+                    java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                    .forEach((status, count) -> System.out.println("  " + status + ": " + count));
+            System.out.println("Same-context/XML candidates only; parent visibility, active profiles and override winners are not determined.");
             try (BufferedWriter out = Files.newBufferedWriter(directory.resolve("summary.csv"),
                     StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
                 row(out, "spring_xml_inspected", spring.inspected());
@@ -58,6 +66,11 @@ public final class DependencyReportWriter {
                 row(out, "bean_util_declarations", beans.beans().stream().filter(bean -> bean.declarationKind().startsWith("UTIL_")).count());
                 row(out, "bean_explicit_references", beans.references().size());
                 row(out, "bean_inventory_issues", beans.issues().size());
+                row(out, "bean_reference_context_rows", bindings.resolutions().size());
+                for (var count : bindings.resolutions().stream().collect(java.util.stream.Collectors.groupingBy(
+                        SpringBeanReferenceResolver.Resolution::status, java.util.TreeMap::new, java.util.stream.Collectors.counting())).entrySet()) {
+                    row(out,"bean_reference_status_" + count.getKey(),count.getValue());
+                }
                 row(out, "spring_xml_files", spring.springFiles());
                 row(out, "skipped_rootless_xml", spring.files().stream()
                         .filter(file -> file.parseStatus().equals("SKIPPED_NO_ROOT_ELEMENT")).count());

@@ -22,7 +22,8 @@ public final class SpringBeanAnalyzer {
             String enclosingBean, String profiles, String defaultAttributes, String declarationKind, String declaredAttributes) { }
     public record Reference(String xml, String ownerKey, String kind, String member, String target, String profiles) { }
     public record Issue(String xml, String status, String detail) { }
-    public record Result(List<Bean> beans, List<Reference> references, List<Issue> issues, Map<String,String> reachability, int inspected) { }
+    public record Result(List<Bean> beans, List<Reference> references, List<Issue> issues, Map<String,String> reachability,
+            int inspected, Map<String,List<String>> modeledContexts) { }
     private final List<Bean> beans = new ArrayList<>();
     private final List<Reference> refs = new ArrayList<>();
     private final List<Issue> issues = new ArrayList<>();
@@ -32,11 +33,13 @@ public final class SpringBeanAnalyzer {
     public static Result analyze(SpringXmlAnalyzer.Result spring, SpringLoadingAnalyzer.Result loading) {
         SpringBeanAnalyzer analyzer = new SpringBeanAnalyzer();
         Map<String, Set<String>> reaches = new LinkedHashMap<>();
+        Map<String, Set<String>> contexts = new LinkedHashMap<>();
         for (var reach : loading.reachability()) {
             reaches.computeIfAbsent(reach.location(), ignored -> new LinkedHashSet<>()).add(reach.entryId() + " | " + reach.context());
+            contexts.computeIfAbsent(reach.location(), ignored -> new LinkedHashSet<>()).add(reach.context());
         }
         Map<String,String> evidence = new LinkedHashMap<>();
-        reaches.forEach((location, contexts) -> evidence.put(location, String.join("\n", contexts)));
+        reaches.forEach((location, entries) -> evidence.put(location, String.join("\n", entries)));
         Set<String> inspected = new HashSet<>();
         for (var file : spring.files()) {
             if (!file.spring() || !file.parseStatus().startsWith("PARSED")) continue;
@@ -53,8 +56,10 @@ public final class SpringBeanAnalyzer {
                 try (InputStream in = zip.getInputStream(member)) { analyzer.inspect(file.location(), file.extension(), in); }
             } catch (Exception ex) { analyzer.issues.add(new Issue(file.location(), "BEAN_XML_INSPECTION_ERROR", ex.toString())); }
         }
+        Map<String,List<String>> modeledContexts = new LinkedHashMap<>();
+        contexts.forEach((location, names) -> modeledContexts.put(location, List.copyOf(names)));
         return new Result(List.copyOf(analyzer.beans), List.copyOf(analyzer.refs), List.copyOf(analyzer.issues),
-                Map.copyOf(evidence), inspected.size());
+                Map.copyOf(evidence), inspected.size(), Map.copyOf(modeledContexts));
     }
 
     private void inspect(String xml, String extension, InputStream in) throws Exception {

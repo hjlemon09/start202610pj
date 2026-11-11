@@ -501,3 +501,11 @@ spring-beans.csv 끝에 declaration_kind와 declared_namespace_attributes 열을
 콘솔에서 Util declarations 및 상태별 이슈 수를 확인할 수 있습니다. CSV 총수는 21개입니다.
 최종 대상 바인딩과 실제 등록/호출은 계속 미검증입니다.
 상세 기록과 검증 절차: docs/UTIL_NAMESPACE_SUPPORT.md.
+## Bean 참조 선언 후보 연결
+
+SpringBeanReferenceResolver를 추가했습니다. id/name 및 alias chain을 같은 모델링 컨텍스트 안에서 대조합니다.
+spring-bean-references.csv의 binding_status에 후보 1개/여러 개/없음 등을 구분하고,
+lookup_modeled_context, candidate_count, candidate_details, lookup_warnings, assessment, binding_certainty 열을 추가했습니다.
+CSV는 21개이며 참조는 문맥별 행으로 확장될 수 있습니다.
+후보 1개도 실제 바인딩 확정은 아닙니다. 부모 Context, profile/override 최종 선택은 미확정입니다.
+상세 목적·조건별 결과·검증: docs/BEAN_REFERENCE_CANDIDATES.md.

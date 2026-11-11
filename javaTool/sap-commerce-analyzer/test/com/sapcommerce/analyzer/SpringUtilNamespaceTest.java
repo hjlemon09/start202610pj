@@ -72,7 +72,11 @@ public final class SpringUtilNamespaceTest {
         String csv=Files.readString(output.resolve("spring-beans.csv"));
         check(csv.contains("declaration_kind") && csv.contains("UTIL_LIST") && csv.contains("declared_namespace_attributes"),"Additive CSV columns");
         check(!csv.contains("PRIVATE_LITERAL") && !Files.readString(output.resolve("spring-bean-references.csv")).contains("PRIVATE_LITERAL"),"Literal values not exported");
-        check(Files.readString(output.resolve("spring-bean-references.csv")).contains("NOT_RESOLVED"),"No binding or runtime claim");
+        check(Files.readString(output.resolve("spring-bean-references.csv")).contains("STATIC_CANDIDATE_ONLY"),"No final binding or runtime claim");
+        var bound=SpringBeanReferenceResolver.analyze(result);
+        check(bound.resolutions().stream().anyMatch(r->r.reference().kind().equals("PROPERTY_REF") && r.reference().target().equals("pipeline")
+                && r.modeledContext().equals("CORE") && r.status().equals("SINGLE_SAME_CONTEXT_CANDIDATE")
+                && r.candidates().getFirst().declaration().key().equals(pipeline.key())),"Actual XML/import/context pipeline connects util target");
         System.out.println("PASS: util source/JAR declarations, nested ownership, constant metadata, namespace limit categories, raw profile/type data, CSV. "+root);
     }
     private static SpringBeanAnalyzer.Bean bean(SpringBeanAnalyzer.Result r,String id) {return r.beans().stream().filter(b->b.id().equals(id)).findFirst().orElseThrow();}

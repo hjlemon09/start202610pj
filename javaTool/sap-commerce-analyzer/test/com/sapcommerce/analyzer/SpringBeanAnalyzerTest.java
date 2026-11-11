@@ -66,7 +66,7 @@ public final class SpringBeanAnalyzerTest {
         String beans=Files.readString(output.resolve("spring-beans.csv"));
         String references=Files.readString(output.resolve("spring-bean-references.csv"));
         check(beans.contains("POTENTIALLY_REACHABLE") && beans.contains("NO_MODELED_ENTRY_REACHES_XML") && beans.contains("NOT_EVALUATED"),"Reachability never runtime claim");
-        check(beans.contains("!/META-INF/beans.xml") && references.contains("NOT_RESOLVED"),"JAR provenance, no binding claim");
+        check(beans.contains("!/META-INF/beans.xml") && references.contains("STATIC_CANDIDATE_ONLY"),"JAR provenance, no final binding claim");
         check(!beans.contains("DO_NOT_EXPORT_THIS_VALUE") && !references.contains("DO_NOT_EXPORT_THIS_VALUE"),"Literal values not exported");
         // Input may change between passes: inventory must report failure rather than keep partial definitions.
         put(xml,"<beans");
