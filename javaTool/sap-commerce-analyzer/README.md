@@ -473,3 +473,9 @@ Spring Java Config/코드에 의한 동적 등록 및 전체 서버 속성 계�
 
 상세 기록: `docs/SPRING_LOADING_ENTRYPOINTS.md`.
 검증: `test/com/sapcommerce/analyzer/SpringLoadingAnalyzerTest.java`.
+
+미발견 진입점에 대해 다른 진입점에서 같은 파일명의 XML이 발견·파싱되면,
+`spring-loading-issues.csv`의 `related_entries`와 `assessment` 열에 관련 설정·컨텍스트·실제 경로를 함께 표시합니다.
+같은 파일명의 참고 후보이며 원래 미발견 상태, CORE/WEB 구분, 실제 로딩 미검증 상태는 유지합니다.
+`spring-loading-entrypoints.csv`에도 같은 관련 정보가 추가됩니다. CSV 개수는 18개로 유지됩니다.
+상세 설명과 확인 절차: `docs/RELATED_LOADING_ENTRIES.md`.
