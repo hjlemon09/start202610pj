@@ -29,7 +29,7 @@ Eclipse에서 새 Java 프로젝트를 만든 경우 `src`의 내용을 그대�
 - `src/trace/runtime`: bootstrap loader에 올리는 기록기·루프백 제어 서버.
 - `src/trace/control`: Eclipse에서 실행할 Swing 화면과 CLI 제어기.
 - `src/demo`: 동기 호출·예외·재귀·다른 스레드가 있는 작은 대상.
-- `src/trace/test`: 실제 브레이크포인트 통합 검증 및 경계/버퍼/클래스로더 검증.
+- `src/trace/test`: 선택적으로 실행하는 검증 코드. 일반 빌드 및 툴 실행에는 필요하지 않습니다.
 - `dist`: 실행 JAR 4개와 `lib/byte-buddy.jar`. 이 폴더 구조를 함께 이동해야 합니다.
 - `logs`: 세션별 CSV, 열린 호출 CSV, 측정 요약 TXT.
 
@@ -38,8 +38,12 @@ Eclipse에서 새 Java 프로젝트를 만든 경우 `src`의 내용을 그대�
 ```powershell
 cd C:\Users\krist\git\start202610pj\javaTool\commerce-call-tracer
 .\build.ps1
+
+# 선택: 테스트를 컴파일하고 자동 검증까지 실행할 때만
 .\verify.ps1
 ```
+
+**일반 빌드** `build.ps1`은 실행 JAR만 만들며 `src/trace/test`를 읽거나 컴파일하지 않습니다. 테스트 폴더가 없어도 빌드할 수 있습니다. **자동 검증** `verify.ps1`은 일반 빌드 후 선택적으로 실행하며, 그때 테스트 소스를 컴파일하고 검증합니다.
 
 Byte Buddy 1.17.8을 `lib/byte-buddy.jar`에 포함했습니다. Maven/Gradle 설치나 빌드 중 다운로드 없이 JDK 도구로 빌드합니다. Eclipse 프로젝트 파일도 포함했습니다.
 

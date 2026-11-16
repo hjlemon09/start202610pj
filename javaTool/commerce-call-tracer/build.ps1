@@ -29,9 +29,8 @@ $sources = @{
     agent = @(Get-Sources 'trace\agent')
     controller = @(Get-Sources 'trace\control')
     demo = @(Get-Sources 'demo')
-    test = @(Get-Sources 'trace\test')
 }
-foreach ($part in @('runtime','agent','controller','demo','test')) {
+foreach ($part in @('runtime','agent','controller','demo')) {
     New-Item -ItemType Directory -Force -Path "build\$part" | Out-Null
 }
 New-Item -ItemType Directory -Force -Path 'dist\lib' | Out-Null
@@ -51,5 +50,4 @@ foreach ($part in @('controller','demo')) {
     Run-Javac (@('--release','8','-encoding','UTF-8','-g','-d',"build\$part") + $sources[$part])
     Run-Jar @('cf',"dist\trace-$part.jar",'-C',"build\$part",'.')
 }
-Run-Javac (@('--add-modules','jdk.jdi','-encoding','UTF-8','-g','-cp','build\controller;build\runtime','-d','build\test') + $sources.test)
 Write-Output 'BUILD_OK: dist/trace-agent.jar, trace-runtime.jar, trace-controller.jar, trace-demo.jar'
