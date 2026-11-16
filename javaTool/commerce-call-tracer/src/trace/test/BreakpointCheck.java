@@ -43,7 +43,7 @@ public final class BreakpointCheck {
                 for (Event event : set) {
                     if (event instanceof ClassPrepareEvent) {
                         ReferenceType type = ((ClassPrepareEvent)event).referenceType();
-                        List<String> source = Files.readAllLines(root.resolve("src/demo/demo/shop/Demo.java"));
+                        List<String> source = Files.readAllLines(root.resolve("src/demo/shop/Demo.java"));
                         for (int i = 0; i < source.size(); i++) {
                             if (source.get(i).contains("_BREAKPOINT:")) {
                                 List<Location> locations = type.locationsOfLine(i + 1);

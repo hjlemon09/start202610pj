@@ -6,18 +6,37 @@ IntelliJ가 대상 JVM을 디버깅하고, Eclipse에서 실행한 별도 Java �
 
 ## 1. 구성과 빌드
 
-- `src/agent`: Byte Buddy 기반 premain Agent. 시작 시 로딩되는 클래스에 계측합니다.
-- `src/runtime`: bootstrap loader에 올리는 기록기·루프백 제어 서버.
-- `src/controller`: Eclipse에서 실행할 Swing 화면과 CLI 제어기.
+소스 루트는 **`src` 하나**입니다. 폴더 경로가 Java package 선언과 바로 일치합니다.
+
+```text
+src/
+  trace/
+    agent/       # package trace.agent
+    runtime/     # package trace.runtime
+    control/     # package trace.control
+    test/        # package trace.test
+  demo/
+    shop/        # package demo.shop
+    launch/      # package demo.launch
+```
+
+Eclipse에서 새 Java 프로젝트를 만든 경우 `src`의 내용을 그대로 복사하고, `lib/byte-buddy.jar`를 Build Path에 추가하세요. Source 항목은 `src` 하나만 등록합니다. JDK 21을 사용합니다. `build.ps1`과 `lib`, `config`는 프로젝트 최상위에 둡니다. Eclipse의 Java 빌드와 별도로 `build.ps1`을 실행하면 `dist`를 생성합니다.
+
+기존 여러 소스 루트 구성을 사용했다면 변경 후 Eclipse에서 프로젝트를 새로 고침하고 **Project → Clean**을 실행하세요. JAR 분리는 빌드 스크립트가 처리하므로 패키지 폴더를 소스 루트로 따로 등록하지 않습니다.
+
+
+- `src/trace/agent`: Byte Buddy 기반 premain Agent. 시작 시 로딩되는 클래스에 계측합니다.
+- `src/trace/runtime`: bootstrap loader에 올리는 기록기·루프백 제어 서버.
+- `src/trace/control`: Eclipse에서 실행할 Swing 화면과 CLI 제어기.
 - `src/demo`: 동기 호출·예외·재귀·다른 스레드가 있는 작은 대상.
-- `src/test`: 실제 브레이크포인트 통합 검증 및 경계/버퍼/클래스로더 검증.
+- `src/trace/test`: 실제 브레이크포인트 통합 검증 및 경계/버퍼/클래스로더 검증.
 - `dist`: 실행 JAR 4개와 `lib/byte-buddy.jar`. 이 폴더 구조를 함께 이동해야 합니다.
 - `logs`: 세션별 CSV, 열린 호출 CSV, 측정 요약 TXT.
 
 빌드·자동 검증은 JDK 21에서 진행했습니다. Agent/Runtime/Controller/Demo는 Java 8 바이트코드로 빌드합니다. 사내 JDK와의 호환성은 실제 버전을 확인한 뒤 재검증해야 합니다. 동적 Attach는 구현하지 않았습니다.
 
 ```powershell
-cd C:\Users\krist\javaTool\commerce-call-tracer
+cd C:\Users\krist\git\start202610pj\javaTool\commerce-call-tracer
 .\build.ps1
 .\verify.ps1
 ```
@@ -28,10 +47,10 @@ Byte Buddy 1.17.8을 `lib/byte-buddy.jar`에 포함했습니다. Maven/Gradle �
 
 1. Eclipse: **File → Import → General → Existing Projects into Workspace**로 이 폴더를 가져옵니다. JRE를 JDK 21로 설정합니다.
 2. `Controller.launch`를 **Run As → Controller**로 실행합니다. 또는 `trace.control.ControlWindow`를 Java Application으로 실행하고 프로그램 인수에 `config/demo.properties`의 전체 경로를 넣습니다. 작업 디렉터리는 프로젝트 폴더로 지정합니다. 배치 실행은 `run-controller.bat`입니다.
-3. IntelliJ에서 같은 폴더의 `src/demo`를 Java 소스로 열고 `demo.shop.Demo` 실행 구성을 만듭니다. JDK 21을 선택하고 작업 디렉터리를 프로젝트 폴더로 설정합니다. VM 옵션:
+3. IntelliJ에서 같은 폴더의 `src`를 소스 루트로 열고 `demo.shop.Demo` 실행 구성을 만듭니다. JDK 21을 선택하고 작업 디렉터리를 프로젝트 폴더로 설정합니다. VM 옵션:
 
    ```text
-   -javaagent:C:\Users\krist\javaTool\commerce-call-tracer\dist\trace-agent.jar=C:\Users\krist\javaTool\commerce-call-tracer\config\demo.properties
+   -javaagent:C:\Users\krist\git\start202610pj\javaTool\commerce-call-tracer\dist\trace-agent.jar=C:\Users\krist\git\start202610pj\javaTool\commerce-call-tracer\config\demo.properties
    ```
 
 4. `Demo.java`의 `START_BREAKPOINT`와 `STOP_BREAKPOINT` 주석이 붙은 **호출 라인**에 라인 브레이크포인트를 겁니다. 두 개 모두 **Suspend: Thread**로 지정합니다. IntelliJ **Debug**로 실행합니다.
