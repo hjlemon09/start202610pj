@@ -1,0 +1,7 @@
+# Replace com.yourcompany with the actual custom package(s). Prefixes are comma-separated.
+# Start narrow. Add individual SAP controller/renderer/facade/service packages as required.
+packages=com.yourcompany.storefront.controllers.cms,com.yourcompany.facades,com.yourcompany.core
+port=43127
+token=replace-this-with-a-random-32-character-token
+capacity=100000
+output=C:/Users/krist/javaTool/commerce-call-tracer/logs/commerce
