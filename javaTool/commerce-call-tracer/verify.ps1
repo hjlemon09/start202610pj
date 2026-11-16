@@ -23,3 +23,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Breakpoint validation failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Session boundary validation failed' }
 & java -cp 'build\test;dist\trace-controller.jar' trace.test.LoaderCheck $PSScriptRoot
 if ($LASTEXITCODE -ne 0) { throw 'Isolated classloader validation failed' }
+foreach ($mode in @('size','rows','unlimited','oversized','failure')) {
+    & java -cp 'build\test;dist\trace-controller.jar;dist\trace-runtime.jar' trace.test.RotationCheck $PSScriptRoot $mode
+    if ($LASTEXITCODE -ne 0) { throw "CSV rotation validation failed: $mode" }
+}

@@ -97,6 +97,25 @@ STOP은 신규 수집을 닫고 버퍼를 비운 뒤 완료를 응답합니다. 
 
 반환값·인자·JSP 모델 데이터는 수집하지 않습니다. 생성자, 클래스 초기화, 추상/native/synthetic 메서드는 제외합니다. 비동기 요청의 인과관계 연결, START 시 기존 콜스택 스냅샷, GUI에서 패키지 변경, 동적 Attach는 아직 없습니다. 스레드 필터는 스레드를 재사용하는 다른 요청을 의미적으로 구분하지 못합니다. 범위를 좁게 잡고 동기 구간부터 사용하세요.
 
+### CSV 크기·행 수에 따른 자동 분할
+
+Agent에 지정한 `hybris.properties`(사내에서 사용하는 설정 파일)에 다음 값을 넣습니다.
+
+```properties
+maxFileSizeMB=50
+maxRowsPerFile=1000000
+```
+
+- 파일당 50 MiB 또는 데이터 1,000,000행 중 먼저 도달한 기준으로 분할합니다. MB 설정은 1,048,576바이트 단위이며 소수도 지원합니다. 각 값을 0으로 설정하면 해당 제한을 해제합니다. 둘 다 0이면 단일 파일입니다. 설정이 없을 때도 기본값은 50 MiB / 1,000,000행입니다.
+- 첫 파일 이름은 기존과 같은 `trace-<세션>.csv`이고, 이후는 `trace-<세션>.part0002.csv`, `.part0003.csv` 순서입니다. 모든 파일에 같은 헤더를 기록합니다.
+- UTF-8 바이트 수와 헤더까지 포함해 크기를 계산합니다. CSV 행 중간을 자르지 않습니다. 헤더와 이벤트 한 행 자체가 제한보다 크면 그 행을 단독 파일에 보존하므로 예외적으로 크기를 초과할 수 있고, `oversized_rows`에 집계합니다.
+- 세션 ID·스레드 내 순번·호출 ID는 파일 경계를 넘어 이어집니다. ENTER와 EXIT는 서로 다른 파일에 있을 수 있습니다. 전체 호출 흐름은 첫 파일부터 분할 번호 순서대로 함께 해석합니다. 동시 기록 중에는 현재 파트의 일부 데이터가 아직 버퍼에 있을 수 있으므로 STOP 완료 후 읽는 것을 기준으로 합니다.
+- STOP 때 생성하는 열린 호출 파일도 `trace-<세션>.open.csv`, `.open.part0002.csv` 순서로 같은 기준을 적용합니다. 요약 TXT는 세션당 하나입니다.
+- STOP의 `files`는 이벤트 CSV 개수, `open_files`는 열린 호출 CSV 개수입니다. `saved`는 모든 이벤트 파트의 데이터 행 합계, `bytes`는 헤더를 포함한 모든 이벤트 파트의 바이트 합계입니다. `file`은 첫 이벤트 CSV, `last_file`은 마지막 이벤트 CSV입니다.
+- 기본 행 제한은 Excel 워크시트의 1,048,576행 한도 내에서 헤더를 포함해 열 수 있게 잡았습니다. 실제 Excel 열기 성능은 행의 길이와 메모리 등에 따라 달라집니다. [Microsoft 공식 제한](https://support.microsoft.com/en-us/excel/excel-specifications-and-limits)
+
+**반영 방법:** Agent 코드 변경이므로 `build.ps1`로 새 `dist`를 만들고, Hybris를 종료한 상태에서 사내 설치 위치에 `dist` 전체를 교체한 뒤 재기동합니다. `-javaagent` 경로가 같다면 이 변경 때문에 `ant server`를 실행할 필요는 없습니다. 크기/행 설정만 나중에 바꿀 때는 JAR 재빌드 없이 Hybris 재기동으로 반영합니다. 기존 4GB CSV를 소급해서 나누는 기능은 아니며, 새로 기록하는 세션부터 적용합니다.
+
 ## 5. 실제 성능 측정 절차
 
 동일 상품·동작·JDK·디버그 설정에서 워밍업 후 여러 번 반복합니다. A/B는 기록 CSV가 없으므로 구간 시간만 별도로 측정합니다.
@@ -117,6 +136,8 @@ IntelliJ Resume 직전부터 종료 브레이크포인트 이벤트 확인까지
 `test-results/breakpoint-check.txt`: 실제 JDWP 라인 브레이크포인트, Thread 정지, 외부 JVM의 START/STOP, 반복 세션, 구간 밖 제외, 예외/재귀/스레드 필터, CSV 대응/순번.
 
 `test-results/runtime-check.txt`: Recorder API에 대한 구간 경계, 열린 호출, 이전 세션 EXIT 제외, 잘못된 토큰, 버퍼 포화 및 Discard 검사. 이 검증은 실제 업무 메서드 계측을 대신하는 성능 시험이 아닙니다.
+
+`test-results/rotation-check-*.txt`: 크기/행 수 분할, UTF-8 행 보존, 헤더, 연속 순번, 전체 합계, 열린 호출 sidecar, 빈 세션, Discard, 파일 충돌 시 오류 보고를 검증합니다.
 
 `test-results/loader-check-default.txt`: 시스템 로더가 부모가 아닌 격리된 `URLClassLoader`에서도 bootstrap 기록기에 접근하고 호출을 저장하는지 검사합니다. 실제 SAP Commerce 클래스 로더 구조는 미검증입니다.
 

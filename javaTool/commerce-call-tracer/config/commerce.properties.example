@@ -5,3 +5,6 @@ port=43127
 token=replace-this-with-a-random-32-character-token
 capacity=100000
 output=C:/Users/krist/javaTool/commerce-call-tracer/logs/commerce
+# Rotate CSV parts at 50 MiB or 1,000,000 data rows. 0 disables each limit.
+maxFileSizeMB=50
+maxRowsPerFile=1000000

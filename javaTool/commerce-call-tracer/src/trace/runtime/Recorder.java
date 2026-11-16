@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.math.BigDecimal;
 
 /** Bootstrap-loaded helper. No Byte Buddy or application dependencies. */
 public final class Recorder {
@@ -17,6 +17,7 @@ public final class Recorder {
     private static volatile long transformed, transformErrors;
     private static Path output;
     private static int capacity;
+    private static long maxFileBytes, maxRowsPerFile;
     private static String secret;
     private static long serial;
     private static ServerSocket server;
@@ -36,6 +37,46 @@ public final class Recorder {
             this.state = state; this.call = call; this.depth = depth; this.method = method;
         }
     }
+    /** Writes whole UTF-8 CSV rows; only one part is open at a time. */
+    private static final class CsvFiles implements Closeable {
+        final Path first;
+        final byte[] header;
+        OutputStream out;
+        Path lastFile;
+        long bytes, partBytes, partRows, oversizedRows;
+        int files;
+        CsvFiles(Path first, String header) throws IOException {
+            this.first = first;
+            this.header = header.getBytes(StandardCharsets.UTF_8);
+            openNext();
+        }
+        private void openNext() throws IOException {
+            String name = first.getFileName().toString();
+            Path next = files == 0 ? first : first.resolveSibling(name.substring(0, name.length() - 4)
+                + String.format(Locale.ROOT, ".part%04d.csv", files + 1));
+            OutputStream stream = new BufferedOutputStream(Files.newOutputStream(next,
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE));
+            try { stream.write(header); stream.flush(); }
+            catch (IOException ex) { try { stream.close(); } catch (IOException close) { ex.addSuppressed(close); } throw ex; }
+            out = stream; lastFile = next; files++;
+            partBytes = header.length; partRows = 0; bytes += header.length;
+        }
+        void write(String row) throws IOException {
+            byte[] encoded = (row + "\n").getBytes(StandardCharsets.UTF_8);
+            if (partRows > 0 && ((maxFileBytes > 0 && encoded.length > maxFileBytes - partBytes)
+                    || (maxRowsPerFile > 0 && partRows >= maxRowsPerFile))) {
+                close(); openNext();
+            }
+            out.write(encoded);
+            partBytes += encoded.length; bytes += encoded.length; partRows++;
+            if (maxFileBytes > 0 && header.length + (long) encoded.length > maxFileBytes) oversizedRows++;
+        }
+        public void close() throws IOException {
+            OutputStream stream = out; out = null;
+            if (stream != null) stream.close();
+        }
+    }
+
     private static final class Session {
         final String id = System.currentTimeMillis() + "-" + (++serial);
         final long start = System.nanoTime();
@@ -45,41 +86,38 @@ public final class Recorder {
         final Map<Frame, String> open = new IdentityHashMap<Frame, String>();
         final Path file = output.resolve("trace-" + id + ".csv");
         long enters, exits, partialExits, dropped, calls;
-        volatile long consumed, saved, bytes;
+        volatile long consumed, saved, bytes, oversizedRows;
+        volatile int files;
+        volatile Path lastFile;
         volatile boolean closed;
         volatile String error = "";
         Thread writer;
         Session(long threadFilter, boolean save) { this.threadFilter = threadFilter; this.save = save; }
         void startWriter() throws IOException {
-            final BufferedWriter out = save ? Files.newBufferedWriter(file, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE) : null;
-            if (out != null) {
-                try {
-                    out.write("session,thread_id,thread_name,sequence,call_id,depth,event,relative_ns,method\n");
-                    out.flush();
-                } catch (IOException ex) { out.close(); throw ex; }
-            }
+            final CsvFiles out = save ? new CsvFiles(file,
+                "session,thread_id,thread_name,sequence,call_id,depth,event,relative_ns,method\n") : null;
             writer = new Thread(new Runnable() { public void run() {
                 try {
                     while (!closed || !queue.isEmpty()) {
                         String row = queue.poll(20, TimeUnit.MILLISECONDS);
                         if (row != null) {
                             consumed++;
-                            if (out != null && error.isEmpty()) {
-                                out.write(row); out.newLine(); saved++;
-                            }
+                            if (out != null) { out.write(row); saved++; }
                         }
                     }
                 } catch (Exception ex) { error = ex.toString(); }
                 finally {
                     if (out != null) {
-                        try { out.close(); bytes = Files.size(file); }
+                        try { out.close(); }
                         catch (IOException ex) { error = ex.toString(); }
+                        bytes = out.bytes; files = out.files; lastFile = out.lastFile;
+                        oversizedRows = out.oversizedRows;
                     }
                 }
             }}, "call-tracer-writer");
             writer.setDaemon(true); writer.start();
         }
+
     }
     public static void transformed(boolean ok) {
         synchronized (GATE) { if (ok) transformed++; else transformErrors++; }
@@ -89,6 +127,12 @@ public final class Recorder {
         Files.createDirectories(output);
         capacity = Integer.parseInt(props.getProperty("capacity", "100000"));
         if (capacity < 1) throw new IllegalArgumentException("capacity must be positive");
+        BigDecimal sizeMB = new BigDecimal(props.getProperty("maxFileSizeMB", "50"));
+        if (sizeMB.signum() < 0) throw new IllegalArgumentException("maxFileSizeMB must be >= 0");
+        maxFileBytes = sizeMB.multiply(BigDecimal.valueOf(1024L * 1024L)).toBigInteger().longValueExact();
+        if (sizeMB.signum() > 0 && maxFileBytes == 0) throw new IllegalArgumentException("maxFileSizeMB must allow at least one byte");
+        maxRowsPerFile = Long.parseLong(props.getProperty("maxRowsPerFile", "1000000"));
+        if (maxRowsPerFile < 0) throw new IllegalArgumentException("maxRowsPerFile must be >= 0");
         secret = props.getProperty("token", "");
         if (secret.length() < 16 || secret.indexOf(' ') >= 0) throw new IllegalArgumentException("token: 16+ characters, no spaces");
         server = new ServerSocket();
@@ -129,6 +173,7 @@ public final class Recorder {
             Session session;
             long begin = System.nanoTime();
             long open;
+            int openFiles = 0;
             synchronized (GATE) {
                 session = active;
                 if (session == null) return "ERROR not recording";
@@ -137,13 +182,13 @@ public final class Recorder {
                 // A sidecar records every accepted call still open at STOP, even when the event queue overflows.
                 if (session.save) {
                     Path boundaries = output.resolve("trace-" + session.id + ".open.csv");
-                    try (BufferedWriter out = Files.newBufferedWriter(boundaries, StandardCharsets.UTF_8)) {
-                        out.write("session,call_id,depth,thread_id,thread_name,method,boundary\n");
+                    try (CsvFiles out = new CsvFiles(boundaries, "session,call_id,depth,thread_id,thread_name,method,boundary\n")) {
                         for (Map.Entry<Frame, String> entry : session.open.entrySet()) {
                             Frame f = entry.getKey();
                             out.write(csv(session.id) + "," + f.call + "," + f.depth + "," + entry.getValue()
-                                + "," + csv(f.method) + ",OPEN_AT_STOP\n");
+                                + "," + csv(f.method) + ",OPEN_AT_STOP");
                         }
+                        openFiles = out.files;
                     } catch (IOException ex) { session.error = ex.toString(); }
                 }
                 session.open.clear();
@@ -155,8 +200,10 @@ public final class Recorder {
                 + " partial_exits=" + session.partialExits + " open_at_stop=" + open
                 + " events=" + (session.enters + session.exits + session.partialExits)
                 + " consumed=" + session.consumed + " saved=" + session.saved + " dropped=" + session.dropped
-                + " bytes=" + session.bytes + " stop_ms=" + String.format(Locale.ROOT, "%.3f", stopMs)
+                + " bytes=" + session.bytes + " files=" + session.files + " open_files=" + openFiles
+                + " oversized_rows=" + session.oversizedRows + " stop_ms=" + String.format(Locale.ROOT, "%.3f", stopMs)
                 + " file=" + (session.save ? session.file : "DISCARD")
+                + (session.save ? " last_file=" + session.lastFile : "")
                 + (session.error.isEmpty() ? "" : " writer_error=" + session.error);
             if (session.save) {
                 try { Files.write(output.resolve("trace-" + session.id + ".summary.txt"),
