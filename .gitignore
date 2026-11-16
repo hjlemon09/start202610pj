@@ -2,3 +2,6 @@
 /.classpath
 /.project
 /.settings/
+
+# Local handoff archives; retain source files in Git.
+/javaTool/sap-commerce-analyzer/sap-commerce-analyzer-handoff-*.zip
