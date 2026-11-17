@@ -93,6 +93,30 @@ public class TestController {
         return response;
     }
 
+    // Fetch once; the analyzer joins each tree occurrence to this result by component PK.
+    @RequestMapping(value = "/cms-analyzer/components/jsp-includes",
+        method = RequestMethod.GET, produces = "application/json")
+    @ResponseBody
+    public List<Map<String, String>> getJspIncludes() {
+        FlexibleSearchQuery query = new FlexibleSearchQuery(
+            "SELECT {c:pk}, {c:uid}, {c:page} FROM {JspIncludeComponent AS c}"
+        );
+        query.setResultClassList(List.of(PK.class, String.class, String.class));
+        query.setStart(0);
+        query.setCount(-1);
+        query.setNeedTotal(false);
+        SearchResult<List<Object>> result = flexibleSearchService.search(query);
+        List<Map<String, String>> response = new ArrayList<>();
+        for (List<Object> values : result.getResult()) {
+            Map<String, String> row = new LinkedHashMap<>();
+            row.put("componentPk", values.get(0).toString());
+            row.put("componentUid", values.get(1) == null ? null : values.get(1).toString());
+            row.put("jspPath", values.get(2) == null ? null : values.get(2).toString());
+            response.add(row);
+        }
+        return response;
+    }
+
     @RequestMapping(value = "/cms-analyzer/components/navigation-relations",
         method = RequestMethod.GET, produces = "application/json")
     @ResponseBody

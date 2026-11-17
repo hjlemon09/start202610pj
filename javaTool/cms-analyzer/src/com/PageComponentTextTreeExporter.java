@@ -46,6 +46,7 @@ public class PageComponentTextTreeExporter {
             columns.put("pageTemplatePk", templatePkIndex);
         }
 
+        ComponentRenderingResolver rendering = new ComponentRenderingResolver();
         Map<String, Page> pages = new LinkedHashMap<>();
         for (int i = 1; i < records.size(); i++) {
             List<String> record = records.get(i);
@@ -65,7 +66,7 @@ public class PageComponentTextTreeExporter {
             record.set(sourceIndex, source);
             int statusIndex = columns.get("slotStatus");
             record.set(statusIndex, normalizeCode(record.get(statusIndex)));
-            Row row = new Row(record, columns);
+            Row row = new Row(record, columns, rendering);
             String pk = row.get("pagePk");
             if (pk.isBlank()) {
                 throw new IOException("Missing pagePk at CSV record " + (i + 1));
@@ -94,7 +95,8 @@ public class PageComponentTextTreeExporter {
         System.out.println("Text tree saved: " + target.toAbsolutePath());
     }
 
-    private record Row(List<String> values, Map<String, Integer> columns) {
+    private record Row(List<String> values, Map<String, Integer> columns,
+                       ComponentRenderingResolver rendering) {
         String get(String name) {
             Integer index = columns.get(name);
             return index == null ? "" : values.get(index);
@@ -182,7 +184,8 @@ public class PageComponentTextTreeExporter {
                 case "TREE_NOT_FOUND" -> unmatched.add(new Node("Component "
                     + display(row.get("componentId"), row.get("componentPk"))
                     + pkLabel(row.get("componentPk"))
-                    + " (" + oneLine(row.get("componentType")) + ") [TREE_NOT_FOUND]"));
+                    + " (" + oneLine(row.get("componentType")) + ") [TREE_NOT_FOUND]"
+                    + row.rendering().describe(row.get("componentType"), row.get("componentPk"))));
                 case "MATCHED" -> addComponent(row);
                 default -> throw new IOException("Unknown joinStatus: " + row.get("joinStatus"));
             }
@@ -196,7 +199,8 @@ public class PageComponentTextTreeExporter {
                 + pkLabel(row.get("treeComponentPk"))
                 + " (" + oneLine(row.get("treeComponentType")) + ")"
                 + (status.isBlank() || status.equals("BRANCH") ? "" : " [" + status + "]")
-                + (entry.isBlank() ? "" : " {entry PK " + entry + "}");
+                + (entry.isBlank() ? "" : " {entry PK " + entry + "}")
+                + row.rendering().describe(row.get("treeComponentType"), row.get("treeComponentPk"));
             int depth;
             try {
                 depth = Integer.parseInt(row.get("componentDepth"));
