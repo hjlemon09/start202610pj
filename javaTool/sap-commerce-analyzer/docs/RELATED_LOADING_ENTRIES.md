@@ -12,7 +12,7 @@ acceleratorstorefrontcommons.application-context=acceleratorstorefrontcommons-sp
 반면 Storefront에는 하위 경로까지 지정한 별도 설정이 있었다.
 
 ```properties
-melcostorefront.additionalWebSpringConfigs.acceleratorstorefrontcommons=classpath:/acceleratorstorefrontcommons/web/spring/acceleratorstorefrontcommons-spring.xml
+mmmstorefront.additionalWebSpringConfigs.acceleratorstorefrontcommons=classpath:/acceleratorstorefrontcommons/web/spring/acceleratorstorefrontcommons-spring.xml
 ```
 
 분석기는 후자의 WEB 진입점에서 XML을 발견하고 파싱했지만, 사용자가 이슈 CSV와
@@ -92,6 +92,6 @@ LoadingEntryRelationsTest는 실제 가상 Extension/WEB 설정으로 다음을 
 CSV 18개 중 spring-loading-issues.csv에서
 source=acceleratorstorefrontcommons.application-context 행을 찾는다.
 같은 입력 조건이라면 원래 status는 유지되고 related_entry_status=SAME_FILENAME_ONLY,
-related_entries에는 WEB:melcostorefront의 전체 경로 및 파싱 상태가 표시되어야 한다.
+related_entries에는 WEB:mmmstorefront의 전체 경로 및 파싱 상태가 표시되어야 한다.
 properties 출처는 property_evidence와 후보 상세에서 확인한다.
 NOT_FOUND_IN_SCOPE와 ENTRYPOINT_NOT_FOUND_IN_SCOPE 두 진단이 함께 나오는 기존 동작도 유지한다.

@@ -1,0 +1,201 @@
+SELECT
+    result.pagePk,
+    result.pageId,
+    result.pageName,
+    result.pageLabel,
+    result.pageType,
+    result.pageTemplate,
+    result.slotPosition,
+    result.slotPk,
+    result.slotId,
+    result.slotCatalogVersion,
+    result.slotSource,
+    result.slotSourceId,
+    result.slotRelationPk,
+    result.slotStatus,
+    result.componentPk,
+    result.componentId,
+    result.componentName,
+    result.componentType
+FROM
+(
+    {{
+        SELECT
+            {p.pk} AS pagePk,
+            {p.uid} AS pageId,
+            {p.name} AS pageName,
+            (
+                {{
+                    SELECT {cp.label}
+                    FROM {ContentPage AS cp}
+                    WHERE {cp.pk} = {p.pk}
+                }}
+            ) AS pageLabel,
+            {pct.code} AS pageType,
+            {t.uid} AS pageTemplate,
+            {pf.position} AS slotPosition,
+            {s.pk} AS slotPk,
+            {s.uid} AS slotId,
+            {scv.version} AS slotCatalogVersion,
+            'PAGE' AS slotSource,
+            {p.uid} AS slotSourceId,
+            {pf.pk} AS slotRelationPk,
+            'ACTIVE' AS slotStatus,
+            {c.pk} AS componentPk,
+            {c.uid} AS componentId,
+            {c.name} AS componentName,
+            {cct.code} AS componentType
+        FROM {
+            AbstractPage AS p
+            JOIN CatalogVersion AS cv
+                ON {p.catalogVersion} = {cv.pk}
+            JOIN ComposedType AS pct
+                ON {p.itemtype} = {pct.pk}
+            LEFT JOIN PageTemplate AS t
+                ON {p.masterTemplate} = {t.pk}
+            JOIN ContentSlotForPage AS pf
+                ON {pf.page} = {p.pk}
+            JOIN ContentSlot AS s
+                ON {pf.contentSlot} = {s.pk}
+            JOIN CatalogVersion AS scv
+                ON {s.catalogVersion} = {scv.pk}
+            LEFT JOIN ElementsForSlot AS e
+                ON {e.source} = {s.pk}
+            LEFT JOIN AbstractCMSComponent AS c
+                ON {e.target} = {c.pk}
+            LEFT JOIN ComposedType AS cct
+                ON {c.itemtype} = {cct.pk}
+        }
+        WHERE {cv.version} = 'Online'
+    }}
+
+    UNION ALL
+
+    {{
+        SELECT
+            {p.pk} AS pagePk,
+            {p.uid} AS pageId,
+            {p.name} AS pageName,
+            (
+                {{
+                    SELECT {cp.label}
+                    FROM {ContentPage AS cp}
+                    WHERE {cp.pk} = {p.pk}
+                }}
+            ) AS pageLabel,
+            {pct.code} AS pageType,
+            {t.uid} AS pageTemplate,
+            {tf.position} AS slotPosition,
+            {s.pk} AS slotPk,
+            {s.uid} AS slotId,
+            {scv.version} AS slotCatalogVersion,
+            'TEMPLATE' AS slotSource,
+            {t.uid} AS slotSourceId,
+            {tf.pk} AS slotRelationPk,
+            CASE
+                WHEN EXISTS
+                (
+                    {{
+                        SELECT {pf.pk}
+                        FROM {ContentSlotForPage AS pf}
+                        WHERE {pf.page} = {p.pk}
+                          AND {pf.position} = {tf.position}
+                    }}
+                )
+                THEN 'OVERRIDDEN'
+                ELSE 'ACTIVE'
+            END AS slotStatus,
+            {c.pk} AS componentPk,
+            {c.uid} AS componentId,
+            {c.name} AS componentName,
+            {cct.code} AS componentType
+        FROM {
+            AbstractPage AS p
+            JOIN CatalogVersion AS cv
+                ON {p.catalogVersion} = {cv.pk}
+            JOIN ComposedType AS pct
+                ON {p.itemtype} = {pct.pk}
+            JOIN PageTemplate AS t
+                ON {p.masterTemplate} = {t.pk}
+            JOIN ContentSlotForTemplate AS tf
+                ON {tf.pageTemplate} = {t.pk}
+            JOIN ContentSlot AS s
+                ON {tf.contentSlot} = {s.pk}
+            JOIN CatalogVersion AS scv
+                ON {s.catalogVersion} = {scv.pk}
+            LEFT JOIN ElementsForSlot AS e
+                ON {e.source} = {s.pk}
+            LEFT JOIN AbstractCMSComponent AS c
+                ON {e.target} = {c.pk}
+            LEFT JOIN ComposedType AS cct
+                ON {c.itemtype} = {cct.pk}
+        }
+        WHERE {cv.version} = 'Online'
+    }}
+
+    UNION ALL
+
+    {{
+        SELECT
+            {p.pk} AS pagePk,
+            {p.uid} AS pageId,
+            {p.name} AS pageName,
+            (
+                {{
+                    SELECT {cp.label}
+                    FROM {ContentPage AS cp}
+                    WHERE {cp.pk} = {p.pk}
+                }}
+            ) AS pageLabel,
+            {pct.code} AS pageType,
+            {t.uid} AS pageTemplate,
+            NULL AS slotPosition,
+            NULL AS slotPk,
+            NULL AS slotId,
+            NULL AS slotCatalogVersion,
+            'NONE' AS slotSource,
+            NULL AS slotSourceId,
+            NULL AS slotRelationPk,
+            'NO_SLOT' AS slotStatus,
+            NULL AS componentPk,
+            NULL AS componentId,
+            NULL AS componentName,
+            NULL AS componentType
+        FROM {
+            AbstractPage AS p
+            JOIN CatalogVersion AS cv
+                ON {p.catalogVersion} = {cv.pk}
+            JOIN ComposedType AS pct
+                ON {p.itemtype} = {pct.pk}
+            LEFT JOIN PageTemplate AS t
+                ON {p.masterTemplate} = {t.pk}
+        }
+        WHERE {cv.version} = 'Online'
+          AND NOT EXISTS
+          (
+              {{
+                  SELECT {pf.pk}
+                  FROM {ContentSlotForPage AS pf}
+                  WHERE {pf.page} = {p.pk}
+              }}
+          )
+          AND NOT EXISTS
+          (
+              {{
+                  SELECT {tf.pk}
+                  FROM {
+                      ContentSlotForTemplate AS tf
+                      JOIN PageTemplate AS t2
+                          ON {tf.pageTemplate} = {t2.pk}
+                  }
+                  WHERE {t2.pk} = {p.masterTemplate}
+              }}
+          )
+    }}
+) result
+ORDER BY
+    result.pageType,
+    result.pageId,
+    result.slotPosition,
+    result.slotStatus,
+    result.componentId
