@@ -5,9 +5,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -39,11 +43,26 @@ final class ComponentRenderingResolver {
             throw new IOException("Controller source directory not found: " + sourceRoot
                 + "; set -Dcms.analyzer.sourceRoot=<Accelerator source root>");
         }
-        try (var files = Files.walk(sourceRoot)) {
-            controllers = files.filter(Files::isRegularFile)
-                .filter(file -> key(file.getFileName().toString()).endsWith("controller.java"))
-                .sorted().collect(Collectors.groupingBy(file -> key(file.getFileName().toString())));
-        }
+        List<Path> controllerSources = new ArrayList<>();
+        Files.walkFileTree(sourceRoot, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
+                return directory.toString().contains("@")
+                    ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                String filename = file.getFileName().toString();
+                if (!filename.contains("@") && key(filename).endsWith("controller.java")
+                        && Files.isRegularFile(file)) {
+                    controllerSources.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        controllers = controllerSources.stream().sorted()
+            .collect(Collectors.groupingBy(file -> key(file.getFileName().toString())));
         if (controllers.isEmpty()) {
             throw new IOException("No Controller Java sources found under " + sourceRoot
                 + "; check -Dcms.analyzer.sourceRoot before applying the default-controller rule.");
