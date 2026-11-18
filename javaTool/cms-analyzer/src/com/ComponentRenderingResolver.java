@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -59,6 +60,21 @@ final class ComponentRenderingResolver {
                     controllerSources.add(file);
                 }
                 return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path path, IOException error) throws IOException {
+                if (!path.equals(sourceRoot) && error instanceof NoSuchFileException) {
+                    System.err.println("Skipping missing or broken Controller source path: " + path);
+                    return FileVisitResult.CONTINUE;
+                }
+                throw error;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path directory, IOException error)
+                    throws IOException {
+                return error == null ? FileVisitResult.CONTINUE : visitFileFailed(directory, error);
             }
         });
         controllers = controllerSources.stream().sorted()
