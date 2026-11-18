@@ -106,7 +106,10 @@ final class ComponentRenderingResolver {
                     + matches.stream().map(Path::toString).collect(Collectors.joining("; ")) + "]";
             }
         }
-        String jsp = "[jsp個別確認必要]";
+        String jsp = switch (componentType) {
+            case "CMSParagraphComponent", "CMSLinkComponent", "ImageMapComponent" -> "jspなし";
+            default -> "[jsp個別確認必要]";
+        };
         if (componentType.equals("JspIncludeComponent")) {
             if (jspPaths == null) {
                 jspPaths = fetchJspPaths();
