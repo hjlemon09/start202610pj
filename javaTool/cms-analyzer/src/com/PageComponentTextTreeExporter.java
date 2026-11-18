@@ -132,7 +132,7 @@ public class PageComponentTextTreeExporter {
         }
 
         private void addTemplate(String uid, String pk) {
-            template = new Node("PageTemplate " + display(uid, "(UID 없음)") + pkLabel(pk));
+            template = new Node("PageTemplate " + display(uid, "(UID unavailable)") + pkLabel(pk));
             node.children.add(template);
         }
 
@@ -170,10 +170,10 @@ public class PageComponentTextTreeExporter {
 
         Slot(Row row) {
             if (row.get("slotSource").equals("NONE")) {
-                node = new Node("[NO_SLOT] 슬롯 없음");
+                node = new Node("[NO_SLOT] No slot");
             } else {
                 String uid = display(row.get("slotId"), row.get("slotPk"));
-                node = new Node("Slot " + display(row.get("slotPosition"), "(position 없음)")
+                node = new Node("Slot " + display(row.get("slotPosition"), "(position unavailable)")
                     + " / " + uid + pkLabel(row.get("slotPk")) + " [" + row.get("slotSource") + ", " + row.get("slotStatus") + "]");
             }
         }
@@ -232,7 +232,7 @@ public class PageComponentTextTreeExporter {
             }
             node.children.addAll(unmatched);
             if (empty) {
-                node.children.add(new Node("[NO_COMPONENT] 컴포넌트 없음"));
+                node.children.add(new Node("[NO_COMPONENT] No component"));
             }
             return node;
         }
@@ -250,7 +250,7 @@ public class PageComponentTextTreeExporter {
     }
 
     private static String pkLabel(String pk) {
-        return " (PK " + display(pk, "미수집") + ")";
+        return " (PK " + display(pk, "not collected") + ")";
     }
 
     private static String display(String value, String fallback) {
