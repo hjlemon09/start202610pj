@@ -59,6 +59,8 @@ public class CallTreeExtractor {
     static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom";   // 컨트롤러 스캔 범위, 전체면 null
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
     static final String OUT_NAME = "calltree.txt";                       // 프로젝트 루트(작업 디렉터리)에 생성
+    static final boolean PRUNE_ENABLED = true;                           // true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력
+    static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)"); // 클래스 단순명에 포함되어야 할 문자열
 
     // ===================== options =====================
     static List<Path> roots = new ArrayList<>();
@@ -307,18 +309,29 @@ public class CallTreeExtractor {
             Registry reg = webName == null ? new Registry() {{ parent = core; }} : webReg(webName);
             BeanDef cb = beanByClass(reg, cfqn);
             String cm = mapping(cc.td);
-            out.println("[CONTROLLER] " + rel(cc.path) + (cm == null ? "" : "  " + cm) + (cb != null ? "  (bean " + cb.id + ")" : ""));
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
             for (MethodDeclaration m : cc.td.getMethods()) {
                 String mp = mapping(m);
                 if (mp == null) continue;
-                out.println("  @ " + mp);
                 Frame fr = new Frame();
                 fr.decl = cc; fr.m = m; fr.bean = cb; fr.runtime = cfqn; fr.reg = reg;
                 Callee root = new Callee();
                 root.decl = cc; root.m = m; root.recv = new Target(cfqn, cb, null);
-                trace(root, fr, 0, "  ", true, new HashSet<>(), new HashSet<>(), out, true);
+                TNode tn = build(root, fr, 0, new HashSet<>(), new HashMap<>());
+                if (PRUNE_ENABLED) {
+                    prune(tn);
+                    if (tn.kids.isEmpty()) continue; // 조건을 만족하는 최종 노드가 없으면 이 엔드포인트는 출력 안 함
+                }
+                pw.println("  @ " + mp);
+                print(tn, "  ", true, true, pw);
             }
-            out.println();
+            pw.flush();
+            if (sw.getBuffer().length() > 0) {
+                out.println("[CONTROLLER] " + rel(cc.path) + (cm == null ? "" : "  " + cm) + (cb != null ? "  (bean " + cb.id + ")" : ""));
+                out.print(sw.toString());
+                out.println();
+            }
             if (++n % 20 == 0) { out.flush(); log("controllers done=" + n); }
         }
         out.flush();
@@ -1126,25 +1139,51 @@ public class CallTreeExtractor {
         return res;
     }
 
-    static void trace(Callee ce, Frame caller, int depth, String prefix, boolean last,
-                      Set<String> stack, Set<String> expanded, PrintWriter out, boolean root) {
-        String conn = root ? "" : (last ? "\u2514\u2500 " : "\u251C\u2500 ");
-        String line = prefix + conn + label(ce);
+    static class TNode {
+        String line;
+        List<TNode> kids = new ArrayList<>();
+        boolean selfMatch, kept;
+        TNode ref; // "expanded above" 노드가 가리키는 최초 전개 노드
+    }
+
+    static boolean matches(Callee ce) {
+        if (NAME_FILTER.matcher(simple(ce.decl.fqn)).find()) return true;
+        return ce.recv.cls != null && NAME_FILTER.matcher(simple(ce.recv.cls)).find();
+    }
+
+    static TNode build(Callee ce, Frame caller, int depth, Set<String> stack, Map<String, TNode> expanded) {
+        TNode n = new TNode();
+        n.line = label(ce);
+        n.selfMatch = matches(ce);
+        if (!ce.m.getBody().isPresent()) return n;
         String k = key(ce);
-        if (!ce.m.getBody().isPresent()) { out.println(line); return; }
-        if (stack.contains(k)) { out.println(line + "  (recursion)"); return; }
-        if (!full && expanded.contains(k)) { out.println(line + "  (expanded above)"); return; }
-        if (depth >= maxDepth) { out.println(line + "  (max-depth)"); return; }
-        out.println(line);
-        expanded.add(k);
+        if (stack.contains(k)) { n.line += "  (recursion)"; return n; }
+        if (!full && expanded.containsKey(k)) { n.line += "  (expanded above)"; n.ref = expanded.get(k); return n; }
+        if (depth >= maxDepth) { n.line += "  (max-depth)"; return n; }
+        expanded.put(k, n);
         stack.add(k);
         Frame nf = new Frame();
         nf.decl = ce.decl; nf.m = ce.m; nf.bean = ce.recv.bean; nf.runtime = ce.recv.cls;
         nf.reg = (ce.recv.bean != null && !ce.recv.bean.web) ? core : caller.reg;
-        List<Callee> kids = childrenOf(nf, ce);
-        String cp = root ? prefix + "   " : prefix + (last ? "   " : "\u2502  ");
-        for (int i = 0; i < kids.size(); i++)
-            trace(kids.get(i), nf, depth + 1, cp, i == kids.size() - 1, stack, expanded, out, false);
+        for (Callee c : childrenOf(nf, ce)) n.kids.add(build(c, nf, depth + 1, stack, expanded));
         stack.remove(k);
+        return n;
+    }
+
+    // 노드 자신이 조건에 맞거나, 조건에 맞는 자손이 있으면 유지. 아니면 제거.
+    static void prune(TNode n) {
+        boolean any = false;
+        for (TNode c : n.kids) {
+            prune(c);
+            if (c.kept) any = true;
+        }
+        n.kids.removeIf(c -> !c.kept);
+        n.kept = n.selfMatch || any || (n.ref != null && n.ref.kept);
+    }
+
+    static void print(TNode n, String prefix, boolean last, boolean root, PrintWriter out) {
+        out.println(prefix + (root ? "" : (last ? "\u2514\u2500 " : "\u251C\u2500 ")) + n.line);
+        String cp = root ? prefix + "   " : prefix + (last ? "   " : "\u2502  ");
+        for (int i = 0; i < n.kids.size(); i++) print(n.kids.get(i), cp, i == n.kids.size() - 1, false, out);
     }
 }
