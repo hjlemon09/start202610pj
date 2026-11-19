@@ -58,7 +58,7 @@ public class CallTreeExtractor {
     static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
     static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom";   // 컨트롤러 스캔 범위, 전체면 null
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
-    static final String OUT_NAME = "calltree.txt";                       // 프로젝트 루트(작업 디렉터리)에 생성
+    static final String OUT_NAME = "calltreeAll.txt";                       // 프로젝트 루트(작업 디렉터리)에 생성
     static final boolean PRUNE_ENABLED = true;                           // true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력
     static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)"); // 클래스 단순명에 포함되어야 할 문자열
 
