@@ -121,61 +121,72 @@ IntelliJ에서 소스가 없으면 Libraries 또는 연결된 배포 JAR에서 �
 • 별도 경로를 쓰는 경우 대상 실행 설정이 설정 디렉터리를 넘기는 줄.
 • 빌드 자료가 있으면 그 자료의 배포명, 생성 버전, 소스 기준.
 ----
-아래는 기존 절차서 「1.1 설치 루트와 적용 설정 경로를 지정한다」의 2번·3번·5번에 넣을 교체 문구입니다. 2번은 설치 후보 확인, 3번은 기본 설정 파일 확인, 5번은 대상 배포가 실제로 사용하는 설정 경로 확정에 해당합니다.
+이 문서에서 HYBRIS_HOME은 대상 SAP Commerce 설치 루트, CONFIG_DIR은 대상 배포의 기본 설정 디렉터리를 뜻한다. 예시의 Windows 경로는 실제 조사 대상 경로로 바꿔 읽는다.
 
 2번. bin/platform과 build.number를 확인한다
 
-파일 탐색기에서 사용자가 지정한 배포 폴더를 연다. 예를 들어 대상 폴더가 C:\commerce-local\hybris라면, C:\commerce-local\hybris\bin\platform 폴더와 그 안의 build.number 파일을 차례로 확인한다. SAP Commerce의 설치 버전과 패치는 이 build.number 파일에서 확인할 수 있다. 
+확인 목적. 대상 배포의 설치 루트와 정확한 SAP Commerce 버전을 확인할 파일을 식별한다.
 
-확인 결과	판단과 다음 작업
-bin/platform과 build.number가 모두 있고, 대상 시작 구성도 이 설치를 가리킨다.	해당 폴더를 HYBRIS_HOME으로 기록한다. 이 build.number의 경로를 기록해 1.2 정확한 SAP Commerce 버전 확인에 사용한다.
-두 항목이 모두 있지만, 대상 시작 구성이 어느 설치를 사용하는지 아직 모른다.	해당 경로를 설치 후보로 기록한다. 5번에서 시작 파일이나 실행 구성의 경로를 확인한 뒤 확정한다.
-bin/platform은 있지만 build.number가 없다.	설치 후보는 유지하고 패치 버전은 미확정으로 기록한다. 같은 배포의 원본 설치 패키지나 빌드 자료에서 버전 파일을 확인한다.
-bin/platform이 없다.	현재 열린 폴더에서 표준 설치 구조를 확인하지 못한 상태다. 대상 시작 스크립트의 위치를 확인하고, 그 스크립트가 호출하는 hybrisserver.bat의 경로를 따라간다. 예를 들어 호출 경로가 D:\sap\hybris\bin\platform\hybrisserver.bat라면 D:\sap\hybris에서 이 확인을 다시 한다.
+파일 탐색기에서 사용자가 지정한 배포 폴더를 연다. 예를 들어 대상 폴더가 C:\commerce-local\hybris라면, C:\commerce-local\hybris\bin\platform 폴더와 그 안의 build.number 파일을 차례로 확인한다. 정확한 버전과 패치 표기는 1.2에서 이 파일을 열어 확인한다.
 
-완료 기준. 대상 시작 구성과 HYBRIS_HOME이 연결되고, 그 설치의 버전 확인에 사용할 build.number 또는 같은 배포의 대체 버전 자료가 식별됐다.
+|확인 결과                                                              |판단과 다음 작업                                                                                                                                                             |
+|-------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|`bin/platform`과 `build.number`가 모두 있고, 대상 시작 구성에서 이 설치를 사용한다고 확인했다.|해당 설치 루트를 `HYBRIS_HOME`으로 기록한다. `build.number`의 절대 경로를 기록해 **1.2 정확한 SAP Commerce 버전 확인**에 사용한다.                                                                      |
+|두 항목이 모두 있지만, 대상 시작 구성이 어느 설치를 사용하는지 아직 모른다.                       |해당 경로를 **설치 후보**로 기록한다. 5번에서 대상 시작 파일이나 실행 구성을 확인하여 설치를 확정한다.                                                                                                         |
+|`bin/platform`은 있지만 `build.number`가 없다.                            |설치 후보는 유지하고 **패치 버전은 미확정**으로 기록한다. 같은 배포의 원본 설치 패키지나 빌드 자료에서 버전 정보를 확인한다.                                                                                             |
+|`bin/platform`이 없다.                                                |현재 폴더에서는 표준 설치 구조를 확인하지 못했다. 대상 시작 스크립트가 호출하는 `hybrisserver.bat`의 경로를 찾는다. 예를 들어 호출 경로가 `D:\sap\hybris\bin\platform\hybrisserver.bat`라면 `D:\sap\hybris`에서 이 확인을 다시 한다.|
+
+완료 기준. 대상 시작 구성과 HYBRIS_HOME이 연결되었고, 그 설치의 버전 확인에 사용할 build.number 또는 같은 배포의 대체 버전 자료가 식별되었다.
 
 3번. 기본 위치의 local.properties와 localextensions.xml을 각각 확인한다
 
-2번에서 찾은 HYBRIS_HOME 아래의 config 폴더를 연다. local.properties와 localextensions.xml을 각각 확인하고, 파일별로 존재 여부와 절대 경로를 기록한다. local.properties는 설정값을 조사하는 데 쓰고, localextensions.xml은 빌드의 extension 선언을 조사하는 데 쓴다. 두 파일이 발견된 위치는 5번에서 대상 배포가 실제 사용하는 위치인지 확인한다. 
+확인 목적. 테넌트 설정과 extension 선언을 조사할 입력 파일의 후보를 확보한다.
 
-확인 결과	판단과 다음 작업
-두 파일이 모두 있다.	HYBRIS_HOME/config를 설정 경로 후보로 기록한다. 5번에서 적용 경로가 이곳으로 확인되면 local.properties는 1.3 테넌트 구성 확인과 4장 프로퍼티 최종값 확인에, localextensions.xml은 2장 배포 포함 extension 확인에 사용한다.
-local.properties만 있다.	설정값 조사에 사용할 파일 후보를 확보했다. 5번에서 실제 설정 경로를 확정한 뒤에도 localextensions.xml이 없다면, 대상 빌드가 HYBRIS_HOME/bin/platform/extensions.xml을 대체 파일로 사용했는지 확인한다. 보관된 대상 빌드 출력이 있다면 Extension file used: 뒤의 경로를 확인한다.
-localextensions.xml만 있다.	extension 입력 파일 후보를 확보했다. local.properties가 없는 이유를 확인하려면 5번에서 실제 설정 경로와 별도 프로퍼티 입력을 확인한다. 테넌트 설정값의 판정은 해당 배포가 읽는 설정 자료를 확보한 뒤 진행한다.
-config 폴더가 없거나 두 파일이 모두 없다.	기본 위치에서 설정 파일을 확보하지 못한 상태다. 5번에서 별도 설정 경로를 확인한다. 적용 경로를 찾은 뒤 그 폴더에서 두 파일의 존재 여부를 다시 확인한다.
+2번에서 찾은 HYBRIS_HOME 아래의 config 폴더를 연다. local.properties와 localextensions.xml을 각각 확인하고, 파일별로 존재 여부와 절대 경로를 기록한다. local.properties는 설정값의 출처로, localextensions.xml은 빌드의 extension 선언을 확인하는 데 사용한다. 이 위치를 대상 배포가 실제로 사용하는지는 5번에서 판정한다.
 
-완료 기준. 두 파일 각각에 대해 경로와 존재 확인, 대체 입력 확인, 미확정 중 하나를 기록했다. 파일이 없다는 사실만으로 추가 테넌트나 extension의 존재 여부를 판정하지 않는다.
+|확인 결과                        |판단과 다음 작업                                                                                                                                                                                 |
+|-----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|두 파일이 모두 있다.                 |`HYBRIS_HOME/config`를 **설정 경로 후보**로 기록한다. 5번에서 이 위치가 적용 경로로 확인되면, `local.properties`는 **1.3 테넌트 구성 확인**과 **4장 프로퍼티 최종값 확인**에 사용하고, `localextensions.xml`은 **2장 배포 포함 extension 확인**에 사용한다.|
+|`local.properties`만 있다.      |설정값 입력 후보를 확보했다. 5번에서 확정한 위치에도 `localextensions.xml`이 없다면, 대상 빌드가 `HYBRIS_HOME/bin/platform/extensions.xml`을 대체 파일로 사용했는지 확인한다. 보관된 대상 빌드 출력이 있다면 `Extension file used:` 뒤의 경로를 확인한다.     |
+|`localextensions.xml`만 있다.   |extension 선언 입력 후보를 확보했다. 테넌트 관련 설정값을 판정하기 위해 5번에서 실제 설정 경로와 추가 프로퍼티 입력을 확인한다.                                                                                                            |
+|`config` 폴더가 없거나 두 파일이 모두 없다.|기본 위치에서 설정 파일을 확보하지 못한 상태다. 5번에서 별도 설정 경로를 확인하고, 경로가 확정되면 그 폴더에서 두 파일을 다시 찾는다.                                                                                                            |
+
+완료 기준. 두 파일 각각에 대해 경로와 존재 확인, 대체 입력 확인 또는 미확정을 기록했다. 파일 부재만 확인한 경우 테넌트나 extension 목록의 판정은 후속 근거가 확보될 때까지 미확정으로 둔다.
 
 5번. 시작 구성에서 별도 설정 경로가 지정됐는지 확인한다
 
-시작 구성은 대상 로컬 배포를 실제로 시작시키는 실행 설정이나 배치 파일을 말한다. IntelliJ의 Remote JVM Debug로 접속하는 경우에는 서버를 시작한 쪽의 배치 파일이나 실행 설정부터 조사한다.
+확인 목적. 대상 배포가 실제로 사용하는 CONFIG_DIR을 확정하고, 기본 설정 디렉터리와 추가 프로퍼티 입력을 각각 기록한다.
 
-1. 대상 서버를 시작하는 파일 또는 실행 설정을 연다. 배치 파일을 사용하는 경우, 실행하는 .bat 파일을 열어 hybrisserver.bat를 호출하는 줄을 찾는다. 다른 .bat 파일을 call하는 경우 그 파일도 연다. Eclipse External Tools에서 시작하는 경우에는 해당 실행 구성의 Location, Working Directory, Environment에서 실행 파일, 작업 폴더, 넘기는 환경 변수를 확인한다. Windows의 SAP 표준 시작 스크립트는 bin/platform/hybrisserver.bat다. 
-2. HYBRIS_CONFIG_DIR이 어디서 지정되고 전달되는지 확인한다. 시작 배치 파일, 호출하는 배치 파일, 실행 구성의 환경 변수에서 HYBRIS_CONFIG_DIR을 검색한다. 예를 들어 set "HYBRIS_CONFIG_DIR=D:\sap-config\local-a"를 발견하면, 그 줄이 대상 실행에서 실제로 지나가는 분기인지, 이후 호출되는 파일이 값을 다시 지정하는지 확인한다. %~dp0나 다른 변수가 들어 있으면 실제 시작 파일의 위치와 변수값을 대입해 절대 경로를 구한다. 
-3. 별도 프로퍼티 입력이 있으면 기본 설정 디렉터리와 각각 기록한다. HYBRIS_RUNTIME_PROPERTIES가 가리키는 파일이나 HYBRIS_OPT_CONFIG_DIR·hybris.optional.config.dir이 가리키는 경로를 발견하면, 대상 실행에 전달되는 값을 기록한다. 이 값들은 추가 프로퍼티 입력을 지정할 수 있다. 예를 들어 HYBRIS_OPT_CONFIG_DIR=D:\sap-config\overrides를 발견하면 D:\sap-config\overrides를 추가 설정 경로로 기록한다. 
-4. 시작 파일만으로 판정이 어려우면 대상 버전의 경로 결정 코드를 연다. IntelliJ에서 de.hybris.bootstrap.config.SystemConfig를 열고 getConfigDir()가 반환하는 configDir의 할당 위치를 찾는다. 그 값을 만드는 호출까지 따라가 어떤 입력 키를 읽는지, 입력이 없을 때 어떤 기본 경로를 만드는지 확인한다. 소스가 없으면 대상 배포 JAR의 디컴파일 결과를 사용한다. 
+여기서 시작 구성은 대상 로컬 배포를 시작시키는 실행 설정이나 배치 파일을 뜻한다. IntelliJ의 Remote JVM Debug로 접속하는 환경이라면, 서버를 시작한 쪽의 배치 파일이나 실행 설정에서 조사한다.
 
-확인 결과	최종 판정
-대상 실행이 D:\sap-config\local-a를 기본 설정 디렉터리로 전달하고, 이후에 값이 바뀌지 않는다.	CONFIG_DIR=D:\sap-config\local-a로 기록한다. 그 폴더에서 3번의 파일 확인을 다시 수행한다.
-별도 경로 지정이 없고, 대상 버전의 기본 경로 결정 코드가 HYBRIS_HOME/config를 선택한다.	CONFIG_DIR=<HYBRIS_HOME>\config로 기록하고, 3번에서 확인한 파일을 후속 조사에 사용한다.
-기본 경로와 추가 프로퍼티 경로가 모두 확인됐다.	CONFIG_DIR과 추가 설정 파일·폴더를 각각 기록한다. 후속 프로퍼티 조사에서 확인된 입력들을 함께 검토한다.
-시작 파일에 지정이 없지만, 호출하는 쪽에서 넘긴 환경 변수나 실행 프로필을 확인할 수 없다.	CONFIG_DIR을 미확정으로 기록한다. 필요한 자료를 실행 구성의 Environment, 상위 시작 배치 파일, 대상 서비스의 실행 설정처럼 구체적으로 적는다.
+1. 대상 서버를 시작하는 파일 또는 실행 설정을 연다. 배치 파일로 시작하는 경우 실제 실행하는 .bat 파일을 열어 hybrisserver.bat를 호출하는 줄을 찾는다. 다른 .bat 파일을 call하는 경우 그 파일도 연다. Eclipse External Tools로 시작하는 경우 해당 실행 구성의 Location, Working Directory, Environment에서 실행 파일, 작업 폴더, 전달하는 환경 변수를 확인한다. SAP Commerce의 표준 Windows 시작 스크립트는 bin/platform/hybrisserver.bat다.
+2. HYBRIS_CONFIG_DIR이 지정되고 전달되는 위치를 확인한다. 시작 배치 파일, 호출하는 배치 파일, 실행 구성의 환경 변수에서 HYBRIS_CONFIG_DIR을 검색한다. 예를 들어 set "HYBRIS_CONFIG_DIR=D:\sap-config\local-a"를 발견하면, 그 줄이 대상 실행에서 실제로 지나가는 분기에 있는지 확인한다. 이후 호출되는 파일에서 같은 값을 덮어쓰는지도 확인한다. 경로가 %~dp0 또는 다른 변수를 사용하면 배치 파일의 위치와 적용 변수값을 대입해 절대 경로를 구한다.
+3. 추가 프로퍼티 입력을 확인한다. HYBRIS_RUNTIME_PROPERTIES가 가리키는 파일, HYBRIS_OPT_CONFIG_DIR 또는 hybris.optional.config.dir이 가리키는 폴더가 대상 실행에 적용된다면 각각의 경로와 출처를 기록한다. 예를 들어 HYBRIS_OPT_CONFIG_DIR=D:\sap-config\overrides가 적용되면 D:\sap-config\overrides를 추가 설정 경로로 기록한다.
+4. 시작 구성만으로 판정하기 어려운 경우 대상 버전의 경로 결정 코드를 확인한다. IntelliJ에서 de.hybris.bootstrap.config.SystemConfig를 열어 getConfigDir()가 반환하는 configDir의 할당 위치를 찾는다. 그 값의 출처를 호출 코드까지 거슬러 올라가 어떤 키를 읽는지, 입력이 없으면 어떤 기본 경로를 구성하는지 확인한다. 코드가 소스에 없으면 같은 배포의 JAR에서 디컴파일된 메서드를 확인한다.
 
-완료 기준. CONFIG_DIR의 절대 경로와 그 값을 결정한 실행 설정 항목, 배치 파일의 줄 또는 Java 메서드의 분기를 함께 기록했다. 3번에서 찾은 파일의 디렉터리와 다르면, 확정된 CONFIG_DIR에서 찾은 파일을 후속 조사에 사용한다.
+|확인 결과                                                              |최종 판정                                                                                                   |
+|-------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
+|대상 실행이 `D:\sap-config\local-a`를 기본 설정 디렉터리로 전달하고, 이후에 바뀌지 않음을 확인했다.|`CONFIG_DIR=D:\sap-config\local-a`로 기록한다. **그 폴더에서 3번의 파일 확인을 다시 수행한다.**                                |
+|별도 경로 지정이 없고, 대상 버전의 기본 경로 결정 코드가 `HYBRIS_HOME/config`를 선택한다.      |`CONFIG_DIR=<HYBRIS_HOME>\config`로 기록한다. 3번에서 확인한 파일을 후속 조사에 사용한다.                                      |
+|기본 경로와 추가 프로퍼티 경로가 모두 확인되었다.                                       |`CONFIG_DIR`과 추가 설정 파일·폴더를 각각 기록한다. 후속 프로퍼티 조사에 확인된 입력들을 포함한다.                                          |
+|직접 지정은 찾지 못했고 상위 프로세스에서 넘기는 환경 변수나 실행 프로필을 확인할 수 없다.               |`CONFIG_DIR`을 **미확정**으로 기록한다. 부족한 자료를 `실행 구성의 Environment`, `상위 시작 배치 파일`, `대상 서비스의 실행 설정`처럼 구체적으로 명시한다.|
+
+완료 기준. CONFIG_DIR의 절대 경로와 그 값을 결정한 실행 설정 항목, 배치 파일의 줄 또는 Java 메서드의 분기를 함께 기록했다. 3번에서 먼저 확인한 디렉터리와 다르면, 최종 CONFIG_DIR에서 찾은 파일을 후속 조사에 사용한다.
 
 참고 문서
 
-* SAP Help — Finding Your SAP Commerce Version
-    https://help.sap.com/docs/SAP_COMMERCE/5671512a37c74e1daa2d8191b163dc61/aa595ad5ed9d4f138bafe35adc01e6d8.html
-* SAP Help — Installation Based on Specified Extensions
-    https://help.sap.com/docs/SAP_COMMERCE/3fb5dcdfe37f40edbac7098ed40442c0/8b8b1a3186691014a088ff4edd0c42f6.html
-* SAP Help — Starting the SAP Commerce Server
-    https://help.sap.com/docs/SAP_COMMERCE/a74589c3a81a4a95bf51d87258c0ab15/62a33716bc7d475caef574687f3d3119.html
-* SAP Help — SAP Commerce Runtime and Optional Configuration
-    https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8beb75da86691014a0229cf991cb67e4.html
-* SAP Commerce 2211 API — SystemConfig
-    https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/bootstrap/config/SystemConfig.html
+• SAP Help — Finding Your SAP Commerce Version
+https://help.sap.com/docs/SAP_COMMERCE/5671512a37c74e1daa2d8191b163dc61/aa595ad5ed9d4f138bafe35adc01e6d8.html
+• SAP Help — Configuration Properties
+https://help.sap.com/docs/SAP_COMMERCE/5c9ea0c629214e42b727bf08800d8dfa/8b89e9f986691014a915c84d1067b6ee.html
+• SAP Help — Installation Based on Specified Extensions
+https://help.sap.com/docs/SAP_COMMERCE/3fb5dcdfe37f40edbac7098ed40442c0/8b8b1a3186691014a088ff4edd0c42f6.html
+• SAP Help — Starting the SAP Commerce Server
+https://help.sap.com/docs/SAP_COMMERCE/a74589c3a81a4a95bf51d87258c0ab15/62a33716bc7d475caef574687f3d3119.html
+• SAP Help — SAP Commerce Runtime and Optional Configuration
+https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8beb75da86691014a0229cf991cb67e4.html
+• SAP Commerce 2211 API — SystemConfig
+https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/bootstrap/config/SystemConfig.html
 ----
 |확인 결과                         |다음 작업                                     |
 |------------------------------|------------------------------------------|
