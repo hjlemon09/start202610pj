@@ -1,315 +1,997 @@
-SAP Commerce 2211 테넌트별 코어 Spring XML 조사 절차서
+SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서
 
-0. 목적과 적용 범위
+0. 목적, 조사 입력, 완료의 의미
 
-현행 Accelerator의 PDP를 제공하는 SAP Commerce 배포에서 테넌트 하나를 식별한다. 그 테넌트에 활성화된 extension을 찾고, 코어 Spring 로더가 직접 여는 진입 XML과 Spring XML의 <import>로 여는 하위 XML을 실제 리소스 경로 및 처리 순서와 함께 기록한다.
+0.1 목적
 
-이 절차는 Windows 로컬의 SAP Commerce 2211 계열과 IntelliJ를 기준으로 작성했다. 조사에는 소스, 설정, 빌드·배포 산출물, 대상 버전 JAR의 디컴파일 결과를 사용한다. 서버 기동이나 디버그 브레이크포인트는 전제하지 않는다. 확인 위치에 제시된 경로는 기본 구조 또는 탐색 출발점이다. 실제 프로젝트에서 확인한 경로를 결과에 기록한다.
+사용자가 입력한 테넌트 ID에 대해 활성 extension별 코어 Spring XML과 처리 순서를 정적 자료로 재구성한다.
+대상 배포를 식별한 뒤, 테넌트가 코어 컨텍스트를 구성할 때 어떤 extension과 리소스를 사용하는지 추적한다.
+최종 결과에는 실제 파일 또는 JAR 엔트리, 코어 로더의 진입 순서, 선언적 <import>의 대상과 처리 위치를 기록한다.
 
-완료 범위는 코어 XML의 로드 계획이다. XML 이후 Java 설정, 컴포넌트 스캔, 레지스트리 후처리에서 추가·변경되는 빈과 팩토리가 반환하는 실제 객체는 후속 분석 항목이다. Global ApplicationContext와 Storefront WebApplicationContext의 설정을 발견하면 컨텍스트 이름을 표시해 코어 목록과 구별한다.
+0.2 조사 시작 시 받는 입력
+
+|입력       |기입 예시                            |사용처                                                |
+|---------|---------------------------------|---------------------------------------------------|
+|대상 테넌트 ID|`master` 또는 `demo`               |테넌트 설정과 코어 로더의 입력을 고르는 기준                          |
+|대상 설치·배포 |`C:/commerce-local/hybris`       |버전, 설정, JAR와 디렉터리를 묶는 기준                           |
+|설정 디렉터리  |`C:/commerce-local/hybris/config`|실제 `local.properties`와 `localextensions.xml`을 여는 위치|
+|소스 기준    |해당 배포에 대응하는 커밋 또는 사내 배포 버전       |소스와 바이너리의 대응 확인                                    |
+|빌드 산출물 위치|대상 코드와 같은 배포의 디렉터리 또는 패키지        |실제 extension 목록, 클래스패스, JAR 엔트리를 확인                |
+|외부 적용값 위치|대상 실행의 환경별 설정 파일 또는 배포 설정        |프로퍼티, Spring profile, 리소스 치환값 재구성                  |
+
+테넌트 ID는 사용자가 지정한다.
+예시의 master와 demo는 추적 방법을 보여주는 가상 입력이다.
+실제 조사에서 입력한 ID가 무엇인지 1장에서 검증한다.
+HYBRIS_HOME은 bin이 들어 있는 실제 설치 루트를 가리킨다.
+CONFIG_DIR은 해당 설치가 실제로 읽는 설정 디렉터리를 가리킨다.
+예시의 슬래시 경로는 Windows에서도 읽기 쉽게 표기한 것이다.
+
+0.3 조사 대상과 결과물
+
+1. 대상 배포와 지정 테넌트의 식별 기록.
+2. 배포 포함 extension 목록과 해당 테넌트 활성 extension 목록.
+3. extension별 최종 <extension>.application-context 값과 적용 출처.
+4. SAP Commerce 코어 로더가 직접 여는 진입 XML과 실제 물리 경로.
+5. 각 진입 XML에서 활성화되는 선언적 import와 중첩 처리 흐름.
+6. extension 간 순서, extension 내부 진입 순서, import 내부 순서 및 근거.
+7. 자료 부족이나 구현 의존으로 판단하지 못한 항목과 추가 조사 위치.
+
+진입 XML은 테넌트 코어 로더가 Spring에 넘긴 XML 리소스다.
+import XML은 진입 XML 또는 다른 import XML의 <import>가 추가로 읽은 리소스다.
+처리 순서는 진입, 중첩 import, 부모 문서로 복귀하는 흐름을 포함한다.
+Java 설정, 컴포넌트 스캔, 레지스트리 후처리와 팩토리의 실행 결과는 후속 빈 분석에 속한다.
+코드나 XML 네임스페이스 핸들러가 별도로 XML을 여는 것이 발견되면 9장에서 그 위치를 기록한다.
+
+0.4 작업 방식과 증거 표기
+
+이 문서는 SAP Commerce 2211 계열을 기준으로 한다.
+개발자는 Windows 로컬과 IntelliJ 환경을 가정한다.
+소스, 최종 적용 설정, 빌드·배포 자료, 대상 JAR의 디컴파일 결과를 읽어 조사한다.
+문서에 적힌 SAP API 이름은 코드로 들어가는 탐색 지점이다.
+실제 클래스 연결과 조건문은 대상 패치 및 커스텀 구현에서 확인한다.
+
+|확인 대상  |증거를 적는 방식                      |예시                                                              |
+|-------|-------------------------------|----------------------------------------------------------------|
+|프로퍼티   |파일 경로, 키, 원문, 적용값              |`config/local.properties:84`의 `melcocore.application-context`   |
+|XML    |파일 경로, 요소·속성, 줄 또는 요소 위치       |`some-extension/extensioninfo.xml:15`의 `requires-extension@name`|
+|소스 코드  |소스 경로, 클래스, 메서드, 조건 및 결과       |`LogicalLoader.java:90`의 키 미설정 분기                               |
+|디컴파일 코드|JAR 경로, 클래스 전체 이름, 메서드 시그니처, 분기|`<배포 JAR>`의 `Registry.getCoreApplicationContext()` 호출 경로        |
+|배포 리소스 |파일 경로 또는 JAR 경로와 엔트리           |`C:/example/lib/sample.jar!/spring/core.xml`                    |
+|순서     |앞뒤 관계, 증거, 조건                  |`basecatalog < melcocore`, 대상 빌드 의존 관계                          |
+|자료 부족  |확인한 위치, 부족한 값, 다음 확인 위치        |활성 profile 불명, 대상 환경의 프로퍼티 주입 설정 확인 필요                          |
+
+다른 패치의 소스와 현재 배포의 JAR를 확보했다면 각각의 버전을 적고 일치 여부를 확인한다.
+IntelliJ에서 소스가 없으면 Libraries 또는 연결된 배포 JAR에서 클래스 전체 이름으로 선언을 연다.
+같은 FQCN이 여러 JAR에 있으면 6장의 클래스패스 조사로 어느 JAR가 사용되는지 판정한다.
+파일을 찾지 못했으면 검색에 사용한 폴더와 문자열을 기록한다.
+툴이나 명령을 실행할 경우 입력 대상을 고정하고, 결과에서 확인하려는 값을 기록한다.
+
+0.5 상태의 의미
+
+|상태   |사용 기준                                           |
+|-----|------------------------------------------------|
+|확정   |결과를 결정한 대상 배포의 설정, 코드 또는 산출물을 제시할 수 있다.         |
+|미확정  |필요한 입력이나 구현이 없어 결과를 한 가지로 결정할 수 없다.             |
+|해당 없음|해당 분기를 적용할 조건이 성립하지 않음을 확인했다.                   |
+|실패   |확인된 리소스 누락, 순환, 구문 오류 등으로 로딩의 진행이 중단되는 분기를 확인했다.|
+
+미확정은 다른 항목을 조사하는 데 사용할 수 있는 정보다.
+예를 들어 진입 XML의 이름과 물리 위치는 확정하고, 두 extension 사이의 상대 순서만 미확정으로 둘 수 있다.
+실패는 실제 서버를 실행했다는 의미가 아니다.
+대상 로더의 예외 처리와 그 분기에 들어가는 입력을 정적으로 확인했다는 뜻이다.
 
 목차
 
-1. 대상 배포와 테넌트 ID
-2. 배포에 포함된 extension 목록
-3. 대상 테넌트에 활성화된 extension 목록
-4. extension별 코어 Spring 설정의 최종값
-5. 코어 로더의 기본값과 리소스 선택 규칙
-6. 진입 XML의 실제 파일 또는 JAR 엔트리
-7. extension 사이의 로드 순서
-8. 동일 extension 안의 진입 XML 순서
-9. XML 내부 import 처리 순서
-10. 최종 산출물과 완료 판정
-11. 참고 문서
-
-조사 기록 방법
-
-• HYBRIS_HOME은 이 문서에서 bin이 들어 있는 실제 설치 디렉터리를 뜻한다. CONFIG_DIR은 해당 배포가 실제로 읽는 설정 디렉터리다.
-• 파일 확인 결과는 경로 + XML 요소·프로퍼티 키·줄 번호로 기록한다. 줄 번호가 없는 디컴파일 결과는 대상 JAR 경로 + 클래스 전체 이름 + 메서드 시그니처 + 판정에 사용한 분기로 기록한다.
-• 소스 탐색에는 IntelliJ의 Find in Files를 쓰고, 검색 범위에 대상 설치의 모듈을 포함한다. Java 구현이 소스에 없으면 해당 배포의 JAR를 설치에 연결한 뒤 클래스 선언으로 이동해 디컴파일된 메서드를 연다. 동일 이름의 클래스가 여러 의존성에 있으면 대상 배포가 사용하는 JAR를 먼저 식별한다.
-• 상태는 확정, 미확정, 해당 없음으로 기록한다. 미확정에는 부족한 파일·설정·코드 또는 결정할 수 없는 순서를 적는다. 해당 없음은 적용 여부를 판정한 뒤 사용한다.
-• melcostorefront, melcocore, regionalcore, 아래 경로와 순번은 예시다. 실제 프로젝트 결과는 미기입 상태다.
-
-1. 대상 배포와 테넌트 ID
-
-입력 및 목적. 분석할 PDP URL 또는 이미 파악한 Controller, 해당 앱을 실행하는 로컬 설치를 입력으로 삼는다. 이 단계의 결과는 설치 경로 + 설정 경로 + 버전 + 웹 앱 + 배포 컨텍스트 경로 + 테넌트 ID다.
-
-1.1. PDP를 처리하는 웹 extension을 식별한다
-
-1. IntelliJ에서 알고 있는 PDP Controller를 연다. 클래스와 메서드의 @RequestMapping 또는 @GetMapping을 확인하여, 상품 상세 요청에 대응하는 메서드 시그니처를 기록한다. 클래스 이름을 모르면 PDP URL의 변하지 않는 경로 부분과 상품 코드 변수명으로 검색하고, 클래스·메서드 수준 매핑을 함께 읽는다. URL 재작성이나 프록시가 있다면 외부 URL과 백엔드 요청 경로를 구별한다.
-2. Controller 파일의 상위 디렉터리를 올라가 가장 가까운 extensioninfo.xml을 찾고, <extension name="…">을 기록한다. <webmodule webroot="…">이 있는 경우 선언된 웹 모듈 경로도 기록한다.
-3. 같은 extension의 web/webroot/WEB-INF/web.xml에서 <servlet>, <servlet-mapping>, contextConfigLocation을 확인한다. contextConfigLocation은 웹 앱 전체의 <context-param>과 서블릿 내부의 <init-param>을 각각 확인한다. 설정에 적힌 XML을 열고, Controller의 패키지가 <context:component-scan base-package="…">에 포함되는지 또는 해당 클래스가 <bean>이나 Java 설정으로 등록되는지 확인한다. 필요한 경우 설정의 <import>도 따라간다.
-4. Controller 소속 extension에 <webmodule>이 없거나 여러 웹 앱이 같은 Controller를 사용하는 경우, 대상 배포의 웹 모듈 후보별로 3번을 반복한다. 대상 URL을 받는 매핑과 Controller 등록을 모두 설명할 수 있는 앱을 선택한다.
-5. CMSSite의 사이트 ID나 urlPatterns를 확보했다면 사이트 구분 근거로 기록한다. 도메인이나 사이트 ID가 여러 개여도 동일한 웹 모듈과 배포 매핑을 공유하는 경우가 있다.
-
-완료 기준. PDP 요청 경로 → 서블릿 매핑 → Controller 등록 → 웹 extension 이름의 연결 근거가 있다. 후보가 남으면 후보마다 부족한 자료를 적고 웹 앱 판정을 미확정으로 둔다. SAP 문서 [1], [2], [3].
-
-1.2. 실제 배포 컨텍스트 경로와 설치를 식별한다
-
-1. 대상 로컬 서버의 실행 구성 또는 프로젝트의 시작 스크립트를 열어 사용하는 설치 경로와 설정 디렉터리를 확인한다. IntelliJ에서 관리되는 실행 구성이면 프로젝트에 공유된 .run 또는 .idea/runConfigurations가 있는지 확인한다. 설정 디렉터리가 별도로 지정되어 있으면 실제 위치를 CONFIG_DIR로 기록한다.
-2. Tomcat을 사용하는 경우 대상 실행 구성이 선택하는 Tomcat 인스턴스나 catalina.base를 확인한다. 그 인스턴스의 conf/server.xml을 열고 대상 Host 아래에 웹 앱의 <Context>가 있는지 확인한다. 개별 Context 파일을 쓰는 구성이라면 해당 인스턴스의 conf/<Engine>/<Host>/ 아래에서 Context XML을 찾는다. 기본 이름을 사용하는 환경의 탐색 출발점은 conf/Catalina/localhost/이다. SAP의 생성 방식은 적용된 tomcat.legacy.deployment 및 생성된 설정 파일을 함께 확인한다.
-3. 대상 Context의 docBase 또는 해당 설정이 지정하는 배포 위치를 1.1에서 확인한 extension의 산출물과 대조한다. server.xml에서 컨텍스트 경로를 명시한 구성이라면 해당 값을 기록한다. 호스트의 자동 배포가 개별 Context 파일명으로 경로를 정하는 Tomcat 구성이라면, 예를 들어 shop.xml은 /shop, ROOT.xml은 루트, shop#jp.xml은 /shop/jp다. 배포 버전 접미사가 있다면 해당 Tomcat 버전의 Naming 규칙을 함께 확인한다. 외부 프록시 설정이 있으면 외부 URL의 접두사가 백엔드에서 제거되거나 변경되는지 확인한다.
-4. 대상 설치의 bin/platform/build.number에서 build.version 전체 값을 기록한다. 2211 계열 표시만 있거나 파일이 없으면 동일 설치의 빌드 자료에서 정확한 패치를 보완한다.
-
-판정 예시. 소스의 선언이 /melcostorefront이고 대상 Tomcat Context가 그 extension의 산출물을 가리키며 최종 컨텍스트 경로가 /shop이라면, 선언값은 /melcostorefront, 1.3에 사용할 실제 앱 경로는 /shop으로 기록한다.
-
-완료 기준. 대상 앱의 배포 설정 위치, 배포 디렉터리 또는 산출물, 실제 컨텍스트 경로, 설치·설정 경로, 정확한 버전이 한 배포를 가리킨다. 생성된 배포 자료를 확보하지 못하면 소스의 선언값만 기록하고 배포 경로는 별도로 판정한다. SAP 문서 [4], [5], Tomcat 문서 [19].
-
-1.3. 웹 컨텍스트 리스너에서 테넌트 선택 경로를 확인한다
-
-1. 실제 배포 위치의 WEB-INF/web.xml에서 <listener><listener-class>…</listener-class></listener>를 찾는다. 웹 컨텍스트 리스너는 웹 앱 초기화 시 서블릿 컨테이너가 호출하는 클래스다. 여러 리스너가 있다면 클래스 선언과 상속 구조를 열어 Spring 웹 루트와 그 부모를 구성하는 리스너를 식별한다. 배포본과 소스 파일이 다르면 배포본을 근거로 사용한다.
-2. 등록된 클래스를 열고 contextInitialized, initWebApplicationContext, loadParentContext(ServletContext), adjustTenant 또는 getTenanId(String) 중 실제 호출되는 메서드를 따라간다. 이 메서드 이름은 SAP 2211 API에서 찾을 수 있는 탐색 지점이다. 상속한 클래스에 구현이 없으면 부모로 이동하고, 재정의가 있으면 호출 흐름에 사용되는 구현을 확인한다. 메서드가 존재하더라도 실제로 호출되는지는 본문에서 확인한다.
-3. 코드가 테넌트 ID를 결정하는 분기를 기록한다. 경로 기반 구현이 Utilities.getTenantIdForContext(servletContextPath, defaultTenant)를 호출한다면 첫 번째 인수의 실제 출처, 두 번째 인수의 값, 그 메서드가 조회하는 매핑, 매핑이 없을 때 처리를 메서드 본문에서 읽는다. 웹 앱에 ID를 부착하는 코드가 보이면 attachTenantIDToServletContext 호출이나 관련 속성을 확인한다. 웹 앱의 부착 값과 부모 코어 선택이 각각 어떤 값으로 결정되는지도 대조한다.
-4. CONFIG_DIR/local.properties와 HYBRIS_HOME/bin/platform/project.properties에서 installed.tenants를 찾는다. 대상 실행이 적용하는 다른 설정이 있으면 함께 읽는다. 키를 한 파일에서 찾지 못한 경우 플랫폼 기본값 또는 다음 설정층을 확인한다. 이 값은 추가 테넌트 후보를 확인하는 데 쓴다.
-5. 경로로 테넌트를 선택하는 구현이라면 위에서 찾은 각 후보 ID에 대해 HYBRIS_HOME/bin/platform/tenant_<ID>.properties와 CONFIG_DIR/local_tenant_<ID>.properties를 연다. 현재 웹 extension의 <extension>.webroot 또는 코드가 실제로 읽는 키를 찾아 최종값을 정한다. 그 값을 1.2에서 기록한 실제 컨텍스트 경로와 코드의 동일한 정규화·비교 규칙으로 대조한다.
-6. 커스텀 구현이 경로 대신 서블릿 속성, 프로퍼티 또는 고정 ID를 사용하면 그 분기를 적용한다. 속성이 설정되기 전 읽힐 수 있거나 배포 외부 값에 의존한다면, 값을 넣는 코드 또는 배포 설정까지 확인한 뒤 판정한다.
-
-|확인 결과                               |조치                                                                                |
-|------------------------------------|----------------------------------------------------------------------------------|
-|특정 매핑이나 커스텀 분기가 ID 한 개를 반환함         |해당 ID와 선택된 분기를 기록한다.                                                              |
-|추가 매핑이 없고 실제 기본 분기가 `master`를 선택함   |`master`와 기본 분기의 근거를 기록한다.                                                        |
-|둘 이상의 매핑 후보 또는 외부 값 때문에 ID를 확정할 수 없음|후보 ID, 충돌한 설정, 다음에 확인할 메서드나 배포 파일을 기록한다.                                          |
-|실행 스레드에서 테넌트를 별도로 바꾸는 코드가 조사 목적에 관련됨|웹 루트의 부모 코어를 고르는 값과 요청 스레드에서 사용하는 값의 결정 지점을 각각 확인한다. PDP 분석 기준이 달라지면 두 값을 따로 기록한다.|
-
-완료 기준. 배포 경로 또는 선택 입력 → 등록 리스너/실제 동작 → 테넌트 ID → 선택된 코어 컨텍스트가 연결된다. installed.tenants 값 또는 사이트 ID만 확보한 상태라면 현재 앱과 테넌트 연결은 아직 판정할 수 없다. SAP 문서 [6], [7], [8], [9].
-
-2. 배포에 포함된 extension 목록
-
-입력 및 목적. 1.2의 설치 경로와 설정 디렉터리를 기준으로 대상 배포에 포함된 extension을 이름과 물리 경로로 식별한다.
-
-1. CONFIG_DIR/localextensions.xml을 연다. 각 <extension>의 name 또는 dir과 각 <path>의 dir, autoload, depth를 기록한다. 대상 설정에 localextensions.xml이 없으면 실제 빌드가 대체로 읽는 extension 설정을 빌드 코드나 빌드 자료에서 확인한다.
-2. dir로 직접 지정된 extension의 폴더에서 extensioninfo.xml을 열고 <extension name="…">을 읽는다. name으로 지정되어 있다면, 빌드가 참조하는 탐색 경로에서 해당 이름의 extensioninfo.xml을 찾는다. HYBRIS_BIN_DIR 같은 경로 변수는 대상 빌드의 값으로 치환한다.
-3. autoload 경로와 플랫폼 핵심 extension 자동 로드 규칙을 적용한다. bin/platform/ext는 확인할 출발점이다. 프로젝트의 실제 빌드 설정이 사용하는 경로·깊이·활성화 규칙을 읽고, 해당 규칙으로 추가된 extension마다 출처를 남긴다.
-4. 각 extensioninfo.xml의 <requires-extension name="…">을 읽는다. 아직 목록에 없는 의존 extension을 추가하고, 그 extension의 파일도 연다. 새 의존성이 없을 때까지 반복한다. 의존성을 기록할 때는 선행 extension → 의존하는 extension 방향으로 저장한다.
-5. 동일 이름이 여러 폴더에서 발견되면 대상 빌드가 어떤 경로를 선택하는지 확인한다. 이미 대상 배포의 최종 extension 목록이 있으면 이름 집합과 선택된 경로를 대조하고, 차이가 나는 항목은 입력 파일·빌드 구성이 같은지 확인한다.
-
-|상황                          |조치                                                          |
-|----------------------------|------------------------------------------------------------|
-|명시 확장·자동 로드·의존성을 모두 경로까지 확인함|extension별로 포함 이유와 `extensioninfo.xml` 경로를 기록한다.            |
-|같은 이름의 후보가 여러 개임            |빌드의 선택 규칙과 순서를 확인하거나 후보 경로를 모두 남긴다.                         |
-|필요한 의존성 파일을 찾을 수 없음         |어떤 extension이 그 이름을 요구하는지 기록하고, 대상 배포 산출물 또는 누락된 탐색 경로를 찾는다.|
-
-완료 기준. 최종 배포 extension마다 이름, 실제 경로, 포함 근거가 있다. 의존 edge가 모두 해석되었고 중복 이름에 대한 선택 근거가 있다. SAP 문서 [1], [10], [11].
-
-3. 대상 테넌트에 활성화된 extension 목록
-
-입력 및 목적. 1장의 테넌트 ID와 2장의 배포 extension 집합을 사용해, 코어 로더가 해당 테넌트에 대해 실제로 검토하는 extension 집합을 확정한다.
-
-1. 대상 2211 패치의 de.hybris.platform.core.Registry를 열어 getCoreApplicationContext()부터 코어 컨텍스트를 얻는 경로를 읽는다. 해당 메서드가 이미 구성된 컨텍스트를 반환하면, 아래 2번으로 실제 구성 코드를 찾는다.
-2. 대상 설치의 플랫폼 소스에서 Loading Spring configuration for와 .application-context를 검색한다. 소스에 없으면 해당 배포의 플랫폼 JAR에서 Registry와 AbstractTenant의 컨텍스트 구성 코드로 들어가 호출 클래스를 확인한다. 로그 문자열이 변경됐을 경우 테넌트 코어 컨텍스트용 리소스 목록을 만드는 메서드와 그 호출자를 찾아 역추적한다.
-3. 코어 로더가 extension 이름 또는 객체를 얻는 변수의 선언으로 이동한다. 호출 경로에 Tenant.getTenantSpecificExtensionNames()가 있으면 대상 테넌트의 구체 구현인 MasterTenant 또는 해당 테넌트 구현을 열어 반환값의 출처를 확인한다. Utilities.getExtensionNames(), getInstalledExtensionNames(Tenant) 또는 PlatformConfig를 사용하는 코드가 있다면 어떤 결과를 로더가 실제로 사용하고 어떤 필터를 추가로 적용하는지를 확인한다.
-4. 코드가 테넌트별 설정을 읽는 경우, 읽는 정확한 키를 메서드 본문에서 찾고 대상 tenant_<ID>.properties, local_tenant_<ID>.properties 또는 실제 설정 소스의 최종값을 대조한다. 빈 값, 키가 없는 경우, 명시 목록의 처리 분기를 각각 확인한다.
-5. 2장의 각 extension에 대해 이 테넌트에서 활성, 대상 제외 또는 미확정을 표시하고, 로더의 판정 지점이나 배포 자료를 연결한다. 활성 여부와 진입 XML 존재 여부는 각기 기록한다.
-
-예시. 설치에 regionalcore가 포함되어 있어도, 로더가 사용하는 대상 테넌트의 목록에서 제외되는 것이 코드와 설정으로 확인되면 대상 제외다. 목록에는 있지만 코어 XML이 있는지 아직 확인하지 않았다면 대상 활성 / 진입 XML 조사 전으로 기록한다.
-
-완료 기준. 테넌트별 선별 규칙과 배포 extension의 적용 결과를 재현할 수 있다. 로더의 목록 출처를 확인하지 못한 경우, 시스템 전체 목록만 가지고 테넌트별 최종 목록을 확정하지 않는다. SAP 문서 [7], [9], [12], [13].
-
-4. extension별 코어 Spring 설정의 최종값
-
-입력 및 목적. 3장의 활성 extension마다 코어 진입 XML을 선택하는 키와 값을 구한다.
-
-1. 대상 extension 이름이 melcocore라면 melcocore.application-context를 정확한 문자열로 검색한다. 우선 extension 루트의 project.properties, HYBRIS_HOME/bin/platform/project.properties, CONFIG_DIR/local.properties를 확인한다. 다른 활성 extension의 프로퍼티와 배포 오버라이드에도 같은 키가 있는지 검색한다.
-2. 테넌트별 설정을 읽는 구현이라면 3장에서 확인한 테넌트 설정층도 포함한다. 시스템 속성이나 별도 설정 파일이 영향을 주는지는 3장에서 찾은 로더와 설정 접근 코드에서 확인한다. 예를 들어 getParameter 또는 getString에 전달하는 실제 키, 기본값 인수, 사용한 설정 객체를 기록한다.
-3. 키가 여러 번 정의되면 각 원문, 파일과 줄, 덮어쓰는 층을 기록한다. 같은 우선순위의 후보가 경쟁한다면 로더가 사용하는 프로퍼티 합성 순서까지 확인한다. 값이 존재하지 않는 경우와 빈 문자열인 경우를 구별해 5장으로 넘긴다.
-4. <extension>.global-application-context와 Storefront 웹 앱의 contextConfigLocation은 각각 다른 컨텍스트 자료로 표기한다. 위 키나 웹 설정을 코어 진입 XML의 출처로 분류하기 전에는 실제 대상 코어 로더가 그것을 소비하는지 확인한다.
-
-|예시 입력                                                                       |기록                                               |
-|----------------------------------------------------------------------------|-------------------------------------------------|
-|extension `project.properties`에 A, 적용 `local.properties`에 B가 있고 적용 규칙상 B가 우선|`최종값 B, 출처 local.properties:<행>, 이전 후보 A`        |
-|설정 키가 어느 적용층에도 없음                                                           |`미설정`으로 기록하고 기본 파일명 분기를 확인                       |
-|설정 키가 있고 값이 공백 또는 빈 문자열임                                                    |원문을 기록하고 로더가 trim·기본 파일 탐색·건너뛰기 중 무엇을 하는지 확인     |
-|프로퍼티 값에 배포 변수 또는 경로 변수가 포함됨                                                 |치환을 수행하는 시점과 값의 출처를 확인하고, 자료가 없으면 해당 경로를 미확정으로 기록|
-
-완료 기준. 활성 extension 각각에 최종값과 출처, 또는 미설정이 입증되어 있다. 동순위 경쟁이나 값 미확정에 영향을 받는 extension이 식별되어 있다. SAP 문서 [7], [14], [15].
-
-5. 코어 로더의 기본값과 리소스 선택 규칙
-
-입력 및 목적. 3장에서 찾은 동일한 코어 XML 선택 메서드와 4장의 최종값을 대조해, 어떤 문자열이 어떤 분기에서 XML 후보가 되는지 확인한다.
-
-1. .application-context 키를 읽는 줄에서 시작해 null, 빈 값·공백, 값이 있는 경우의 조건문을 찾는다. 각 분기가 어떤 파일명 문자열을 만드는지 기록한다. SAP 문서에 나오는 기본 후보는 <extension>-application-context.xml이다. <extension>-spring.xml은 일반적인 설정 파일명이므로 실제 설정값이나 구현에 사용 근거가 있는지 확인한다.
-2. 값에 쉼표가 있는 경우 파일 리스트를 만드는 메서드를 연다. 토큰의 순서 유지 여부, 공백과 빈 토큰의 처리, 중복 이름을 어떻게 처리하는지 기록한다.
-3. 각 후보를 검사하는 메서드를 열어 클래스 로더 객체와 호출 메서드, 파일시스템으로 넘어가는 조건, 리소스를 찾지 못했을 때 행동을 읽는다. SAP 문서는 기본적인 클래스패스 우선과 파일시스템 탐색을 설명한다. 설치 경로 기준이 필요한 경우 코드가 상대 경로를 어느 디렉터리에 연결하는지 확인한다.
-4. 코드가 추가 리소스 경로를 합치거나 사용자 지정 설정을 끼워 넣는다면 그 경로와 위치도 표에 추가한다. 결과 파일을 반환하는 지점까지 추적해 로그를 쓰는 줄과 실제 Spring에 넘기는 줄을 비교한다.
-
-완료 기준. 대상 버전의 코드로 미설정, 빈 값, 단일 파일, 복수 파일, 리소스 미발견에 해당하는 분기를 설명할 수 있다. 구현을 보지 못한 분기는 문서가 말하는 규칙과 따로 기록하여 경계 동작을 임의로 확정하지 않는다. SAP 문서 [14].
-
-6. 진입 XML의 실제 파일 또는 JAR 엔트리
-
-입력 및 목적. 5장의 각 후보 문자열을 대상 배포에서 실제 선택될 리소스로 바꾼다.
-
-1. 5장에서 기록한 클래스 로더와 그 검색 대상을 만드는 코드를 확인한다. 로더가 사용하는 클래스패스 디렉터리, JAR, 부모 위임 또는 자체 로더 정책을 파악할 수 있는 시작 스크립트, 컨테이너 설정, 배포 산출물 목록을 대조한다. IntelliJ의 분석용 클래스패스와 실제 배포의 클래스패스는 각각 확인한다.
-2. 후보가 melcocore-spring.xml이면 <extension>/resources/부터 소스 원본을 찾는다. 그 뒤 실제 대상 클래스패스의 디렉터리나 JAR에서 로더가 요구한 정확한 상대 경로의 파일 또는 엔트리를 찾는다. 소스 파일을 발견했다면 포함된 배포 경로까지 연결한다.
-3. JAR를 파일 탐색기에서 열기 어려우면 IntelliJ의 Libraries에서 열거나 JDK의 jar tf "<대상 JAR의 절대 경로>"를 실행할 수 있다. 이 명령의 목적은 JAR 엔트리 목록을 읽어 후보 XML이 어떤 상대 경로에 들어 있는지 확인하는 것이다. 출력에서 후보 XML의 전체 엔트리 경로를 찾는다. 여러 JAR를 확인할 때는 JAR 경로와 엔트리 경로를 같이 기록한다.
-4. 동명 후보가 여러 개면 로더의 위임 및 검색 순서에 맞춰 선택되는 하나를 판정한다. 대상 탐색이 여러 리소스를 반환하는 방식이면 실제 순회 가능한 후보 전체와 순서 근거를 남긴다. 클래스패스 탐색에 실패하고 파일시스템 분기로 넘어가는 경우, 해당 분기가 계산하는 위치에서 파일을 확인한다.
-5. 후보가 없어도 로더가 계속 진행하는 분기라면 로드 대상 없음을 기록한다. 시작이 중단되는 동작이라면 누락으로 실패를 표시한다. 실제 탐색 대상 전체를 확인하지 못했다면 미확정으로 기록한다.
-
-기록 예시. melcocore-spring.xml → C:/deploy/lib/melcocore.jar!/melcocore-spring.xml. 앞부분은 물리 JAR 위치이고 !/ 뒤는 그 안의 엔트리다. 실제 파일시스템 리소스는 절대 경로로 기록한다.
-
-완료 기준. 모든 활성 extension에 대해 진입 XML 각각의 물리적 식별자가 있거나, 진입 XML 없음·실패·미확정의 근거가 있다. 같은 이름의 다른 파일을 임의로 선택한 행이 없다.
-
-7. extension 사이의 로드 순서
-
-입력 및 목적. 2~3장의 extension 집합과 의존성을 바탕으로, 코어 로더가 각 extension을 어떤 순서대로 처리하는지 확인한다.
-
-1. 3장에서 찾은 코어 구성 코드에서 extension을 순회하는 반복문 또는 스트림을 연다. 순회 대상 변수를 초기화하는 지점으로 이동해 리스트 생성, 필터, 정렬, 삽입, 병합 순서를 기록한다.
-2. 빌드 순서 자료를 이용하는 경로라면 de.hybris.bootstrap.config.PlatformConfig.getExtensionInfosInBuildOrder() 등의 호출이 실제 경로에 있는지 확인한다. 메서드가 목록을 반환한다는 사실에 이어, 대상 로더가 반환 순서를 유지하는지를 호출자까지 포함해 읽는다.
-3. 대상 빌드에 순서가 보존된 산출물이 있으면 어떤 도구나 코드가 생성했고 순서의 의미가 무엇인지 확인한다. 로더가 다른 기준으로 재정렬한다면 그 정렬까지 적용한다. 이 산출물이 없으면 대상 패치의 자료구조 및 순서 산출 코드를 따라가고, 입력 순서·동률 처리·디렉터리 열거 순서가 결과를 바꾸는지 확인한다.
-4. <requires-extension>에서 도출한 선후관계가 최종 순서에서 성립하는지 검사한다. 독립 extension 사이의 순서까지 근거가 있는 경우에만 절대 순번을 부여한다. 근거가 부분적이면 A < B와 같이 확인된 관계를 기록하고, 미확정 쌍의 후보를 남긴다.
-
-|사례                                                 |판정                                                                              |
-|---------------------------------------------------|--------------------------------------------------------------------------------|
-|`melcocore`가 `basecatalog`를 요구함                    |해당 규칙이 적용되면 `basecatalog < melcocore`로 기록                                       |
-|`melcocore`와 `regionalcore`가 둘 다 `basecatalog`를 요구함|의존성으로는 `basecatalog`가 둘보다 앞선다는 사실을 확정. 두 커스텀 extension의 상대 순서는 로더 입력과 동률 처리에서 확인|
-|관련 순서가 보존된 대상 빌드 자료와 로더 적용 방식이 모두 확인됨              |활성 대상으로 남은 extension에 대해 순번 부여                                                  |
-|동일 alias에 대한 승자가 두 가능한 순서에서 달라짐                    |영향받는 alias와 순서 조건을 기록. XML 목록 확정과 순서 미확정을 별도로 보고                                |
-
-완료 기준. 실제 순회 순번과 근거가 전부 확보되어 있으면 이 단계는 확정이다. 의존성만으로 일부 순서가 확보된 경우에는 순서의 확정 범위와 추가로 필요한 자료를 기록한다. SAP 문서 [11], [12], [14].
-
-8. 동일 extension 안의 진입 XML 순서
-
-입력 및 목적. 4장의 원문과 5장의 로더 분기, 6장의 실제 리소스를 연결해 extension 내부 순서를 확인한다.
-
-1. 프로퍼티를 분해하는 메서드에 돌아가 설정값의 왼쪽에서 오른쪽 순서가 결과 자료구조에 어떤 순서로 삽입되는지 읽는다.
-2. 삽입된 리소스가 Spring XML 로더로 전달될 때 역순, 정렬, 중복 제거, 추가 삽입이 있는지 호출자까지 따라간다. List를 순회한다고 확인한 뒤에도 목록을 구성하는 앞 단계에서 순서가 바뀌는지 확인한다.
-3. 실제 리소스마다 extension 내부 순번, 설정 토큰의 위치, 선택된 물리 경로를 기록한다. 토큰이 건너뛰어지거나 오류가 발생하면 해당 분기와 뒤쪽 토큰의 처리 여부를 적는다.
-
-예시. 최종값이 melcocore-spring.xml,melcocore-overrides.xml이고 코드가 그 순서로 전달한다면, 같은 extension의 진입 순번 1과 2를 각각 부여한다. 첫 파일의 <import>는 9장의 이벤트 표에서 처리 위치를 표시한다.
-
-완료 기준. 각 extension에서 실제 로드되는 진입 XML의 상대 순서가 코드로 확인되어 있다. 7장이 미확정이어도 이 단계에서 extension 내부 순서는 독립적으로 확정할 수 있다. SAP 문서 [14].
-
-9. XML 내부 import 처리 순서
-
-입력 및 목적. 각 진입 XML과 그 하위 import를 열어, Spring XML 로더가 같은 코어 레지스트리에서 처리하는 실제 리소스와 위치를 구한다.
-
-1. 대상 배포에서 Spring Beans 및 Core JAR의 버전을 확인한다. 라이브러리 이름만으로 부족하면 해당 JAR의 META-INF/MANIFEST.MF 또는 빌드의 의존성 자료를 확인한다. 대상 Spring 버전에서 org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader의 doRegisterBeanDefinitions, parseBeanDefinitions, importBeanDefinitionResource를 연다. 로더가 문서 리더를 교체하는 코드가 있으면 실제 구현을 사용한다.
-2. 진입 XML의 최상위 <beans>부터 문서 순서대로 읽는다. profile이 있는 <beans>는 그 분기의 활성 여부를 먼저 판정한다. 분석 대상 설정에서 활성 profile과 그 값의 출처를 기록한다. profile이 미확정이면 그 블록에서만 생기는 import를 조건부로 남긴다.
-3. <import resource="…">를 만나면 속성 원문, 선언 파일과 줄을 기록한다. ${…}가 있으면 문서 리더가 읽는 환경 설정과 치환 코드를 확인한 후 값을 넣는다. 속성 해석에 실패하면 대상 리더가 보고하는 오류 또는 계속 진행하는 분기를 확인한다.
-4. 상대 경로는 현재 XML의 리소스를 기준으로 해석하는 코드와 대조한다. classpath:, file:, classpath*:, 와일드카드가 있다면 대상 XmlBeanDefinitionReader와 리소스 로더를 확인한다. 패턴을 처리하는 경로에서 PathMatchingResourcePatternResolver.getResources가 사용될 경우 매칭 대상과 열거 결과의 순서를 확인한다. 파일명순은 코드 또는 입력으로 확인한 경우에 적용한다.
-5. 선택된 하위 XML에 2~4번을 재귀적으로 적용한다. 해당 파일의 처리가 끝나면 부모 XML의 다음 요소로 돌아간다. 동일 리소스가 여러 곳에서 참조되면 각 import 발생 지점을 보존하고, 실제 리더가 읽는 횟수는 호출 흐름에 따라 판정한다. 순환이 있으면 현재 처리 경로와 오류 발생 지점을 기록한다.
-6. 사용자 정의 XML 네임스페이스나 Java 코드가 별도로 XML을 로드할 가능성이 보이면 그 진입 지점을 기록한다. 이 절차의 전체 로드 주장에 해당 경로까지 포함하려면 실제 핸들러나 등록 코드를 확인한다. <import> 체인까지의 완료 여부와 프로그램 방식의 추가 로드 여부는 각각 표시한다.
-
-|처리 위치 예시|이벤트                            |근거                                         |
-|--------|-------------------------------|-------------------------------------------|
-|1       |`melcocore-spring.xml` 진입      |해석된 리소스와 extension 내부 1순번                  |
-|2       |진입 XML 앞부분 처리                  |예시 `melcocore-spring.xml:12`               |
-|3       |`spring/product-dao.xml` import|예시 `melcocore-spring.xml:25`의 `resource` 속성|
-|4       |진입 XML의 import 다음 요소 처리        |예시 `melcocore-spring.xml:31`               |
-|5       |`melcocore-overrides.xml` 진입   |해석된 리소스와 extension 내부 2순번                  |
-
-완료 기준. 모든 선언적 import에 대해 활성 여부, 대상 리소스, 호출 파일·줄, 부모 파일로 돌아오는 위치를 설명할 수 있다. wildcard의 매칭 결과나 순서가 미확정이면 해당 import의 영향 범위를 기록한다. Spring 문서 [16], [17], [18].
-
-10. 최종 산출물과 완료 판정
-
-아래 표를 한 세트로 보관한다. 같은 extension에서 여러 XML을 읽으면 파일마다 행을 만들고, 같은 파일이 여러 import 지점에서 읽히면 발생 지점마다 이벤트를 남긴다.
-
-10.1. 대상 기록
-
-|항목      |기록값                                        |
-|--------|-------------------------------------------|
-|대상 설치·버전|`HYBRIS_HOME`, `build.version`, 근거 파일      |
-|대상 설정   |`CONFIG_DIR`, 적용한 배포별 설정                   |
-|웹 앱     |extension 이름, Controller, 실제 배포 Context와 근거|
-|테넌트     |ID와 선택 분기, 근거 파일 또는 클래스·메서드                |
-|클래스패스   |대상 코어 로더 기준 자료의 경로 또는 미확정 근거               |
-
-10.2. extension 및 진입 XML 목록
-
-|테넌트   |extension  |포함·활성 근거      |최종 설정값과 출처                                    |진입 XML 실제 위치                       |순서             |상태|
-|------|-----------|--------------|----------------------------------------------|-----------------------------------|---------------|--|
-|master|basecatalog|예시 의존성 및 활성 목록|`basecatalog-spring.xml`                      |`<배포 JAR>!/basecatalog-spring.xml` |`melcocore`보다 앞|예시|
-|master|melcocore  |예시 테넌트 활성 목록  |`melcocore-spring.xml,melcocore-overrides.xml`|`<배포 JAR>!/melcocore-spring.xml`   |extension 내부 1 |예시|
-|master|melcocore  |위와 같음         |위와 같음                                         |`<배포 JAR>!/melcocore-overrides.xml`|extension 내부 2 |예시|
-
-10.3. import 처리와 미확정 항목
-
-|영역     |필요한 값                               |근거 및 미확정 시 다음 확인 위치                |
-|-------|------------------------------------|-----------------------------------|
-|import |부모 리소스, 요소 위치, 원문, 치환값, 실제 대상, 처리 순번|부모 XML 줄과 배포 설정·리소스 위치를 기록         |
-|미확정 순서 |영향받는 extension·XML 쌍, 확인된 선후관계      |로더 반복문의 목록 생성 코드 또는 배포에 보존된 순서 자료  |
-|미확정 리소스|후보 경로·JAR, 선택에 부족한 값                |클래스패스 생성 코드, 외부 설정 또는 profile 적용 자료|
-
-10.4. 최종 체크
-
-☐ 체크 1 대상 배포, 정확한 패치, 대상 테넌트 ID를 증거와 함께 확인했다.
-☐ 체크 2 배포에 포함된 extension의 이름과 실제 경로를 확인했다.
-☐ 체크 3 대상 테넌트에서 활성화되는 extension의 범위를 확인했다.
-☐ 체크 4~6 extension별 최종 설정값과 선택 분기를 적용해 모든 진입 XML의 실제 리소스를 확인했다.
-☐ 체크 7~8 extension 간 순서와 각 extension 내부 XML 순서를 확인했다.
-☐ 체크 9 활성 import를 선언 위치에서 처리하고 중첩 리소스와 처리 순서를 확인했다.
-
-결과 판정. 체크 16을 충족하면 extension별 진입 XML 목록 확정으로 보고한다. 체크 79까지 충족하면 선언적 import를 포함한 코어 XML 처리 순서 확정으로 보고한다. 일부 순서만 입증된 경우에는 확인한 관계와 미확정 관계를 함께 제공한다. 최종 빈 목록 분석으로 넘어갈 때는 이 순서 기록을 입력으로 삼고, XML 이후 Java 등록 로직은 별도 조사한다.
-
-10.5. 한 배포에 적용하는 예시
-
-이 예시에서는 설명에 필요한 파일만 표시한다. 파일명, 설정값, 로더 분기와 산출물은 가상의 구성이다.
-
-|단계             |열어서 확인한 예시 자료                                                                                                                        |판정 결과                                                                                         |
-|---------------|-------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
-|대상 앱 식별        |`melcostorefront/extensioninfo.xml`의 `webroot=/melcostorefront`, 대상 Tomcat의 `conf/Catalina/localhost/shop.xml`의 `docBase`            |`docBase`가 `melcostorefront` 산출물을 가리킨다. 이 예의 자동 배포 컨텍스트는 `/shop`이다.                           |
-|테넌트 판정         |해당 배포본의 `WEB-INF/web.xml`에 등록된 리스너, 그 리스너의 경로 매핑 호출, 최종 `installed.tenants=junit`, `junit`에 적용된 `melcostorefront.webroot=/shop-junit`|비교 인수는 `/shop`이다. `/shop-junit`과 일치하지 않고, 해당 구현의 기본 인수가 `master`임을 확인했으므로 `master`로 기록한다.     |
-|활성 extension 판정|`localextensions.xml`과 각 `extensioninfo.xml`, 코어 로더가 사용하는 대상 테넌트 목록의 생성 분기                                                           |예시에서 `basecatalog`, `melcocore`, `regionalcore`가 포함되고 활성화된다.                                  |
-|리소스 판정         |`CONFIG_DIR/local.properties`의 `melcocore.application-context=melcocore-spring.xml,melcocore-overrides.xml`, 대상 JAR의 두 엔트리           |`melcocore` 진입 XML 두 개의 실제 리소스를 기록한다.                                                         |
-|import 판정      |`melcocore-spring.xml`의 `<import resource="spring/product-dao.xml"/>`와 같은 JAR의 `spring/product-dao.xml`                              |기본 XML을 읽다가 해당 줄에서 하위 XML을 처리하고 돌아온 뒤 나머지 요소를 처리한다. 뒤이어 `melcocore-overrides.xml`을 읽는다.       |
-|전체 순서 판정       |`melcocore`와 `regionalcore`가 둘 다 `basecatalog`를 요구하는 선언, 확인한 배포 자료                                                                   |`basecatalog` 선행만 입증됐다면 전체 순서는 미확정이다. 로더가 실제로 순회하는 리스트를 만드는 코드나 순서가 보존된 빌드 자료를 다음 확인 위치로 기록한다.|
-
-11. 참고 문서
-
-아래 번호는 본문에서 확인 위치를 뒷받침하는 문서 번호다. 프로젝트별 분기와 순서는 대상 설치의 실제 파일·코드로 확인한다.
-
-[1] SAP Help — Extension Configurations
-https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8bbf6b5e86691014ad49fd1bc0172e5c.html
-
-[2] SAP Help — Extension Components
-https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/3a3b92d4900b4b3685157b806a73eab2.html
-
-[3] SAP Help — Just One Storefront
-https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/7e47d40a176d48ba914b50957d003804/8ae0711f86691014877ae05249b2f5ac.html
-
-[4] SAP Help — Configuring SAP Commerce Server, Tomcat Context 배포 설정
-https://help.sap.com/docs/SAP_COMMERCE/a74589c3a81a4a95bf51d87258c0ab15/063e4dc0cac14b2e8656f751caccd448.html
-
-[5] SAP Help — Finding Your SAP Commerce Version
+1. 지정 테넌트 ID와 대상 배포 확인
+2. 배포에 포함된 extension 집합 확인
+3. 지정 테넌트의 활성 extension 집합 확인
+4. extension별 코어 설정값과 출처 확인
+5. 코어 로더의 기본 파일명 및 탐색 분기 확인
+6. 진입 XML의 실제 클래스패스·파일 위치 확인
+7. extension 사이의 로드 순서 확인
+8. 같은 extension 안의 진입 XML 순서 확인
+9. XML 내부 profile과 import 처리 흐름 확인
+10. 최종 검증과 결과물 작성
+11. 전체 적용 예시
+12. 바로 사용할 조사 기록 양식
+13. 참고 문서
+
+1. 지정 테넌트 ID와 대상 배포 확인
+
+작업 목적. 조사할 테넌트와 해당 테넌트가 존재하는 배포를 하나의 단위로 확정한다.
+
+입력. 사용자가 지정한 ID, 로컬 설치나 배포 산출물 경로, 실행에 사용하는 설정 위치.
+
+출력. 설치, 설정, 버전, 테넌트 ID, 유효성 판정 근거.
+
+1.1 설치 루트와 적용 설정 경로를 지정한다
+
+1. 사용자에게서 받은 설치나 배포 디렉터리를 연다.
+2. 디렉터리 안에서 bin/platform과 bin/platform/build.number를 찾는다.
+3. 같은 설치에 config/local.properties와 config/localextensions.xml이 있는지 확인한다.
+4. 프로젝트에 설치가 여러 개면 사용자가 지정한 배포가 어느 설치를 쓰는지 실행 구성, 시작 스크립트 또는 배포 설정으로 대조한다.
+5. 시작 구성에서 별도 설정 위치를 지정한다면 그 디렉터리를 CONFIG_DIR로 기록한다.
+6. 셸 스크립트, IDE 실행 설정, 환경 파일이 서로 다른 설정 위치를 가리키면 대상 배포에 해당하는 구성과 값을 선택한다.
+7. 저장소와 실제 배포 경로가 분리된 경우 두 경로를 기록하고, 배포 자료에 대응하는 커밋이나 빌드 식별자가 있으면 함께 남긴다.
+
+확인할 파일과 항목
+
+• 실제 설치의 bin/platform/build.number.
+• 기본 경로의 config/local.properties와 config/localextensions.xml.
+• 별도 경로를 쓰는 경우 대상 실행 설정이 설정 디렉터리를 넘기는 줄.
+• 빌드 자료가 있으면 그 자료의 배포명, 생성 버전, 소스 기준.
+
+|확인 결과                         |다음 작업                                     |
+|------------------------------|------------------------------------------|
+|설치와 설정 디렉터리가 한 가지로 정해짐        |1.2에서 대상 버전을 읽는다.                         |
+|설치는 정해졌지만 설정 디렉터리 후보가 여러 개임   |대상 시작 구성에서 참조하는 경로와 변수 치환값을 먼저 확인한다.      |
+|설정 디렉터리만 확보됨                  |그 디렉터리가 어떤 설치에서 사용되는지 빌드나 배포 자료를 확인한다.    |
+|현재 소스와 배포 산출물의 버전 일치를 확인할 수 없음|각각의 경로와 버전을 기록하고 서로 결합해 가정한 결과는 조건부로 표시한다.|
+
+1.2 정확한 SAP Commerce 버전을 확인한다
+
+1. HYBRIS_HOME/bin/platform/build.number를 연다.
+2. build.version 값 전체를 기록한다.
+3. 2211 계열 이름만 알고 있다면 해당 파일에서 패치 또는 배포판 접미사까지 확인한다.
+4. 대상 배포 패키지와 로컬 설치의 버전 정보가 둘 다 있다면 서로 대조한다.
+5. 배포 패키지에서 버전을 직접 읽을 수 없는 경우 배포를 생성한 빌드 자료를 확인하고 출처를 남긴다.
+6. 실제 적용 바이너리와 일치하는 버전을 특정하지 못하면 버전을 미확정으로 둔다.
+
+기록 예시
+
+|항목   |값 예시                                                |
+|-----|----------------------------------------------------|
+|버전 원문|`build.version=<실제 파일의 값>`                          |
+|파일 경로|`C:/commerce-local/hybris/bin/platform/build.number`|
+|소스 기준|`<대상 배포에 대응한 커밋 또는 배포 버전>`                          |
+|판정   |둘의 대응을 확인한 자료 또는 미확정 사유                             |
+
+SAP Help — Finding Your SAP Commerce Version
 https://help.sap.com/docs/SAP_COMMERCE/5671512a37c74e1daa2d8191b163dc61/aa595ad5ed9d4f138bafe35adc01e6d8.html
 
-[6] SAP Help — Multitenancy
+1.3 지정 테넌트가 대상 배포에 구성되는지 확인한다
+
+1. 입력받은 테넌트 ID 원문을 기록한다. 대소문자나 공백의 처리 규칙이 결과에 영향을 주는 경우 대상 코드가 실제로 하는 처리를 확인한다.
+2. CONFIG_DIR/local.properties와 HYBRIS_HOME/bin/platform/project.properties에서 installed.tenants를 검색한다.
+3. 파일에 값이 여러 번 나오거나 외부 배포 설정이 같은 키를 덮어쓰면 최종 적용값과 출처를 기록한다.
+4. 사용자가 master를 지정했다면 SAP Commerce 기본 테넌트 규칙과 대상 설치를 근거로 기록한다.
+5. 추가 테넌트를 지정했다면 최종 installed.tenants 및 실제 레지스트리 구성 코드에서 그 ID가 구성 대상인지 확인한다.
+6. 추가 테넌트 파일의 표준 확인 위치는 HYBRIS_HOME/bin/platform/tenant_<ID>.properties와 CONFIG_DIR/local_tenant_<ID>.properties다.
+7. 같은 ID의 파일이 둘 다 있으면 Utilities.getTenantInfos()를 탐색 지점으로 삼아, 대상 빌드에서 파일을 읽고 합치는 코드와 적용 우선순위를 확인한다.
+8. 커스텀 코드나 별도 배포 설정으로 테넌트를 구성하는 경우, 대상 Registry 또는 부트스트랩 코드에서 ID를 추가하는 분기와 그 입력을 확인한다.
+9. 파일의 존재, 설치 설정의 등록 여부, 런타임 초기화 상태를 서로 다른 값으로 기록한다.
+10. 이 단계에서는 지정 테넌트의 구성 및 정적 재현에 필요한 입력을 확인한다.
+
+|결과                                             |판정                               |
+|-----------------------------------------------|---------------------------------|
+|`master`가 지정되었고 대상 설치가 식별됨                     |기본 테넌트로 기록한다.                    |
+|`demo`가 최종 구성에 있고 해당 테넌트의 설정 원본을 확보함           |`demo`와 파일 출처를 확정한다.             |
+|`tenant_demo.properties`만 있고 최종 구성에 포함되는 근거가 없음|파일을 설정 후보로 기록하고 테넌트 등록은 미확정으로 둔다.|
+|지정 ID가 최종 구성에 없고 별도 등록 경로도 없음을 확인함             |해당 배포에 구성되지 않은 테넌트로 기록한다.        |
+|외부 값 또는 커스텀 부트스트랩을 읽어야 판단할 수 있음                |필요한 설정 키나 클래스·메서드를 미확정 항목에 적는다.  |
+
+SAP Help — Multitenancy
 https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8c14e7ae866910148e59ebf4a2685857.html
 
-[7] SAP Commerce 2211 API — Registry
+SAP Commerce 2211 API — Utilities, Registry
+https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/util/Utilities.html
 https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/core/Registry.html
 
-[8] SAP Commerce 2211 API — HybrisContextLoaderListener
-https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/spring/HybrisContextLoaderListener.html
+완료 기준. 지정 테넌트 ID, 설치·설정 절대 경로, 정확한 SAP Commerce 버전, 테넌트 구성 근거를 같은 대상 배포에 연결했다.
+등록 여부가 미확정이면 2장의 배포 extension 조사는 진행할 수 있다.
+3장의 테넌트 활성 목록은 테넌트 근거가 확보된 뒤 확정한다.
 
-[9] SAP Commerce 2211 API — Utilities
-https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/util/Utilities.html
+2. 배포에 포함된 extension 집합 확인
 
-[10] SAP Help — Configuration Options in localextensions.xml
+작업 목적. 설치 디렉터리에 있는 모든 extension 중 대상 빌드가 실제로 선택한 집합을 구한다.
+
+입력. 1장에서 확정한 설치와 적용 설정, 대상 빌드 자료.
+
+출력. extension 이름, 실제 디렉터리, 포함 근거, 선행 의존성.
+
+2.1 명시 선언과 탐색 경로를 읽는다
+
+1. CONFIG_DIR/localextensions.xml을 연다.
+2. <extension name="…">마다 지정한 이름과 XML 요소의 위치를 기록한다.
+3. <extension dir="…">이 있으면 그 경로의 변수를 대상 빌드 값으로 치환한다.
+4. 치환한 디렉터리의 최상위 extensioninfo.xml을 열고 <extension name="…">으로 실제 이름을 확인한다.
+5. 각 <path>의 dir, autoload, depth를 원문 그대로 기록한다.
+6. 탐색 경로를 계산할 때 HYBRIS_BIN_DIR 등 변수 정의의 출처를 기록한다.
+7. localextensions.xml이 없는 경우 실제 빌드가 어떤 대체 설정을 읽는지 대상 버전의 빌드 시작 코드나 산출물에서 확인한다.
+8. 빌드나 배포 정의가 먼저 extension 목록을 생성하는 방식이라면 생성된 파일과 생성 입력을 같이 기록한다.
+
+|파일 또는 요소                                |찾을 값             |기록 결과                  |
+|----------------------------------------|-----------------|-----------------------|
+|`localextensions.xml`의 `extension@name` |명시 이름            |이름과 검색 가능한 루트 후보       |
+|`localextensions.xml`의 `extension@dir`  |물리 위치를 지정하는 값    |치환된 경로와 실제 extension 이름|
+|`localextensions.xml`의 `path@autoload`  |탐색 대상을 자동 추가하는 조건|해당 경로의 처리 유형           |
+|`localextensions.xml`의 `path@depth`     |대상 버전이 적용하는 탐색 깊이|적용값, 기본값이 적용되면 그 근거    |
+|찾은 `extensioninfo.xml`의 `extension@name`|실제 extension 이름  |후보의 정식 이름과 파일 경로       |
+
+2.2 플랫폼 자동 로드와 의존성을 반영한다
+
+1. 대상 버전에서 자동으로 검사하는 플랫폼 핵심 extension 디렉터리를 확인한다.
+2. HYBRIS_HOME/bin/platform/ext는 표준 설치의 확인 출발점이다.
+3. 명시 목록과 자동 로드 대상의 각 extensioninfo.xml에서 <requires-extension name="…">을 읽는다.
+4. 아직 목록에 없는 의존 이름마다 2.1의 탐색 규칙을 적용해 후보를 찾는다.
+5. 새로 찾은 각 extension의 의존성을 다시 읽는다.
+6. 새 이름이 추가되지 않을 때까지 같은 절차를 반복한다.
+7. edge는 필요한 extension → 이를 요구하는 extension 방향으로 기록한다.
+8. 소스 경로가 플랫폼 내장, 모듈, 커스텀 중 어디인지 구별하되 선택 결과는 실제 코드와 배포 자료로 판정한다.
+
+2.3 중복 이름과 누락을 처리한다
+
+• 같은 이름의 extensioninfo.xml이 둘 이상이면 파일의 전체 경로를 전부 기록한다.
+• 대상 빌드 산출물에 확정 경로가 남아 있으면 그 경로와 각 후보를 비교한다.
+• 산출물이 없으면 대상 PlatformConfig 또는 실제 선택 코드에서 동일 이름이 충돌할 때 어떤 분기가 실행되는지 확인한다.
+• 선택 규칙이 입력 순서에 의존한다면 탐색 경로의 순서와 동일 경로 내부 열거 규칙까지 확인한다.
+• 어떤 extension이 요구되는데 파일이 없으면 요구하는 쪽의 XML 줄을 기록한다.
+• 대상 빌드 자료에도 해당 이름이 없다면 빌드 오류에 해당하는지 구현이나 문서로 확인한다.
+• 순환 의존이 발견되면 순환을 이루는 이름과 edge를 기록하고, 해당 버전 빌더가 순환을 어떻게 처리하는지 확인한다.
+• 의존성 이름의 여러 후보를 임의 경로로 합쳐 그래프를 만들지 않는다.
+
+2.4 빌드 완성 목록과 대조한다
+
+1. 대상 배포를 생성한 빌드 목록, 패키지 인벤토리 또는 적용된 extension 설정이 있으면 읽는다.
+2. 정적으로 재구성한 이름 집합과 산출물에 기록된 이름 집합의 차이를 낸다.
+3. 차이가 생긴 이름마다 누락된 탐색 경로, 자동 로드 정책, 배포 생성 단계 중 무엇 때문인지 찾는다.
+4. 빌드 자료가 경로까지 제공하면 extensioninfo.xml 경로와 대조한다.
+5. 대상 자료가 목록의 순서를 나타내는지 여부는 7장에서 따로 판단한다.
+
+완료 기준. 대상 배포의 포함 extension마다 이름, 실제 경로, 포함 이유가 있고, 각 requires-extension edge의 대상이 해석되었다.
+중복 후보나 누락이 남아 있다면 그 이름과 조건을 명시해 3장의 확정 범위를 제한한다.
+
+SAP Help — Configuration Options in localextensions.xml
 https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html
 
-[11] SAP Help — Building SAP Commerce
+SAP Help — Extension Configurations
+https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8bbf6b5e86691014ad49fd1bc0172e5c.html
+
+SAP Help — Building SAP Commerce
 https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8b6ded0d86691014a6fab18e171c1f91.html
 
-[12] SAP Commerce 2211 API — PlatformConfig
-https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/bootstrap/config/PlatformConfig.html
+3. 지정 테넌트의 활성 extension 집합 확인
 
-[13] SAP Commerce 2211 API — Tenant
+작업 목적. 대상 배포의 extension 중 지정 테넌트의 코어 구성에 사용되는 이름 집합을 식별한다.
+
+입력. 1장의 테넌트 ID와 적용 설정, 2장의 배포 포함 extension 집합, 대상 SAP Commerce의 플랫폼 소스 또는 JAR.
+
+출력. extension별 활성·제외·미확정 상태, 근거 메서드와 최종 설정값.
+
+3.1 코어 컨텍스트를 구성하는 코드의 위치를 찾는다
+
+1. IntelliJ에서 de.hybris.platform.core.Registry를 열고 getCoreApplicationContext()를 찾는다.
+2. 메서드가 이미 생성된 컨텍스트를 읽기만 하면 반환에 사용한 객체의 선언과 생성 지점을 확인한다.
+3. 프로젝트 소스 검색에서 Loading Spring configuration for 문자열을 검색한다.
+4. 로그 문구가 검색되면 로그를 남기는 메서드와 그 호출자를 열어 코어 리소스가 어떤 경로로 Spring에 전달되는지 확인한다.
+5. 로그 문구가 소스에 없으면 .application-context 문자열을 플랫폼 소스에서 검색한다.
+6. 대상 버전의 소스가 없으면 플랫폼 JAR에서 Registry 및 AbstractTenant의 관련 호출 경로를 읽고, 호출되는 구현 클래스의 디컴파일 결과를 연다.
+7. 검색에 걸린 코드가 전역 컨텍스트 또는 다른 컨텍스트를 구성한다면, 호출자가 지정 테넌트의 코어 컨텍스트를 생성할 때 쓰는 메서드를 계속 찾는다.
+8. 코드에서 컨텍스트별로 공통 로더를 사용하는 경우, 대상 테넌트 코어 호출이 전달하는 인수와 분기를 기록한다.
+
+추적 기록에 넣을 값
+
+|지점       |기록할 내용                                                    |
+|---------|----------------------------------------------------------|
+|코어 접근점   |`Registry.getCoreApplicationContext()`부터 실제 생성·획득 지점까지의 호출|
+|테넌트 전달   |지정 ID가 어떤 테넌트 객체나 설정 객체로 연결되는지                            |
+|리소스 목록 생성|실제 생성 메서드, 반환 타입, 목록 생성 시점                                |
+|XML 로더 호출|선택된 리소스를 소비하는 클래스·메서드, 대상 컨텍스트의 근거                        |
+
+3.2 테넌트별 후보 목록의 실제 생성 규칙을 읽는다
+
+1. 리소스 목록을 만드는 메서드에서 extension 이름을 반복하는 부분을 찾는다.
+2. 반복문의 입력 변수를 초기화하는 호출까지 이동한다.
+3. Tenant.getTenantSpecificExtensionNames()를 쓰는 경로라면 인터페이스에 이어 대상 테넌트의 구체 클래스를 연다.
+4. master가 대상이라면 MasterTenant 구현을, 추가 테넌트라면 그 배포에서 해당 ID에 구성되는 테넌트 구현을 확인한다.
+5. 구현이 빌드 목록, 설정 객체, 별도 목록을 조합한다면 각 입력이 어떤 순서로 읽히고 어떤 이름을 추가하거나 제외하는지 기록한다.
+6. Utilities.getExtensionNames(), Utilities.getInstalledExtensionNames(Tenant), PlatformConfig 등이 보이면 각 결과에 뒤따르는 필터와 호출자의 사용 방식을 읽는다.
+7. API에 반환형이 List로 표시되어 있어도 이 단계에서는 활성 집합의 출처를 판정한다. 실제 순회 순서는 7장에서 별도로 확인한다.
+8. 코어 로더가 테넌트별 메서드의 결과를 그대로 쓰는지, 플랫폼 extension을 추가하거나 특정 종류를 제외하는지 확인한다.
+
+3.3 설정 기반 분기를 정확한 키와 대조한다
+
+1. 위 구현에서 설정값을 읽는 메서드 호출을 찾는다.
+2. 호출 인수에 전달하는 실제 키 문자열 또는 키를 조합하는 코드의 구성 요소를 기록한다.
+3. 지정 테넌트 설정 파일, local.properties, 대상 배포의 추가 설정층에서 그 키를 찾는다.
+4. 미설정, 빈 값, 확장 이름이 명시된 값에서 각각 어떤 분기가 실행되는지 읽는다.
+5. 목록에서 모르는 extension 이름을 받았을 때 무시, 기록, 오류 중 어떤 동작을 하는지 확인한다.
+6. 이름 정규화가 있다면 실제 코드가 공백과 대소문자를 어떻게 처리하는지 적용한다.
+7. 소스에 설정값이 없으면 배포가 추가로 주입하는 입력을 확인한다. 값이 없다는 증거와 파일을 확보하지 못했다는 상태를 구별한다.
+
+3.4 활성 상태와 XML 선택 상태를 따로 기록한다
+
+|사례                                        |활성 상태|XML 상태   |
+|------------------------------------------|-----|---------|
+|대상 코어 로더의 extension 후보 집합에 포함됨            |활성   |4~6장에서 확인|
+|대상 테넌트 필터가 명시적으로 제외함                      |제외   |해당 없음    |
+|활성 extension에서 선택 가능한 코어 XML이 없음을 6장에서 확인함|활성   |진입 XML 없음|
+|실제 테넌트 필터의 설정값이 외부에 있고 자료가 없음             |미확정  |미확정      |
+
+완료 기준. 2장의 각 extension에 대해 지정 테넌트 기준의 활성 상태와 그 근거가 기록되었다.
+대상 구현이 실제로 소비하는 목록을 확인했으며, 배포 포함 집합과 테넌트 활성 집합의 차이를 설명할 수 있다.
+
+SAP Commerce 2211 API — Registry, Tenant, AbstractTenant
+https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/core/Registry.html
 https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/core/Tenant.html
+https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/platform/core/AbstractTenant.html
 
-[14] SAP Help — Spring Framework in SAP Commerce
-https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8c63621986691014a7e0a18695d7d410.html
+4. extension별 코어 설정값과 출처 확인
 
-[15] SAP Help — Where to Define Property Values
+작업 목적. 지정 테넌트의 각 활성 extension에 대해 코어 로더가 읽는 최종 적용 프로퍼티 값을 구한다.
+
+입력. 3장의 활성 목록, 해당 코드가 사용하는 설정 읽기 경로, 대상 배포의 프로퍼티 파일.
+
+출력. 키, 원문 후보, 적용값, 출처, 미설정 또는 값 미확정 여부.
+
+4.1 실제 키와 조회 메서드를 식별한다
+
+1. 대상 extension 이름이 melcocore면 melcocore.application-context를 정확한 문자열로 검색한다.
+2. 3장에서 찾은 코드에서 실제로 .application-context가 어떻게 조합되는지 확인한다.
+3. getParameter(key), getString(key, default) 또는 다른 접근 경로 중 무엇을 호출하는지 기록한다.
+4. 값을 읽는 객체가 특정 테넌트의 설정인지, 코어 로더에 전달된 별도 환경인지 확인한다.
+5. fallback 값을 메서드 인수로 전달한다면, 원본 키의 존재 여부와 fallback 적용 결과를 따로 적는다.
+6. 키나 값이 전역 컨텍스트와 테넌트 코어에서 공용 메서드로 해석된다면, 실제 호출 인수를 확인한다.
+
+4.2 프로퍼티의 후보와 최종값을 구한다
+
+아래 위치를 열어 동일한 키를 찾는다.
+키가 발견되면 파일 경로와 줄, 원문의 값, 이 파일이 대상 배포에서 적용되는 근거를 기록한다.
+
+|탐색 위치                                                   |확인할 내용                    |
+|--------------------------------------------------------|--------------------------|
+|`<extension>/project.properties`                        |extension이 제공하는 기본값       |
+|`HYBRIS_HOME/bin/platform/project.properties`           |플랫폼 기본 설정                 |
+|다른 활성 extension의 `project.properties`                   |동일 키를 정의하는 추가 후보          |
+|`CONFIG_DIR/local.properties`                           |현재 설치의 오버라이드              |
+|`tenant_<ID>.properties`, `local_tenant_<ID>.properties`|대상 구현이 이 설정층을 읽을 때 테넌트별 후보|
+|환경별 설정과 배포 생성 결과                                        |추가 설정 파일, 외부 값, 배포 시 치환된 값|
+|대상 설정 합성 코드                                             |적용 순서, 같은 층에서의 충돌 처리, 기본값 |
+
+1. SAP 문서의 일반 프로퍼티 우선순위를 출발점으로 삼는다.
+2. 여러 extension 파일이 같은 키를 정의하면 해당 배포의 설정 합성 순서를 확인한다.
+3. 실행 설정이 환경 변수나 JVM 시스템 프로퍼티를 넘긴다면, 값이 존재한다는 사실에 이어 대상 조회 메서드가 실제로 이를 읽는지 확인한다.
+4. 최종 설정을 생성하는 파일이 따로 있다면 원본 템플릿과 생성 결과를 연결한다.
+5. 주석, 줄 이어쓰기, 구분자, 이스케이프가 결과에 영향을 주는 값은 실제 프로퍼티 파서의 규칙을 적용한다.
+6. 치환 전 원문과 치환 후 값, 치환에 사용된 값을 각각 기록한다.
+7. XML 이름에 연결되는 환경 값이 미확정이면 가능한 문자열이나 부족한 입력을 남긴다.
+
+4.3 코어, 전역, 웹의 설정 키를 식별한다
+
+• <extension>.application-context는 조사하고 있는 코어 키다.
+• <extension>.global-application-context가 보이면 전역 컨텍스트의 후보로 표시하고 실제 소비 코드를 확인한다.
+• 앱이나 서블릿의 contextConfigLocation이 보이면 해당 웹 컨텍스트의 후보로 표시한다.
+• XML의 파일명에 core 또는 web이 들어 있더라도, 실제 로더와 레지스트리가 어느 쪽인지 확인해 분류한다.
+• 같은 XML 리소스가 여러 컨텍스트에서 사용되면 각각의 로드 발생 지점과 컨텍스트를 기록한다.
+
+4.4 결과별 판정을 기록한다
+
+|확인 결과                                              |기록                                |
+|---------------------------------------------------|----------------------------------|
+|최종값이 `melcocore-spring.xml,melcocore-overrides.xml`|문자열 전체와 선언 출처를 기록하고 5장에서 분해 방식을 확인|
+|적용 파일 전체에서 키가 없음을 확인함                              |`미설정`으로 기록하고 5장에서 기본 분기 확인        |
+|최종값이 빈 문자열 또는 공백임                                  |해당 원문을 기록하고 5장에서 미설정과 같은 분기인지 확인  |
+|후보 파일이 일부 누락되어 최종값을 고를 수 없음                        |후보와 누락된 배포 설정을 기록                 |
+|다른 컨텍스트용 키만 발견됨                                    |해당 키를 별도 메모로 남기고 코어 키의 미설정 여부를 판정 |
+
+완료 기준. 활성 extension마다 최종값과 그 출처가 있다. 미설정과 미확정이 구분되며, 동일 키의 경쟁 후보를 처리한 근거가 있다.
+
+SAP Help — Where to Define Property Values
 https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8b8e13c9866910149d40b151a9196543.html
 
-[16] Spring Framework 6.2 API — DefaultBeanDefinitionDocumentReader
+5. 코어 로더의 기본 파일명 및 탐색 분기 확인
+
+작업 목적. 진입 XML 후보 문자열을 만들어 선택하는 대상 버전의 분기를 찾는다.
+
+입력. 3장에 기록한 코어 목록 생성 메서드와 4장의 설정값.
+
+출력. 상태별 기본값, 후보 분리 규칙, 탐색 순서, 오류 처리 규칙.
+
+5.1 값이 없거나 비어 있을 때의 조건을 읽는다
+
+1. 4장에서 기록한 설정 접근 줄을 연다.
+2. 그 다음에 반환값을 검사하는 조건문을 확인한다.
+3. null, 길이 0, 공백 문자열이 각각 어느 분기로 들어가는지 기록한다.
+4. 분기에서 조합하는 기본 파일명을 기록한다.
+5. SAP 문서가 설명하는 기본 이름은 <extension>-application-context.xml이다.
+6. 대상 구현에서 이 이름을 언제 검사하고 명시 설정과 어떤 우선관계를 갖는지 본문에서 확인한다.
+7. <extension>-spring.xml이 소스에 있으면 그 이름이 최종 프로퍼티에 지정되었는지, 대상 코드의 별도 규칙이 있는지 확인한다.
+8. 경로 후보가 선택되지 않았을 때 다음 extension을 처리하는지, 로그를 남기는지, 예외로 중단하는지 확인한다.
+
+5.2 복수 리소스 문자열의 분해 규칙을 읽는다
+
+1. 쉼표로 된 값을 분리하는 메서드를 찾는다.
+2. 원래 토큰의 순서와 분리된 결과를 비교한다.
+3. 토큰 양끝 공백을 제거하는지 확인한다.
+4. 쉼표 뒤의 빈 토큰이나 두 구분자 사이의 빈 토큰을 유지하는지 확인한다.
+5. 같은 이름이 여러 번 있으면 목록에 각각 추가되는지 또는 중복이 제거되는지 확인한다.
+6. 리소스가 하나도 유효하지 않을 때 기본값을 다시 검사하는지 확인한다.
+7. 대상 코드의 토큰 규칙이 확보되지 않았다면 복수 파일을 합쳐 하나로 처리하지 말고 각각 후보로 남긴다.
+
+5.3 리소스 검사 순서를 읽는다
+
+1. 목록의 각 항목에서 처음 호출하는 리소스 조회 메서드를 연다.
+2. 문자열에 프로토콜이나 경로 접두사를 추가하는지 확인한다.
+3. 탐색을 클래스패스에서 시작한다면 사용한 클래스 로더와 메서드 이름을 적는다.
+4. 파일시스템으로 넘어간다면 그 조건과 상대 경로의 기준 디렉터리를 적는다.
+5. 파일 존재를 검사하는 것과 실제 읽을 수 있는 리소스로 만드는 지점이 다르면 각각 표시한다.
+6. SAP 문서는 클래스패스를 먼저 검사하고 파일시스템을 검사하는 구성을 설명한다. 대상 패치에서 확장한 분기가 있다면 그 구현을 적용한다.
+7. Loading Spring configuration for 로그를 남기는 위치와 결과를 Spring에 넘기는 위치를 대조한다.
+8. 로깅 전에 발견한 리소스와 실제 전달 리소스가 달라지는 분기가 있다면 결과 목록에는 실제로 전달되는 리소스를 기록한다.
+
+5.4 분기표를 채운다
+
+|입력 사례              |코드에서 확인할 것            |기록           |
+|-------------------|----------------------|-------------|
+|키가 없음              |기본 이름의 생성·검사 지점       |검사한 이름, 존재 여부|
+|값이 빈 문자열           |trim 후 미설정 처리 또는 별도 처리|선택된 조건문      |
+|명시된 XML 한 개        |최초 탐색과 fallback       |검색 순서        |
+|쉼표 목록              |분리 방식과 중복 처리          |후보 순서        |
+|첫 후보 일부 누락         |건너뛰기, 실패, 대체 선택       |뒤 후보 진행 여부   |
+|기본 이름과 명시 이름이 모두 존재|대상 코드에서 선택하는 분기       |실제 선택된 이름    |
+
+완료 기준. 미설정, 공백, 단일 파일, 복수 파일, 미발견 입력에서 리소스 후보와 다음 동작을 코드로 설명할 수 있다.
+분기별 기록에는 대상 JAR 또는 소스와 메서드 위치가 적혀 있다.
+
+SAP Help — Spring Framework in SAP Commerce
+https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8c63621986691014a7e0a18695d7d410.html
+
+6. 진입 XML의 실제 클래스패스·파일 위치 확인
+
+작업 목적. 기본값이나 프로퍼티에서 얻은 이름을 실제 파일 또는 JAR 엔트리와 연결한다.
+
+입력. 5장의 후보와 로더 선택 규칙, 대상 배포의 클래스패스 및 리소스.
+
+출력. XML 이름, 선택된 물리 위치, 선택 근거, 같은 이름의 기타 후보.
+
+6.1 코어 로더가 사용하는 클래스 로더를 확인한다
+
+1. 코어 리소스 검색 코드에서 getResource나 이에 해당하는 호출을 찾는다.
+2. 호출 대상이 컨텍스트 클래스 로더, 특정 클래스의 클래스 로더, 커스텀 ResourceLoader 중 무엇인지 변수 선언에서 확인한다.
+3. 클래스 로더의 생성과 부모 설정을 찾을 수 있다면 대상 라이브러리 목록과 위임 규칙을 기록한다.
+4. 대상 배포의 시작 설정 또는 패키지 배치를 통해 클래스 로더가 참조하는 디렉터리와 JAR를 확인한다.
+5. 코어 로더의 검색 공간을 IDE 프로젝트의 전체 Libraries 목록과 구분한다.
+6. 웹 모듈이나 다른 프로세스에만 포함된 JAR가 있다면 해당 코어 로더에서도 접근 가능한지 별도로 확인한다.
+7. JAR의 전체 순서가 리소스 선택에 영향을 주는 경우, 산출물이나 로더 코드에서 선택 근거를 찾는다.
+
+6.2 파일과 JAR에서 후보를 확인한다
+
+1. 각 extension의 resources/에서 후보 파일의 소스 위치를 찾는다.
+2. 빌드가 그 소스 파일을 어느 디렉터리 또는 JAR 안의 어떤 상대 경로에 넣었는지 확인한다.
+3. 실제 배포 JAR를 IntelliJ Libraries나 ZIP을 읽을 수 있는 도구로 연다.
+4. 대상 파일의 엔트리 전체 문자열을 찾는다. spring/core.xml과 core.xml은 각각 별도 후보로 기록한다.
+5. JAR 안의 대소문자 등 이름을 대상 리소스 검색 규칙에 맞춰 비교한다.
+6. 외부 파일이 후보라면 5장에서 확인한 기준으로 절대 경로를 구하고 파일을 연다.
+7. 소스와 배포 리소스가 모두 있으면 import 위치나 이름이 달라지는지 비교한다. 결과의 선언 근거는 분석 대상으로 확정한 배포 리소스에서 확보한다.
+
+선택적으로 JDK 명령을 사용할 경우
+
+• 실행할 명령은 jar tf "<대상 JAR 절대 경로>"다.
+• 목적은 JAR를 실행하지 않고 아카이브 안의 엔트리 이름을 나열하는 것이다.
+• 확인할 값은 후보의 전체 엔트리 경로다.
+• 예를 들어 출력에 spring/core.xml만 있으면 아카이브 내 경로는 spring/core.xml로 기록한다.
+• 출력에 후보가 없으면 해당 JAR에는 그 엔트리가 없다는 근거로 남기고 다른 검색 위치를 확인한다.
+
+6.3 중복 리소스와 부재를 판정한다
+
+|상황                          |작업                          |판정                        |
+|----------------------------|----------------------------|--------------------------|
+|실제 검색 공간에 이름이 정확히 맞는 리소스 한 개|로더가 그 위치에 접근 가능한지 확인        |실제 위치 확정                  |
+|둘 이상의 JAR가 같은 엔트리 이름을 제공    |로더의 위임 및 검색 순서 대조           |선택된 리소스와 선택되지 않은 후보 모두 기록 |
+|클래스패스와 외부 파일에 모두 존재         |해당 분기의 탐색 우선순위 확인           |먼저 선택되는 리소스 기록            |
+|소스에는 있고 배포에 없음              |빌드의 리소스 포함 경로와 대상 배포가 같은지 확인|소스는 후보로 유지하고 배포 결과 기준으로 판정|
+|탐색 공간 일부만 확보함               |누락된 JAR 목록이나 로더 생성 지점 식별    |리소스 선택 미확정                |
+|모든 검색 위치에서 후보가 없음을 확인함      |누락 시 계속 또는 오류 분기 대조         |진입 없음 또는 실패 구분            |
+
+6.4 실제 위치를 표에 저장한다
+
+경로 표기에는 리소스를 포함하는 물리 파일과 그 안의 엔트리를 모두 남긴다.
+예를 들어 C:/deploy/lib/melcocore.jar!/spring/core.xml에서 !/ 앞은 JAR의 위치다.
+뒤는 JAR 엔트리이며, 파일명만 적는 것보다 동명 리소스를 판별하기 쉽다.
+파일시스템의 리소스는 확인한 절대 경로를 그대로 기록한다.
+
+완료 기준. 모든 활성 extension의 진입 후보에 대해 선택된 리소스, 로드 대상 없음, 실패, 미확정 중 하나를 판정했다.
+실제로 선택된 후보에는 파일이나 JAR 엔트리와 선택 근거가 모두 있다.
+
+7. extension 사이의 로드 순서 확인
+
+작업 목적. 지정 테넌트 코어 로더가 extension을 어떤 순서로 처리하는지 확정한다.
+
+입력. 2장의 의존성 관계, 3장의 테넌트별 목록 생성 경로, 대상 배포의 순서가 담긴 자료.
+
+출력. 입증한 extension 순번, 부분 선후관계, 순서가 미확정인 쌍과 원인.
+
+7.1 코어 로더가 읽는 최종 자료구조를 찾는다
+
+1. 3장에서 확인한 코어 리소스 목록 생성 메서드를 다시 연다.
+2. extension을 순회하는 반복문, 메서드 호출 또는 스트림을 찾는다.
+3. 순회하는 객체가 리스트, 집합, 맵의 키, 스트림 중 무엇인지 확인한다.
+4. 변수 선언과 값을 채우는 메서드까지 거슬러 올라간다.
+5. 어떤 클래스가 기본 빌드 순서를 제공하는지, 데이터가 어디에서 생성되는지 기록한다.
+6. PlatformConfig.getExtensionInfosInBuildOrder()는 대상 2211에서 찾을 수 있는 탐색 지점이다. 해당 배포의 코어 로더가 이를 실제로 호출하는지 확인한다.
+7. 호출에 여러 목록이 있다면 연결 순서, 중복 처리, 우선순위 정렬을 확인한다.
+8. 테넌트 필터가 기존 순서를 유지하며 추리는지, 별도의 목록으로 복사한 뒤 다시 정렬하는지 확인한다.
+9. 리소스 선택 과정에서 일부 extension을 건너뛸 때, 나머지 순서가 바뀌는지 확인한다.
+
+7.2 빌드 자료의 순서를 재사용할 수 있는지 판단한다
+
+1. 대상 배포의 extension 목록이나 빌드 메타데이터를 연다.
+2. 그 자료의 생성기를 찾아, 행 순서가 빌드 순서인지 이름순 인벤토리인지 확인한다.
+3. 빌드 순서라면 코어 로더가 같은 자료를 읽거나 그 순서를 재사용하는지 확인한다.
+4. 자료에 parallel build의 그룹이 있다면 그룹과 그룹 내부의 의미를 구분한다.
+5. 로더가 일렬 목록을 별도로 만든다면 목록 생성 코드에서 동률 처리 기준을 확인한다.
+6. 특정 빌드의 정렬 결과가 파일에 남아 있으면 해당 파일의 배포 버전과 1장의 버전을 대조한다.
+7. 같은 커밋이라도 적용 설정이나 빌드 산출물이 다르면 각 배포에 해당하는 순서를 따로 기록한다.
+
+7.3 의존성으로 보장되는 선후관계를 정리한다
+
+1. A/extensioninfo.xml에 <requires-extension name="B"/>가 있고 실제 빌드에 그 관계가 적용된다면 B < A를 기록한다.
+2. C < B도 확인했다면 앞선 관계와 결합해 C < A를 기록한다.
+3. 코어 로더가 SAP 문서에 설명된 빌드 순서와 어떻게 연결되는지 해당 구현 또는 산출물에서 대조한다.
+4. 두 extension이 서로 선행할 근거가 없으면 임의로 이름순 또는 폴더순을 부여하지 않는다.
+5. 빌드의 의존성 처리 결과가 여러 순서를 허용하더라도, 대상 배포의 동률 결정 입력을 확보하면 그 배포의 순서를 추가로 확정할 수 있다.
+
+|증거                                                         |확인된 결과                              |다음 작업                        |
+|-----------------------------------------------------------|------------------------------------|-----------------------------|
+|`basecatalog < melcocore`와 `basecatalog < regionalcore`만 확인|`basecatalog`는 두 extension보다 선행     |커스텀 두 항목의 상대 순서를 판단할 자료를 찾는다.|
+|대상 로더가 빌드 자료의 순서를 유지해 필터링함                                 |필터 후에도 남은 extension의 상대 순서를 계산할 수 있음|각 XML에 extension 순번을 연결한다.   |
+|로더 입력이 정렬되지 않은 디렉터리 열거에 의존하나 해당 열거 결과가 없음                  |일부 상대 순서 미확정                        |실제 입력을 보존한 배포 자료 여부를 확인한다.   |
+|목록에 순번이 있지만 생성 근거가 이름순 출력임                                 |이름순 참고 인벤토리                         |다른 근거로 로더 순서를 확인한다.          |
+
+7.4 순서 미확정의 영향 범위를 기록한다
+
+• 출력하려는 전체 순서가 달라지는 extension을 쌍으로 기록한다.
+• 예를 들어 melcocore < regionalcore와 regionalcore < melcocore가 모두 가능한 경우 두 조건을 적는다.
+• 두 extension의 진입 XML과 import 목록은 각각 확정된 상태로 유지한다.
+• 향후 동일 ID나 alias 재등록에 영향을 줄 수 있는 사례는 어떤 ID가 어느 출처에서 중복되는지 별도 메모를 남긴다.
+• 전체 목록에 절대 순번을 붙이려면 해당 순서를 입증할 수 있는 자료가 필요하다.
+• 부분 순서만 입증했다면 A < B 형태의 관계와 미확정 쌍을 결과표에 제공한다.
+
+완료 기준. 전체 확정은 활성 extension의 최종 순회 순번과 모든 순서 결정 근거가 확보된 경우에만 부여한다.
+근거가 부분적이면 입증한 선후관계와 부족한 입력을 작성하고 순서의 전체 상태를 미확정으로 기록한다.
+
+SAP Commerce 2211 API — PlatformConfig
+https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/bootstrap/config/PlatformConfig.html
+
+8. 같은 extension 안의 진입 XML 순서 확인
+
+작업 목적. 하나의 extension에서 여러 XML을 읽는 경우, 최종 프로퍼티의 순서와 실제 Spring 전달 순서를 연결한다.
+
+입력. 4장의 값 원문, 5장의 후보 선택 코드, 6장의 실제 리소스.
+
+출력. extension별 진입 XML 내부 순번, 건너뛴 토큰, 중복 또는 오류 처리 근거.
+
+8.1 토큰 순서가 리스트에 어떻게 반영되는지 확인한다
+
+1. 5장에서 기록한 분리 메서드를 연다.
+2. 입력 문자열의 각 토큰에 원문 위치를 부여한다.
+3. 분리한 결과를 어떤 자료구조로 옮기는지 확인한다.
+4. 탐색 실패와 같은 분기로 항목을 건너뛰면 원문 토큰 위치는 남기고 진입 순번은 부여하지 않는다.
+5. 개별 토큰이 여러 리소스로 확장되는 로직이 있다면 확장 순서를 기록한다.
+6. 동일 리소스가 두 토큰에서 선택되면 하나로 합치는 코드가 있는지 확인한다.
+7. 값이 없는 경우 적용된 기본 XML도 기본값 분기라는 출처와 함께 진입 항목으로 기록한다.
+
+8.2 실제 XML 로더 호출 지점까지 확인한다
+
+1. 리소스 선택 결과 목록을 XML 리더에 넘기는 메서드를 연다.
+2. 리스트를 어떤 순서로 돌면서 Spring에 전달하는지 확인한다.
+3. 호출 직전의 정렬, 역순, 중복 제거, 맞춤 설정 삽입이 있는지 확인한다.
+4. 하나의 파일 실패가 extension 내부 뒤쪽 파일의 처리를 중단하는지 호출자의 예외 처리에서 확인한다.
+5. 한 extension의 XML 읽기와 다음 extension 처리의 경계가 어디인지 표시한다.
+6. extension 내부 순번과 원문 토큰 순번을 결과에 따로 기록한다.
+
+8.3 결과 예시
+
+아래는 해당 코드가 인수 목록을 왼쪽에서 오른쪽으로 처리했다고 확인한 가상의 기록이다.
+
+|원문 토큰 위치|원문             |처리 결과                     |내부 진입 순번|
+|-------:|---------------|--------------------------|-------:|
+|1       |`base.xml`     |대상 JAR의 `base.xml` 선택     |1       |
+|2       |`overrides.xml`|대상 JAR의 `overrides.xml` 선택|2       |
+
+누락 토큰을 건너뛰는 별도 구현이라면 원문 2번이 건너뛰어지고 원문 3번에 내부 순번 2가 부여될 수 있다.
+실제 배포에서 그런 분기가 존재하는지는 5장의 코드로 판단한다.
+동일 XML을 두 번 읽는 경우에는 물리 위치가 같아도 발생 기록은 둘이다.
+
+완료 기준. 각 활성 extension의 실제 진입 XML별 순번과 그 순서가 로더까지 유지되는 근거를 기록했다.
+extension 간 순서가 미확정이어도 각 extension 내부 순서는 독립적으로 확정할 수 있다.
+
+9. XML 내부 profile과 import 처리 흐름 확인
+
+작업 목적. 진입 XML을 읽을 때 어떤 하위 XML을 어느 위치에서 처리하는지 재구성한다.
+
+입력. 6장과 8장의 진입 파일, 대상 Spring 버전, 해당 코어 컨텍스트의 환경 및 리소스 로더.
+
+출력. import별 활성 여부, 실제 위치, 처리 이벤트, 예외 또는 미확정의 이유.
+
+9.1 대상 Spring XML 로더와 환경을 확인한다
+
+1. 대상 배포에서 Spring Beans와 Spring Core JAR를 찾는다.
+2. 파일명만으로 버전이 불명확하면 JAR의 META-INF/MANIFEST.MF 또는 의존성 자료에서 확인한다.
+3. org.springframework.beans.factory.xml.XmlBeanDefinitionReader의 loadBeanDefinitions 호출 경로를 연다.
+4. 실제로 사용하는 문서 리더가 DefaultBeanDefinitionDocumentReader인지 확인한다.
+5. 기본 구현을 사용하면 doRegisterBeanDefinitions, parseBeanDefinitions, importBeanDefinitionResource를 순서대로 읽는다.
+6. 사용자 정의 문서 리더나 리소스 로더를 주입한다면 해당 구현의 선택 코드와 동작을 적용한다.
+7. 로더가 참조하는 Spring Environment가 어디서 설정되는지 추적한다.
+8. 활성 profile, 기본 profile, placeholder의 값이 SAP Commerce 프로퍼티나 JVM·배포 설정에서 어떻게 연결되는지 확인한다.
+9. 같은 테넌트의 일반 설정에 값이 있어도 Spring Environment의 해당 시점에 들어오는지 확인한다.
+
+9.2 profile 활성 여부를 먼저 판정한다
+
+1. XML 최상위 요소와 중첩 <beans>의 profile 속성을 찾는다.
+2. 해당 문서 리더가 profile 문자열을 해석하는 구현과 사용 API를 확인한다.
+3. 현재 적용되는 profile 목록과 비교해 블록이 읽히는지 판정한다.
+4. 부모 블록이 비활성이면 그 아래 import도 처리되지 않는 상태로 기록한다.
+5. 활성 profile 입력이 확인되면 해당 값을 기록한다.
+6. 입력이 미확정이면 어떤 조건에서 그 import가 실행되는지 남긴다.
+7. profile에 쉼표, 구분자, 부정 기호 등이 있으면 대상 구현의 해석 규칙을 확인한다.
+8. profile 조건이 없으면 문서 리더의 일반 요소 처리로 진행한다.
+
+9.3 import의 원문과 치환 결과를 기록한다
+
+1. XML 요소를 문서 순서대로 읽다가 <import resource="…">를 찾는다.
+2. 부모 파일 경로, 줄 번호 또는 요소 위치, resource 원문을 기록한다.
+3. ${…}가 있다면 그 import를 처리하는 메서드가 어느 Environment에서 값을 읽는지 확인한다.
+4. 확인된 최종값으로 문자열을 치환하고 치환 전·후를 함께 남긴다.
+5. 해결되지 않은 필수 값에서 오류를 내는 구현이라면 실제 오류 분기를 확인한다.
+6. 같은 파일에 profile 분기와 placeholder가 모두 있다면 profile을 먼저 판정하고, 활성 분기의 값 해석을 진행한다.
+7. 값을 여러 곳에서 설정한 경우 코어 XML 리더가 사용하는 환경과 적용 우선순위로 최종값을 정한다.
+
+9.4 상대 경로·절대 경로·패턴의 대상을 판정한다
+
+|resource 형식                        |확인할 코드와 입력                                                 |확인할 결과                           |
+|-----------------------------------|-----------------------------------------------------------|---------------------------------|
+|`spring/common.xml`                |`importBeanDefinitionResource`의 상대 리소스 분기와 현재 XML의 Resource|현재 XML을 기준으로 실제 선택된 파일 또는 JAR 엔트리|
+|`classpath:...`                    |리소스 로더의 단일 위치 검색과 클래스 로더                                   |선택된 실제 리소스                       |
+|`file:...`                         |대상 실행 환경의 파일 경로와 관련 리소스 구현                                 |해석된 절대 경로                        |
+|`classpath*:...` 또는 wildcard가 있는 패턴|해당 로더의 `getResources` 처리, 검색 대상, 반환 순서                     |매칭된 전체 리소스와 실제 열거 순서 또는 미확정      |
+|외부 URL·커스텀 프로토콜                    |해당 리소스 핸들러와 고정된 자료가 있는지 확인                                 |정적 자료로 내용을 확보했는지, 외부 입력이 필요한지    |
+
+1. 상대 리소스의 경우 문서 리더의 현재 Resource 기준 해석과 대체 경로로 넘어가는 조건을 확인한다.
+2. PathMatchingResourcePatternResolver.getResources를 사용할 경우 대상 Spring 버전과 실제 클래스 로더 정책을 적용한다.
+3. 패턴이 여러 후보를 반환하면 파일명순과 반환 순서를 각각 확인한다.
+4. 소스에 해당 파일이 있어도 대상 배포 클래스패스의 실물에서 선택된 상대 경로를 다시 확인한다.
+5. 상대 파일이 없을 때 클래스패스의 다른 동일 이름이 자동 선택된다고 가정하기 전에 코드의 fallback을 확인한다.
+6. 특정 패턴의 전체 매칭 집합을 알지만 순서가 미확정인 경우, 목록과 순서를 서로 다른 상태로 기록한다.
+7. 네임스페이스나 커스텀 핸들러가 별도 방식으로 리소스를 찾으면 선언적 import와 별개의 호출 위치를 기록한다.
+
+9.5 중첩 처리와 반복 참조를 기록한다
+
+1. 활성 import의 실제 대상을 열고 9.2~9.4를 다시 적용한다.
+2. 하위 XML을 읽은 뒤 부모 XML의 그 다음 요소로 복귀한다.
+3. 동일 파일이 여러 import에서 사용되면 각 호출 위치를 남긴다.
+4. 현재 호출 스택에 있는 파일로 다시 진입한다면 순환 경로를 기록한다.
+5. 대상 XmlBeanDefinitionReader의 순환 검사와 예외 전파를 확인해 실패 위치를 판정한다.
+6. 이미 처리가 끝난 파일을 뒤에서 다시 참조한 경우, 현재 호출 스택의 순환과 구별한다.
+7. 중복을 제거하는 구현이 추가되었는지 확인하고 실제 읽기 횟수를 기록한다.
+8. 디렉터리 목록을 평면으로 정렬하면 부모 문서로 복귀하는 위치가 사라지므로 이벤트 표에는 부모와 위치를 유지한다.
+
+9.6 파일 진입과 문서 요소 처리를 구별한다
+
+|순서|이벤트                       |출처                  |
+|-:|--------------------------|--------------------|
+|1 |`root.xml` 진입             |extension 내부 진입 순번 1|
+|2 |`root.xml`의 import 앞 선언 처리|`root.xml:12`       |
+|3 |`extra.xml` import 진입     |`root.xml:24`       |
+|4 |`extra.xml` 처리 완료 후 부모로 복귀|`root.xml:24` 다음 요소 |
+|5 |`root.xml`의 나머지 선언 처리     |`root.xml:30`       |
+|6 |`overrides.xml` 진입        |extension 내부 진입 순번 2|
+
+파일 자체의 진입 순서와 빈·alias 등의 선언이 처리되는 순서는 같은 표에서 서로 다른 이벤트로 기록할 수 있다.
+정적분석 결과를 빈 재정의 분석에 사용할 때는 부모 문서로 복귀한 이후의 선언도 함께 고려한다.
+
+완료 기준. 모든 활성 import에 대해 현재 문서, 선언 위치, profile 상태, 치환 결과, 실제 리소스, 중첩 경로, 복귀 위치가 확인되었다.
+wildcard나 외부 입력으로 인한 미확정은 영향을 받는 import와 하위 XML을 지정해 남긴다.
+
+Spring Framework 6.2 API — DefaultBeanDefinitionDocumentReader
 https://www.springframework.org/spring/docs/6.2.7/javadoc-api/org/springframework/beans/factory/xml/DefaultBeanDefinitionDocumentReader.html
 
-[17] Spring Framework 6.2 API — XmlBeanDefinitionReader
+Spring Framework 6.2 API — XmlBeanDefinitionReader
 https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/beans/factory/xml/XmlBeanDefinitionReader.html
 
-[18] Spring Framework 6.2 API — PathMatchingResourcePatternResolver
+Spring Framework 6.2 API — PathMatchingResourcePatternResolver
 https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/core/io/support/PathMatchingResourcePatternResolver.html
 
-[19] Apache Tomcat 9 Configuration Reference — The Context Container, Naming
-https://tomcat.apache.org/tomcat-9.0-doc/config/context.html
+10. 최종 검증과 결과물 작성
+
+작업 목적. 지정한 테넌트에 대한 XML 목록과 순서를 다시 검산하고, 확정 범위를 분명히 표시한다.
+
+입력. 1~9장의 파일·코드 근거와 조사표.
+
+출력. 대상 식별표, extension 표, 진입 XML 표, 실행 순서 또는 선후관계 표, import 이벤트 표, 미확정 목록.
+
+10.1 입력 묶음이 같은 배포에 속하는지 다시 확인한다
+
+• HYBRIS_HOME과 CONFIG_DIR가 같은 대상 설치를 가리키는지 확인한다.
+• build.version과 읽은 플랫폼 JAR가 같은 배포에서 나온 것인지 확인한다.
+• 대상 테넌트 ID가 모든 진입 XML과 import 이벤트에 일관되게 연결되는지 확인한다.
+• 프로퍼티와 클래스패스 자료가 같은 환경 또는 빌드의 사본인지 확인한다.
+• 조사 과정에서 예시 설정이나 다른 브랜치의 산출물을 사용했다면 증거로 채택한 범위와 가정을 표에 표시한다.
+
+10.2 목록을 서로 대조한다
+
+1. 2장의 배포 포함 목록에 이름이 있는 extension을 하나씩 본다.
+2. 3장의 대상 테넌트 표에 활성, 제외, 미확정 중 하나가 있는지 확인한다.
+3. 활성 행마다 4장에 최종 코어 설정값 또는 미설정 근거가 있는지 확인한다.
+4. 5~6장에서 설정 토큰마다 실제 리소스, 스킵, 실패, 미확정 중 하나가 결정됐는지 확인한다.
+5. 활성 extension 중 진입 XML이 없는 것이 확정된 경우에도 해당 extension 행을 보관한다.
+6. 9장의 모든 import 행에 부모 리소스와 발생 위치가 들어 있는지 확인한다.
+7. 진입 설정을 소유한 extension과 실제 파일을 담은 JAR의 소유자가 다르면 두 값을 기록한다.
+8. 같은 파일을 서로 다른 상위 진입 XML에서 읽은 경우 두 발생 기록을 유지한다.
+
+10.3 순서와 처리 이벤트를 검산한다
+
+1. 전체 순서를 확정했다면, 7장의 모든 선행 조건을 만족하는지 확인한다.
+2. 내부 진입 순서가 확정된 extension은 그 순서가 전체 흐름에서도 유지되는지 확인한다.
+3. 활성 import가 부모 문서보다 먼저 시작하지 않는지 확인한다.
+4. 부모 문서의 import 다음 선언은 해당 하위 처리가 끝난 뒤 기록되었는지 확인한다.
+5. wildcard가 여러 XML을 선택했다면 개별 리소스에 순서 근거가 있는지 확인한다.
+6. 중단되는 오류가 확인된 경우, 그 이후 행을 예상 목록에 있으나 실패 뒤 도달하지 않음으로 표시한다.
+7. 전체 순서가 미확정인 경우, 전체 순번 칸은 비워 두고 확정된 관계만 기록한다.
+8. 진입 XML을 한 번 열었지만 profile에 의해 일부 요소가 처리되지 않은 사례를 구분한다.
+
+10.4 완료 상태를 보고한다
+
+|결과 항목               |확정할 조건                         |남은 조치의 예                               |
+|--------------------|-------------------------------|---------------------------------------|
+|배포·테넌트 식별           |1장의 배포, 버전, 테넌트 유효성 근거 확보      |대상 환경의 테넌트 구성 자료 확인                    |
+|활성 extension 목록     |2~3장의 목록과 선택 규칙 확보             |테넌트별 extension 후보를 생성하는 분기 확인          |
+|진입 XML 목록           |4~6장의 설정값·로더 분기·실제 위치 확인       |동명 XML을 담은 JAR 중 선택 순서 확인              |
+|전체 진입 순서            |7~8장에서 순회 순번 입증                |동률 extension의 입력 순서 자료 확보              |
+|선언적 import 목록       |9장의 활성 조건과 실제 대상 확인            |대상 배포의 Spring profile 또는 placeholder 확보|
+|import를 포함한 전체 처리 순서|진입 순서와 각 활성 import의 발생·복귀 흐름 확보|wildcard의 실제 열거 순서 확인                  |
+
+보고 예시
+
+> 대상 테넌트 `demo`의 활성 extension 목록과 코어 진입 XML 목록은 확정했다.
+> 모든 확인된 진입 XML의 선언적 import 대상과 내부 순서를 확인했다.
+> `melcocore`와 `regionalcore` 사이의 순서를 결정하는 대상 빌드 자료가 없어 전체 순서는 미확정이다.
+> 두 extension의 상대 순서만 미확정이며, 확정된 관계는 `basecatalog < melcocore`와 `basecatalog < regionalcore`다.
+
+10.5 미확정 사유를 최대한 좁힌다
+
+|넓은 설명        |기록할 구체적 설명                                                                                |
+|-------------|------------------------------------------------------------------------------------------|
+|테넌트를 모름      |입력 ID `demo`와 최종 `installed.tenants`를 대조하지 못했으며, 대상 배포의 적용 `local.properties`가 필요함        |
+|XML을 찾지 못함   |`melcocore-spring.xml`은 소스에 있으나 대상 JAR를 확보하지 못해 실제 엔트리와 접근 가능 여부 미확정                      |
+|파일이 두 개임     |`A.jar!/spring/core.xml`과 `B.jar!/spring/core.xml`이 모두 후보이며, 실제 클래스 로더가 어느 JAR를 앞에 두는지 미확정|
+|로드 순서를 알 수 없음|`basecatalog` 선행은 확인했고, `melcocore`와 `regionalcore`의 빌드 동률을 결정하는 입력 목록이 없음                |
+|import가 애매함  |`root.xml:25`의 `resource`에 있는 `core.variant` 값이 Spring Environment에 어떻게 적용되는지 미확정         |
+
+완료 기준. 모든 표가 동일한 배포와 테넌트에 연결된다.
+최종 보고에는 확정된 목록과 순서가 있고, 부족한 부분은 특정 파일, 키, 메서드 또는 순서 관계로 식별되어 있다.
+
+11. 전체 적용 예시
+
+아래는 방법을 설명하는 가상 사례다.
+표에 적힌 설정과 코드 분기는 예시에서 확인했다고 가정한다.
+실제 프로젝트에서 같은 키와 분기가 적용되는지는 해당 설치에서 조사한다.
+
+11.1 예시 A — 지정 테넌트와 활성 목록 확정
+
+사용자가 demo를 지정했다.
+대상 설치와 설정 디렉터리는 1장의 절차로 확인했다.
+
+|확인 위치                                |원문·관찰                                     |판단                        |
+|-------------------------------------|------------------------------------------|--------------------------|
+|`bin/platform/build.number`          |`build.version=<이 배포의 정확한 값>`             |버전 근거를 기록                 |
+|`config/local.properties`            |`installed.tenants=demo,junit`            |`demo`는 추가 테넌트 후보에 포함     |
+|`config/local_tenant_demo.properties`|대상 로더 구현이 읽는 테넌트 설정을 확보                   |`demo`와 적용 설정 경로를 연결      |
+|`config/localextensions.xml`         |`melcocore`, `regionalcore`를 명시           |두 extension을 배포 후보로 포함    |
+|`melcocore/extensioninfo.xml`        |`<requires-extension name="basecatalog"/>`|`basecatalog`를 의존 대상으로 포함 |
+|`regionalcore/extensioninfo.xml`     |`<requires-extension name="basecatalog"/>`|`basecatalog` 선행 관계 한 건 추가|
+|대상 코어 목록 생성 메서드                      |이 예에서는 세 extension이 `demo`의 활성 결과에 포함됨    |세 extension을 `활성`으로 기록    |
+
+예시의 판정. demo의 설정 파일과 실제 등록 규칙이 연결된 상태에서 코어 목록 생성 결과를 조사했다.
+이 예시의 배포에 다른 extension이 포함되어 있을 경우 동일 표에 별도 행으로 추가한다.
+
+11.2 예시 A — 진입 XML과 실제 리소스 확정
+
+|extension   |적용 설정 또는 로더 입력                                                              |실제 위치                                                                     |판정                    |
+|------------|----------------------------------------------------------------------------|--------------------------------------------------------------------------|----------------------|
+|basecatalog |`basecatalog.application-context=basecatalog-spring.xml`                    |`<배포 JAR A>!/basecatalog-spring.xml`                                      |진입 XML 1개             |
+|melcocore   |`melcocore.application-context=melcocore-spring.xml,melcocore-overrides.xml`|`<배포 JAR B>!/melcocore-spring.xml` 및 `<배포 JAR B>!/melcocore-overrides.xml`|토큰 순서를 유지하는 로더 분기 확인  |
+|regionalcore|예시에서 코어 설정 키가 미설정                                                           |`<배포 JAR C>!/regionalcore-application-context.xml`                        |이 예에서 확인한 기본 파일명 분기 사용|
+
+melcocore-spring.xml의 관련 부분이 아래와 같다고 가정한다.
+이 코드는 import 처리 순서의 예시이며 실행 명령이 아니다.
+
+<beans>
+    <alias name="oldDao" alias="productDao"/>
+    <import resource="spring/product-dao.xml"/>
+    <alias name="preferredDao" alias="productDao"/>
+</beans>
+
+이 예시에서 spring/product-dao.xml은 <배포 JAR B>!/spring/product-dao.xml로 선택된다.
+세부 이벤트는 다음과 같다.
+
+1. melcocore-spring.xml을 열고 첫 alias 선언을 처리한다.
+2. 해당 줄에서 spring/product-dao.xml을 읽어 하위 선언을 처리한다.
+3. 부모 XML로 돌아와 preferredDao를 대상으로 하는 alias 선언을 처리한다.
+4. 같은 extension의 다음 진입 파일인 melcocore-overrides.xml을 연다.
+5. 등록 규칙을 별도로 분석할 경우 alias 재등록이 허용되는지 해당 빈 레지스트리 구현에서 확인한다.
+
+11.3 예시 A — 목록은 확정하고 전체 순서는 미확정으로 둔다
+
+대상 코드가 빌드의 선행 관계를 유지하고 실제 의존성이 아래와 같다고 가정한다.
+
+• basecatalog < melcocore.
+• basecatalog < regionalcore.
+• melcocore와 regionalcore의 상대 순서를 정하는 입력은 확보하지 못함.
+
+|질문                                         |이 예의 판정                                         |
+|-------------------------------------------|------------------------------------------------|
+|진입 XML의 개수와 실제 위치를 알 수 있는가?                |예시의 세 extension에서 4개의 진입 XML을 확정했다.             |
+|`melcocore` 안에서 두 XML의 상대 순서를 알 수 있는가?     |설정 토큰과 로더 전달 순서를 확인했으므로 확정했다.                   |
+|`regionalcore`가 `melcocore`보다 먼저인지 알 수 있는가?|빌드 동률을 해소할 정보가 없어 미확정이다.                        |
+|무엇을 더 확인해야 하는가?                            |대상 코어 로더가 실제로 소비하는 리스트의 생성 지점과 그 리스트의 원본 빌드 자료다.|
+
+결과표에서 regionalcore-application-context.xml의 절대 순번을 임의로 부여하지 않는다.
+basecatalog보다 뒤에 읽힌다는 조건은 유지한다.
+melcocore의 내부 두 파일과 import 순서는 독립적으로 기록한다.
+
+11.4 예시 B — 같은 파일명과 환경 값은 다른 단계에서 판정한다
+
+사용자가 master를 지정했고, 최종 키가 examplecore.application-context=spring/core.xml이라고 가정한다.
+배포에 포함된 두 JAR 모두 spring/core.xml 엔트리를 제공한다.
+
+1. 두 물리 후보를 lib/a.jar!/spring/core.xml과 lib/b.jar!/spring/core.xml로 기록한다.
+2. 코어 로더가 사용하는 실제 클래스 로더와 탐색 순서를 확인한다.
+3. 대상 구현과 클래스패스 자료로 b.jar의 리소스가 선택된다는 사실을 확인하면 진입 XML을 b.jar로 확정한다.
+4. b.jar의 XML에서 <import resource="${variant.folder}/child.xml"/>을 발견했다고 가정한다.
+5. 선택된 리소스의 위치로는 variant.folder 값을 알 수 없다. Spring Environment에 그 키를 공급하는 설정을 찾아야 한다.
+6. 값이 extras로 확인되고 리더가 상대 경로를 현재 XML 기준으로 해석한다면, 먼저 b.jar!/spring/extras/child.xml을 조사한다.
+7. 그 엔트리가 없을 때는 해당 Spring 구현의 상대 리소스 fallback을 확인한다.
+8. variant.folder의 값이 없으면 진입 XML은 확정하고 하위 import 대상만 미확정으로 남긴다.
+
+11.5 예시 C — 진입 파일을 열었지만 내부 profile 블록은 비활성인 경우
+
+진입 파일 core.xml이 선택됐고, 해당 문서의 일부가 다음 형태라고 가정한다.
+
+<beans>
+    <import resource="common.xml"/>
+    <beans profile="demo">
+        <import resource="demo-only.xml"/>
+    </beans>
+</beans>
+
+1. core.xml의 파일 진입은 기록한다.
+2. 활성 분기 안에 있는 common.xml은 실제 리소스를 해석하고 처리 이벤트를 기록한다.
+3. 지정 테넌트 ID가 demo이더라도 그 사실만으로 Spring profile이 demo라고 판정할 수 없다.
+4. 해당 코어의 실제 Spring Environment에서 demo 블록의 활성 여부를 확인한다.
+5. 블록이 비활성이면 demo-only.xml은 해당 선언에서 읽히지 않는 것으로 기록한다.
+6. 환경 값이 미확정이면 demo-only.xml이 처리되는 조건만 명시한다.
+
+12. 바로 사용할 조사 기록 양식
+
+아래 양식을 실제 조사 결과에 복사해 채운다.
+문서에 적기 어려운 전체 경로는 별도 근거 자료의 식별자와 연결할 수 있다.
+
+12.1 대상 배포 및 테넌트 기록
+
+|기록 항목                 |실제 값|근거                         |
+|----------------------|----|---------------------------|
+|지정 테넌트 ID             |    |사용자 입력                     |
+|대상 설치 절대 경로           |    |실행 구성 및 설치 디렉터리            |
+|대상 설정 디렉터리            |    |실제 적용 경로                   |
+|SAP Commerce 빌드 버전    |    |`bin/platform/build.number`|
+|대상 소스 기준              |    |커밋 또는 배포 버전                |
+|대상 빌드 자료 경로           |    |대상 배포와의 대응 자료              |
+|최종 `installed.tenants`|    |파일·키·줄                     |
+|테넌트 구성 근거             |    |기본 테넌트 규칙 또는 추가 테넌트 구성 분기  |
+|코어 XML 로더             |    |JAR, FQCN, 메서드             |
+|대상 Spring 버전          |    |대상 JAR 또는 빌드 의존성           |
+
+12.2 extension 포함·활성 기록
+
+|extension 이름|실제 폴더|포함 여부와 이유|의존성|지정 테넌트 활성 여부|코드·파일 근거|
+|------------|-----|---------|---|------------|--------|
+|            |     |         |   |            |        |
+
+포함 이유는 명시 선언, 경로 자동 로드, 플랫폼 자동 로드, 다른 extension의 의존성 중 확인된 것으로 적는다.
+한 extension에 포함 이유가 여러 개면 원인을 모두 기록할 수 있다.
+활성 판정의 근거에는 테넌트 목록을 만드는 메서드와 확인한 설정값을 넣는다.
+
+12.3 프로퍼티 후보와 진입 XML 기록
+
+|extension|코어 설정 키|후보 원문과 출처|최종값과 선택 근거|설정 상태|
+|---------|-------|---------|----------|-----|
+|         |       |         |          |     |
+
+|extension|토큰 위치|후보 이름|실제 경로 또는 JAR 엔트리|진입 내부 순번|선택·제외 근거|
+|---------|----:|-----|----------------|-------:|--------|
+|         |     |     |                |        |        |
+
+토큰 위치는 최종값을 분해하기 전 원래의 위치를 뜻한다.
+진입 내부 순번은 실제로 선택된 각 리소스가 XML 리더에 전달된 상대 순서다.
+기본값 분기로 선택된 리소스는 토큰 칸에 기본값을 적는다.
+
+12.4 선후관계 기록
+
+|앞 extension|뒤 extension|증거 종류          |파일·메서드·산출물|조건|
+|-----------|-----------|---------------|----------|--|
+|           |           |의존성 또는 실제 순회 순서|          |  |
+
+|확정하지 못한 쌍|확인된 관계|왜 결정할 수 없는가|다음 조사 위치|
+|---------|------|-----------|--------|
+|         |      |           |        |
+
+절대 순번은 전체 순서를 확인한 경우에 함께 기록한다.
+부분 순서만 확인했다면 이 양식에 관계를 남기고, 가독성을 위한 표의 행 배치와 실행 순서를 분리한다.
+
+12.5 import 이벤트 기록
+
+|이벤트 식별자|소속 진입 XML|부모 리소스와 위치|resource 원문|profile·치환 결과|실제 리소스|
+|-------|---------|----------|-----------|-------------|------|
+|       |         |          |           |             |      |
+
+|이벤트 식별자|이벤트 유형              |부모 이벤트|처리 위치 또는 순서 근거|상태와 영향 범위|
+|-------|--------------------|------|--------------|---------|
+|       |진입, import, 복귀 또는 실패|      |              |         |
+
+같은 XML이 여러 위치에서 호출되면 이벤트 식별자를 구분한다.
+파일 자체의 물리 식별자는 이 경우에도 동일할 수 있다.
+
+12.6 미확정 이슈 기록
+
+|이슈|영향 범위|이미 확인한 자료|필요한 파일·키·메서드|담당 확인 결과|
+|--|-----|---------|------------|--------|
+|  |     |         |            |        |
+
+영향 범위에 목록, 파일 위치, extension 간 순서, 내부 순서, import 중 어느 부분인지 적는다.
+전체 조사 상태를 실패 또는 미확정 한 단어로 합치기 전에 확정된 결과를 유지한다.
+
+12.7 조사 종료 체크리스트
+
+☐ 체크 1. 지정 테넌트 ID와 대상 배포, 정확한 버전, 설정 경로를 확인했다.
+☐ 체크 2. 대상 배포가 선택한 extension의 이름과 경로를 확인했다.
+☐ 체크 3. 그 배포에서 지정 테넌트에 적용되는 활성 extension을 확인했다.
+☐ 체크 4. 활성 extension의 코어 설정 최종값과 출처를 확인했다.
+☐ 체크 5. 해당 버전의 설정 기본값과 로더 탐색 분기를 확인했다.
+☐ 체크 6. 각 진입 XML을 실제 파일 또는 JAR 엔트리로 특정했다.
+☐ 체크 7. extension 사이의 순서를 확정하거나 부분 순서와 미확정 쌍을 기록했다.
+☐ 체크 8. 같은 extension 안에서 진입 XML이 전달되는 순서를 확인했다.
+☐ 체크 9. 선언적 import의 활성 여부, 실제 대상, 중첩과 복귀 위치를 확인했다.
+☐ 파일 목록, 전체 순서, 미확정 결과를 정리해 각각의 완료 상태를 표시했다.
+
+13. 참고 문서
+
+본문에 사용한 출처는 해당 절에도 전체 URL로 적었다.
+아래 문서는 코드 탐색 단계에서 함께 확인할 수 있는 공개 자료다.
+대상 배포의 정확한 패치나 커스텀 분기는 1장에서 식별한 바이너리와 설정을 근거로 판정한다.
+
+13.1 SAP Commerce 버전과 테넌트 구성
+
+SAP Help — Finding Your SAP Commerce Version
+https://help.sap.com/docs/SAP_COMMERCE/5671512a37c74e1daa2d8191b163dc61/aa595ad5ed9d4f138bafe35adc01e6d8.html
+
+SAP Help — Multitenancy
+https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8c14e7ae866910148e59ebf4a2685857.html
+
+13.2 Extension과 코어 로더
+
+SAP Help — Configuration Options in localextensions.xml
+https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html
+
+SAP Help — Building SAP Commerce
+https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8b6ded0d86691014a6fab18e171c1f91.html
+
+SAP Help — Spring Framework in SAP Commerce
+https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8c63621986691014a7e0a18695d7d410.html
+
+SAP Commerce 2211 API — PlatformConfig
+https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/bootstrap/config/PlatformConfig.html
+
+13.3 Spring XML과 후속 빈 분석
+
+Spring Framework 6.2 API — DefaultBeanDefinitionDocumentReader
+https://www.springframework.org/spring/docs/6.2.7/javadoc-api/org/springframework/beans/factory/xml/DefaultBeanDefinitionDocumentReader.html
+
+Spring Framework 6.2 API — XmlBeanDefinitionReader
+https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/beans/factory/xml/XmlBeanDefinitionReader.html
+
+Spring Framework 6.2 API — PathMatchingResourcePatternResolver
+https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/core/io/support/PathMatchingResourcePatternResolver.html
+
+Spring Framework API — BeanDefinitionRegistryPostProcessor
+https://docs.spring.io/spring-framework/docs/6.0.x/javadoc-api/org/springframework/beans/factory/support/BeanDefinitionRegistryPostProcessor.html
