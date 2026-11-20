@@ -188,6 +188,80 @@ https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8beb75da
 • SAP Commerce 2211 API — SystemConfig
 https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/bootstrap/config/SystemConfig.html
 ----
+----
+1.1 보완 — CMD에서 hybrisserver.bat를 직접 실행할 때 CONFIG_DIR 확정
+
+적용 조건
+
+Windows에서 CMD를 열고 <설치 루트>\bin\platform으로 이동한 뒤, 인수 없이 hybrisserver.bat를 입력해 서버를 시작한다. 아래 절차에서 C:\hybris는 설치 루트의 예시다. 확인 작업은 서버를 새로 시작하지 않고 수행할 수 있다.
+
+확인 목적. 대상 SAP Commerce 배포가 기본 설정 디렉터리로 사용하는 CONFIG_DIR의 절대 경로와 선택 근거를 기록한다.
+
+1. 기본 설정 폴더 후보를 기록한다
+
+파일 탐색기에서 평소 CMD로 이동하는 C:\hybris\bin\platform을 연다. hybrisserver.bat가 있는지 확인한다. 그 폴더에서 두 단계 위로 올라가 C:\hybris를 연 뒤 그 아래의 config를 찾는다.
+
+|확인 대상                 |예시 위치                                    |확인 결과의 사용처                             |
+|----------------------|-----------------------------------------|---------------------------------------|
+|실제 시작 배치 파일           |`C:\hybris\bin\platform\hybrisserver.bat`|3단계에서 열 파일                             |
+|기본 설정 폴더 후보           |`C:\hybris\config`                       |4단계에서 실제 적용 여부를 판정할 경로                 |
+|기본 위치의 프로퍼티 파일        |`C:\hybris\config\local.properties`      |이 설정 경로가 확정되면 후속 프로퍼티 조사에 사용           |
+|기본 위치의 extension 선언 파일|`C:\hybris\config\localextensions.xml`   |대상 빌드가 이 파일을 사용했는지 후속 extension 조사에서 확인|
+
+파일이 있으면 기본 위치에 존재한다고 기록한다. 파일이 없으면 해당 파일의 부재를 기록하고 2~4단계를 진행한다. 폴더가 선택되는지와 그 안에 파일이 있는지는 각각 확인한다.
+
+2. 서버 시작 직전 CMD의 환경을 확인한다
+
+평소와 같은 방식으로 CMD를 열고 같은 bin\platform으로 이동한다. hybrisserver.bat를 입력하기 직전에 아래 명령을 실행한다.
+
+명령의 목적. 현재 CMD에 HYBRIS_CONFIG_DIR이 미리 설정되어 있는지 확인한다. 이 명령은 환경 변수의 값을 읽으며, 설정 변경이나 서버 기동을 하지 않는다.
+
+set HYBRIS_CONFIG_DIR
+
+|출력                                       |판단과 다음 작업                                                            |
+|-----------------------------------------|---------------------------------------------------------------------|
+|`HYBRIS_CONFIG_DIR=D:\sap-config\local-a`|`D:\sap-config\local-a`를 시작 전 후보값으로 기록한다. 3단계에서 배치 파일이 값을 유지하는지 확인한다.|
+|정확히 `HYBRIS_CONFIG_DIR=`로 시작하는 줄이 없다.    |현재 CMD에서는 미설정이다. 3단계에서 배치 파일이 설정 경로를 지정하는지 확인한다.                     |
+
+3. 실제 시작 배치 파일과 그 파일이 참조하는 설정을 확인한다
+
+1. C:\hybris\bin\platform\hybrisserver.bat를 텍스트 편집기나 IntelliJ에서 연다.
+2. 파일에서 HYBRIS_CONFIG_DIR을 검색한다. 대입하는 줄이나 다른 변수·파일·실행 인수에 값을 전달하는 줄을 찾으면 해당 줄을 기록한다.
+3. 인수 없이 시작할 때 실제로 지나가는 분기를 확인한다. 그 분기에서 call 등으로 다른 배치 파일을 실행하거나 실행 명령에 설정 파일 경로를 전달하면, 해당 줄에 적힌 파일을 열어 같은 방식으로 확인한다.
+4. 경로에 %~dp0이 포함되면 그 표현이 들어 있는 배치 파일의 디렉터리를 대입한다. 다른 변수가 섞여 있으면 해당 분기에 적용되는 변수값을 대입해 절대 경로를 구한다.
+5. 2단계에서 확보한 값이 유지되는지, 새 값으로 덮이는지, 다른 설정 파일에서 경로가 결정되는지 기록한다.
+
+검색의 첫 대상은 bin\platform\hybrisserver.bat다. 이후에는 인수 없이 실행할 때 그 배치 파일이 참조하는 파일을 연다.
+
+4. CONFIG_DIR을 판정하고 근거를 기록한다
+
+|확인 결과                                                       |기록할 값과 다음 작업                                                                                     |
+|------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+|`D:\sap-config\local-a`가 전달되고, 대상 코드가 이 값을 기본 설정 디렉터리로 사용한다.|`CONFIG_DIR=D:\sap-config\local-a`로 기록한다. 그 폴더에서 `local.properties`와 `localextensions.xml`을 확인한다.|
+|별도 지정이 없고, 대상 코드의 기본 분기가 설치 루트 아래 `config`를 선택한다.           |`CONFIG_DIR=C:\hybris\config`로 기록한다. 1단계에서 조사한 폴더를 후속 확인에 사용한다.                                  |
+|후보값은 찾았지만 실제 경로로 쓰이는지 확인하지 못했다.                             |`CONFIG_DIR 미확정`으로 기록하고 아래의 경로 결정 코드를 확인한다.                                                      |
+
+경로 결정 코드 확인 방법
+
+1. IntelliJ에서 대상 설치의 de.hybris.bootstrap.config.SystemConfig를 연다. 소스가 없으면 같은 배포의 JAR에서 해당 클래스의 디컴파일 결과를 연다.
+2. getConfigDir()를 열어 반환하는 필드를 확인한다. configDir 필드에 값을 할당하는 줄로 이동한다.
+3. 할당식이 다른 메서드를 호출하면 그 메서드를 열어 어떤 입력 키와 설정 객체를 읽는지 확인한다. SAP Commerce 2211 API의 SystemConfig.PROPERTY_CONFIG_DIR 상수값은 HYBRIS_CONFIG_DIR이다.
+4. 현재 CMD와 배치 파일에서 확인한 값이 실제로 그 입력까지 전달되는지 대조한다. 입력이 없는 경우에는 기본 분기가 조합하는 경로를 절대 경로로 계산한다.
+5. 코드를 확인할 수 없는 경우에는 조회한 파일, 후보 경로, 부족한 클래스나 설정을 기록한다.
+
+완료 기준. CONFIG_DIR의 절대 경로와 그 경로를 선택한 시작 파일의 줄, 전달된 값 또는 Java 코드의 분기를 함께 기록했다.
+
+기록 예시. C:\hybris\config — 시작 전 CMD에서 별도 값 없음. 인수 없는 배치 실행 경로에서 추가 지정 없음. 대상 코드의 기본 분기가 설치 루트 아래 config를 선택함.
+
+참고 문서
+
+• SAP Help — 표준 설치의 설정 디렉터리
+https://help.sap.com/docs/SAP_COMMERCE/a74589c3a81a4a95bf51d87258c0ab15/8bf54e4e86691014a0c7aef8d6fd8d6e.html
+• SAP Commerce 2211 API — SystemConfig.getConfigDir()
+https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/bootstrap/config/SystemConfig.html
+• SAP Commerce 2211 API — SystemConfig.PROPERTY_CONFIG_DIR
+https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/constant-values.html#de.hybris.bootstrap.config.SystemConfig.PROPERTY_CONFIG_DIR
+----
 |확인 결과                         |다음 작업                                     |
 |------------------------------|------------------------------------------|
 |설치와 설정 디렉터리가 한 가지로 정해짐        |1.2에서 대상 버전을 읽는다.                         |
