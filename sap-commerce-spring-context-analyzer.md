@@ -272,7 +272,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/constant-
 1.2 정확한 SAP Commerce 버전을 확인한다
 
 1. HYBRIS_HOME/bin/platform/build.number를 연다.
-2. build.version 값 전체를 기록한다.
+2. version=xxx 에서 xxx 값 전체를 기록한다.
 3. 2211 계열 이름만 알고 있다면 해당 파일에서 패치 또는 배포판 접미사까지 확인한다.
 4. 대상 배포 패키지와 로컬 설치의 버전 정보가 둘 다 있다면 서로 대조한다.
 5. 배포 패키지에서 버전을 직접 읽을 수 없는 경우 배포를 생성한 빌드 자료를 확인하고 출처를 남긴다.
