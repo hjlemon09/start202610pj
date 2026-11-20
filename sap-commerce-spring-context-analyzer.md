@@ -295,7 +295,7 @@ https://help.sap.com/docs/SAP_COMMERCE/5671512a37c74e1daa2d8191b163dc61/aa595ad5
 1. 입력받은 테넌트 ID 원문을 기록한다. 대소문자나 공백의 처리 규칙이 결과에 영향을 주는 경우 대상 코드가 실제로 하는 처리를 확인한다.
 2. CONFIG_DIR/local.properties와 HYBRIS_HOME/bin/platform/project.properties에서 installed.tenants를 검색한다.
 3. 파일에 값이 여러 번 나오거나 외부 배포 설정이 같은 키를 덮어쓰면 최종 적용값과 출처를 기록한다.
-4. 사용자가 master를 지정했다면 SAP Commerce 기본 테넌트 규칙과 대상 설치를 근거로 기록한다.
+4. 지정하려는 테넌트가 master라면 SAP Commerce 기본 테넌트 규칙과 대상 설치를 근거로 기록한다.(master는 별도 지정이 없어도 테넌트가 기본구성됨)
 5. 추가 테넌트를 지정했다면 최종 installed.tenants 및 실제 레지스트리 구성 코드에서 그 ID가 구성 대상인지 확인한다.
 6. 추가 테넌트 파일의 표준 확인 위치는 HYBRIS_HOME/bin/platform/tenant_<ID>.properties와 CONFIG_DIR/local_tenant_<ID>.properties다.
 7. 같은 ID의 파일이 둘 다 있으면 Utilities.getTenantInfos()를 탐색 지점으로 삼아, 대상 빌드에서 파일을 읽고 합치는 코드와 적용 우선순위를 확인한다.
