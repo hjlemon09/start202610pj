@@ -282,7 +282,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/constant-
 
 |항목   |값 예시                                                |
 |-----|----------------------------------------------------|
-|버전 원문|`build.version=<실제 파일의 값>`                          |
+|버전 원문|`version=<실제 파일의 값>`                          |
 |파일 경로|`C:/commerce-local/hybris/bin/platform/build.number`|
 |소스 기준|`<대상 배포에 대응한 커밋 또는 배포 버전>`                          |
 |판정   |둘의 대응을 확인한 자료 또는 미확정 사유                             |
@@ -844,7 +844,7 @@ https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframewo
 10.1 입력 묶음이 같은 배포에 속하는지 다시 확인한다
 
 • HYBRIS_HOME과 CONFIG_DIR가 같은 대상 설치를 가리키는지 확인한다.
-• build.version과 읽은 플랫폼 JAR가 같은 배포에서 나온 것인지 확인한다.
+• version과 읽은 플랫폼 JAR가 같은 배포에서 나온 것인지 확인한다.
 • 대상 테넌트 ID가 모든 진입 XML과 import 이벤트에 일관되게 연결되는지 확인한다.
 • 프로퍼티와 클래스패스 자료가 같은 환경 또는 빌드의 사본인지 확인한다.
 • 조사 과정에서 예시 설정이나 다른 브랜치의 산출물을 사용했다면 증거로 채택한 범위와 가정을 표에 표시한다.
@@ -915,7 +915,7 @@ https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframewo
 
 |확인 위치                                |원문·관찰                                     |판단                        |
 |-------------------------------------|------------------------------------------|--------------------------|
-|`bin/platform/build.number`          |`build.version=<이 배포의 정확한 값>`             |버전 근거를 기록                 |
+|`bin/platform/build.number`          |`version=<이 배포의 정확한 값>`             |버전 근거를 기록                 |
 |`config/local.properties`            |`installed.tenants=demo,junit`            |`demo`는 추가 테넌트 후보에 포함     |
 |`config/local_tenant_demo.properties`|대상 로더 구현이 읽는 테넌트 설정을 확보                   |`demo`와 적용 설정 경로를 연결      |
 |`config/localextensions.xml`         |`melcocore`, `regionalcore`를 명시           |두 extension을 배포 후보로 포함    |
