@@ -220,6 +220,13 @@ Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선
 - `bin/platform/ext`는 첫 번째 lookup으로 취급합니다. 문서에 명시되지 않은 가정입니다.
 - 같은 `<path>` 안의 우선순위는 문서에 없습니다. 빌드 로그의 `path:` 또는 bootstrap 코드로 확인하세요.
 
+같은 extension을 `<extension>`으로 두 번 이상 선언했을 때:
+
+- 같은 이름 반복, 같은 폴더 반복, `name`과 `dir`이 다른 폴더를 가리키는 경우를 **모두 이슈로 기록**합니다
+  (`activation-issues.csv`, "Duplicate <extension> declaration"). SAP 문서에 동작이 없어 자동으로 판정하지 않습니다.
+- 선택 상태(`EXPLICIT`)는 유지하지만 선택 결과는 미완료(`selection_complete=false`)가 됩니다.
+- `dir`로 서로 다른 폴더를 두 번 선언하면 먼저 적힌 `dir`의 폴더를 잠정 사용합니다. 실제 폴더는 빌드 로그의 `path:`로 확인하세요.
+
 이 버전은 검색 루트 안에서 수집한 정의만 사용합니다. 외부 경로, 상대 경로, 알 수 없는
 `${...}` 속성은 임의 해석하지 않고 `activation-issues.csv`에 남깁니다.
 필요하면 별도의 설정 복사본에 절대 경로를 지정하고 위 VM 옵션으로 분석하세요.

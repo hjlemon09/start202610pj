@@ -75,6 +75,10 @@ public final class ActiveExtensionAnalyzer {
     private final List<Duplicate> duplicates = new ArrayList<>();
     private final List<Lookup> lookups = new ArrayList<>();
     private final Deque<String> queue = new ArrayDeque<>();
+    /** First <extension> declaration per resolved name, for duplicate-declaration issues. */
+    private final Map<String, String> declaredBy = new HashMap<>();
+    /** First folder pinned by an <extension dir> declaration per name. */
+    private final Map<String, Path> pinnedByDir = new HashMap<>();
 
     private ActiveExtensionAnalyzer(Path root, List<ExtensionInfo> definitions) {
         this.root = root.toAbsolutePath().normalize();
@@ -262,7 +266,10 @@ public final class ActiveExtensionAnalyzer {
                     throw new IllegalArgumentException("Configured name does not match directory definition");
                 }
                 // A dir declaration pins the location even if another copy would win by lookup order.
-                ExtensionInfo previous = extensions.put(info.getName(), info);
+                // When an earlier dir declaration already pinned another folder, keep the first one; the
+                // duplicate declaration is reported below and must be checked by hand.
+                Path firstPinned = pinnedByDir.putIfAbsent(info.getName(), info.getXmlPath());
+                ExtensionInfo previous = firstPinned == null ? extensions.put(info.getName(), info) : null;
                 if (previous != null && previous != info) {
                     final ExtensionInfo pinned = info;
                     duplicates.removeIf(item -> item.otherXml().equals(pinned.getXmlPath()));
@@ -277,6 +284,13 @@ public final class ActiveExtensionAnalyzer {
                 if (info == null || !inLookup(info)) {
                     throw new IllegalArgumentException("Name not found within configured lookup paths");
                 }
+            }
+            String declared = dir.isEmpty() ? "name=" + name : "dir=" + dir;
+            String first = declaredBy.putIfAbsent(info.getName(), declared);
+            if (first != null) {
+                // Not documented by SAP; never judged automatically, even when both point to the same folder.
+                issue(info.getName(), "Duplicate <extension> declaration (first: " + first + ", again: " + declared
+                        + "). Not judged automatically; confirm the used folder with the build log (path:).");
             }
             select(info.getName(), "EXPLICIT", "Declared in localextensions.xml", dir.isEmpty() ? name : dir);
         } catch (Exception exception) {

@@ -200,6 +200,28 @@ public final class ActiveExtensionAnalyzerTest {
                 "dir declaration must pin the location");
         check(resolution.duplicates().stream().anyMatch(d -> d.reason().equals("OVERRIDDEN_BY_DIR_DECLARATION")),
                 "Overridden copy recorded");
+        check(resolution.result().complete(), "A single dir declaration is not a duplicate declaration");
+
+        // The same name declared twice is reported as an issue, never judged automatically.
+        Files.writeString(dupConfig, "<hybrisconfig><extensions autoload='false'>"
+                + "<path dir='${HYBRIS_BIN_DIR}/first' depth='1'/><path dir='${HYBRIS_BIN_DIR}/second' depth='1'/>"
+                + "<extension name='core2'/><extension name='core2'/></extensions></hybrisconfig>");
+        resolution = ActiveExtensionAnalyzer.resolve(dupRoot, dupConfig, defs, true);
+        check(!resolution.result().complete(), "Repeated name declaration must be an issue");
+        check(resolution.result().issues().stream().anyMatch(i -> i.message().contains("Duplicate <extension>")),
+                "Repeated name issue message");
+        check(resolution.result().selections().get("core2").status().equals("EXPLICIT"),
+                "Selection itself is kept");
+
+        // Two dir declarations to different folders: issue, and the first pinned folder is kept.
+        Files.writeString(dupConfig, "<hybrisconfig><extensions autoload='false'>"
+                + "<path dir='${HYBRIS_BIN_DIR}/first' depth='1'/><path dir='${HYBRIS_BIN_DIR}/second' depth='1'/>"
+                + "<extension dir='${HYBRIS_BIN_DIR}/second/core2'/><extension dir='${HYBRIS_BIN_DIR}/first/core2'/>"
+                + "</extensions></hybrisconfig>");
+        resolution = ActiveExtensionAnalyzer.resolve(dupRoot, dupConfig, defs, true);
+        check(!resolution.result().complete(), "Conflicting dir declarations must be an issue");
+        check(resolution.effective().get("core2").getXmlPath().toString().contains("second"),
+                "First dir declaration is kept, not silently replaced");
     }
 
     private static ExtensionInfo definition(Path base, String dir, String name, String... dependencies)
