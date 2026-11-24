@@ -1,5 +1,9 @@
 # SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서
 
+> **적용 범위에서 제외하는 것**
+>
+> 이 자료는 `localextensions.xml`을 직접 관리하는 설치를 대상으로 한다. SAP Commerce Cloud(CCv2) 구성, `manifest.json`, `core-customize` 폴더 구조와 관련된 내용은 다루지 않는다. CCv2 구성을 조사해야 한다면 이 자료의 절차를 그대로 적용하지 말고 별도로 확인한다.
+
 ---
 
 # 1. 지정 테넌트 ID와 대상 배포 확인
