@@ -494,7 +494,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 |하는 일|뜻|이 문서에서 다루는 곳|
 |---|---|---|
 |필요한 extension을 자동으로 포함한다.|`localextensions.xml`에 `myextension`만 적어도 `voucher`와 `cms`가 함께 로드된다. 필요한 extension은 따로 적지 않아도 된다.|2.2절|
-|필요한 extension을 `<path>`에서 찾는다.|이름만 있으므로 `localextensions.xml`의 `<path>`(lookup folder) 아래에서 폴더를 찾는다. 같은 이름이 여러 곳에 있으면 먼저 적힌 `<path>`의 위치가 우선한다.<br>근거: SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US) 「Loading Extensions by Name」의 Note ("…it is loaded from a location your first provided path points to"). CCv2 구성은 [Customization Directory Guidelines (2211)](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html)에 따라 처음 발견한 위치에서 로드하고 나머지는 무시한다. 두 문서 모두 **같은 `<path>` 아래**의 중복은 다루지 않는다.|2.1.3절(검색 범위), 2.2절|
+|필요한 extension을 `<path>`에서 찾는다.|이름만 있으므로 `localextensions.xml`의 `<path>`(lookup folder) 아래에서 폴더를 찾는다. 같은 이름이 여러 곳에 있으면 먼저 적힌 `<path>`의 위치가 우선한다.<br>근거: SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US) 「Loading Extensions by Name」의 Note ("…it is loaded from a location your first provided path points to"). 이 문서는 **같은 `<path>` 아래**의 중복은 다루지 않는다.|2.1.3절(검색 범위), 2.2절|
 |연쇄된다.|`voucher`도 자기 `extensioninfo.xml`에 `requires-extension`을 가질 수 있다. 새 이름이 나오지 않을 때까지 따라간다.|2.2절|
 |순서를 보장한다.|`myextension`은 `voucher`와 `cms`가 모두 빌드된 뒤에 빌드된다. 의존 관계가 선언되지 **않은** extension끼리의 빌드 순서와 초기화 순서는 정해져 있지 않다(non-deterministic).|7장|
 |필요한 extension의 코어 소스를 쓸 수 있게 한다.|의존하는 extension은 필요한 extension의 `src`(coremodule) 클래스와 리소스를 사용할 수 있다. `web/src`(webmodule)의 클래스는 사용할 수 없다.|6장(클래스패스)|
@@ -521,7 +521,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 |이 절의 결과|사용하는 곳|
 |---|---|
-|판독한 `localextensions.xml` 또는 생성 입력의 절대 경로|이 절의 모든 판독의 기준.|
+|판독한 `localextensions.xml`의 절대 경로|이 절의 모든 판독의 기준.|
 |검색 경로 목록(`<path>`)|2.1.4절과 2.2절에서 extension 이름을 실제 폴더로 찾을 때의 탐색 범위.|
 |명시 포함 extension 목록(정식 이름·폴더·근거)|2.2절 의존성 해석의 시작 집합. 3장 활성 판정, 4장 `<extension>.application-context` 조회, 6장 Spring XML 위치 확인의 대상 이름과 폴더.|
 |미확정 항목|2.3절에서 해소하거나, 빈 목록의 확정 범위를 제한하는 근거.|
@@ -563,24 +563,22 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 **무엇을 확인하는가**
 
-1.1절에서 확정한 `CONFIG_DIR`에 `localextensions.xml`이 있는지, 또는 이 파일을 다른 입력에서 생성하는 구성인지 확인한다.
+1.1절에서 확정한 `CONFIG_DIR`에 `localextensions.xml`이 있는지 확인한다.
 
 **왜 확인하는가**
 
-이 절의 모든 판독 대상을 정하는 단계다. 특히 SAP Commerce Cloud(CCv2) 프로젝트는 보통 `manifest.json`의 `extensions` 목록에서 `localextensions.xml`을 생성한다. 이때 저장소의 `localextensions.xml`은 없거나 오래된 파일일 수 있으므로, 생성 입력을 읽어야 실제 포함 목록을 얻는다.
+이 절의 모든 판독 대상을 정하는 단계다.
 
 **어떻게 확인하는가**
 
 1. 1.1절 기록표의 `localextensions.xml` 절대 경로를 연다.
-2. 저장소 루트 또는 `core-customize` 폴더에 `manifest.json`이 있는지 확인한다. 있다면 `extensions` 항목이 정의되어 있는지 본다.
 
 **판정**
 
 |번호|확인 결과|판정|다음 작업|
 |---|---|---|---|
-|2.1.1-A|1.1절에서 확정한 `CONFIG_DIR`에 `localextensions.xml`이 있고, 생성 구성이 아니다.|이 파일을 **판독 대상으로 확정**한다.|2.1.2절로 이동한다.|
-|2.1.1-B|`manifest.json` 등에서 `localextensions.xml`을 생성하는 구성이다.|**생성 입력**(`manifest.json`의 `extensions` 목록)을 판독 대상으로 한다.|생성 입력의 선언을 2.1.2절부터 같은 방식으로 판독한다. 저장소에 남은 `localextensions.xml`은 참고로만 기록한다.|
-|2.1.1-C|파일이 없고 생성 입력도 없다.|기본 입력이 **없음**으로 기록한다.|1.1.3절의 「파일이 없을 때」 절차를 따른다. 대체 입력을 찾으면 그 파일로 2.1.2절을 진행한다.|
+|2.1.1-A|1.1절에서 확정한 `CONFIG_DIR`에 `localextensions.xml`이 있다.|이 파일을 **판독 대상으로 확정**한다.|2.1.2절로 이동한다.|
+|2.1.1-B|파일이 없다.|기본 입력이 **없음**으로 기록한다.|1.1.3절의 「파일이 없을 때」 절차를 따른다. 대체 입력을 찾으면 그 파일로 2.1.2절을 진행한다.|
 
 ### 2.1.2 주석 처리된 선언을 제외하고 유효한 선언만 고른다
 
@@ -615,8 +613,6 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 `<path>`는 **빌드가 extension 폴더를 찾아볼 위치**를 지정하는 선언이다. 세 속성은 다음 뜻을 가진다.
 
-아래 표의 「생략했을 때」는 직접 작성한 `localextensions.xml`(2.1.1-A) 기준이다. CCv2 구성은 표 아래의 「SAP Commerce Cloud(CCv2) 구성일 때」를 따른다.
-
 |속성|뜻|생략했을 때|
 |---|---|---|
 |`dir`|extension을 찾아볼 폴더. 예: `${HYBRIS_BIN_DIR}/custom`|생략할 수 없다.|
@@ -629,17 +625,6 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 - `<path>`를 먼저 적고, 그 뒤에 `<extension>`을 적는다.
 
 근거: SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US). `depth`의 기본값은 이 문서의 Note에 있는 "The default value is ten levels."에 따른다. [2011판](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US&version=2011)에도 같은 설명이 있다. `autoload`의 기본값 `false`는 설치된 스키마(`extensions.xsd`의 `scanType`)의 `default="false"`와 일치한다.
-
-**SAP Commerce Cloud(CCv2) 구성일 때(2.1.1-B)**
-
-`manifest.json`의 `extensions`에는 이름만 적는다. 검색 위치와 깊이는 SAP가 정한다.
-
-- 검색 위치: 저장소 루트(단일 디렉터리 구조) 또는 `<root>/core-customize`(별도 하위 디렉터리 구조), 자동으로 내려받는 추가 Commerce Cloud extension, manifest에서 활성화한 extension pack, Commerce Cloud의 `bin` 디렉터리.
-- 탐색 깊이: Commerce Cloud `bin` 디렉터리는 5단계, 그 밖의 디렉터리는 10단계.
-- 같은 이름의 extension이 여러 곳에 있으면 처음 발견한 위치의 것을 로드하고 나머지는 무시한다.
-
-근거: SAP Help [Customization Directory Guidelines (SAP Commerce Cloud, 2211)](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html)의 「Core Commerce Customization Directory Guidelines」.
-
 **무엇을 확인하는가**
 
 유효한 `<path>`마다 세 속성의 원문과, `dir`의 변수를 치환한 실제 절대 경로를 확인한다.
@@ -663,9 +648,8 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
    2. `<xs:element name="path" type="…">`의 `type` 값(표준 설치에서는 `scanType`)을 확인하고, 같은 파일의 `<xs:complexType name="scanType">`을 찾는다.
    3. 그 안의 `<xs:attribute name="autoload">`와 `<xs:attribute name="depth">`를 읽는다. `default="…"`가 있으면 그 값이 생략 시 적용값이다.
 
-   **참고(2211 설치에서 확인한 값):** `scanType`에는 `autoload`가 `use="optional" default="false"`, `depth`가 `use="optional"`(`default` 없음)로 정의되어 있다. 스키마에는 `depth`의 기본값이 없다. 직접 작성한 `localextensions.xml`(2.1.1-A)에서 `depth`를 생략하면 SAP Help 문서에 따라 10단계를 적용한다. CCv2 구성(2.1.1-B)이라면 이 값 대신 배경지식의 「SAP Commerce Cloud(CCv2) 구성일 때」의 깊이(`bin` 5단계, 그 밖의 디렉터리 10단계)를 적용한다.
+   **참고(2211 설치에서 확인한 값):** `scanType`에는 `autoload`가 `use="optional" default="false"`, `depth`가 `use="optional"`(`default` 없음)로 정의되어 있다. 스키마에는 `depth`의 기본값이 없으므로, `depth`를 생략하면 SAP Help 문서에 따라 10단계를 적용한다.
 5. `depth`의 적용값으로 경로 아래 몇 단계 폴더까지 `extensioninfo.xml`을 찾는지 정한다. 예를 들어 `depth`가 10이면 `dir` 아래 10단계 하위 폴더까지 찾는다.
-6. 2.1.1-B(CCv2 구성)라면 `<path>` 대신 배경지식의 「SAP Commerce Cloud(CCv2) 구성일 때」에 적힌 검색 위치와 깊이를 검색 경로로 기록한다.
 
 **판정**
 
@@ -756,7 +740,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 
 ### 2.1절 완료 기준
 
-- 판독할 `localextensions.xml` 또는 생성 입력을 정했다.
+- 판독할 `localextensions.xml`을 정했다.
 - 주석 처리된 선언을 모두 제외하고 유효 선언만 판독했다.
 - 모든 `<path>`의 실제 경로, 자동 포함 여부, 탐색 깊이를 정했거나 미확정 사유를 기록했다.
 - 모든 유효 `<extension>` 선언과 자동 포함 후보에 정식 이름과 폴더를 연결했거나, `후보 여러 개`·`누락`·`미확정` 상태와 다음 확인 위치를 기록했다.
@@ -804,7 +788,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 
 |번호|확인 결과|판정|다음 작업|
 |---|---|---|---|
-|2.3.1-A|후보들이 서로 다른 `<path>` 아래에 있다.|**먼저 적힌 `<path>` 아래의 폴더**로 확정한다(2.1.4-B). CCv2 구성이면 처음 발견한 위치의 폴더로 확정한다.|나머지 후보는 `중복·미사용`으로 기록한다.|
+|2.3.1-A|후보들이 서로 다른 `<path>` 아래에 있다.|**먼저 적힌 `<path>` 아래의 폴더**로 확정한다(2.1.4-B).|나머지 후보는 `중복·미사용`으로 기록한다.|
 |2.3.1-B|후보 중 하나만 `<path>` 안에 있고 나머지는 밖에 있다(백업 복사본 등).|`<path>` 안의 폴더로 확정한다. 밖의 후보는 검색되지 않는다.|밖의 후보는 `검색 범위 밖`으로 기록한다.|
 |2.3.1-C|후보들이 **같은 `<path>` 아래**에 있다(2.1.4-C).|문서 규칙으로 정할 수 없다. **미확정**으로 둔다.|아래 「2.3.1-C의 확인 방법」을 수행한다.|
 
@@ -877,10 +861,6 @@ https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8e
 SAP Help — Configuration Options in localextensions.xml (2011, 지원 종료판)
 https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US&version=2011
 2205판과 같은 설명. 버전이 달라도 규칙이 유지됐다는 보조 근거.
-
-SAP Help — Customization Directory Guidelines (SAP Commerce Cloud, 2211)
-https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html
-CCv2 구성(2.1.1-B)의 검색 위치, 탐색 깊이(`bin` 5단계, 그 밖의 디렉터리 10단계), 중복 이름 처리의 근거.
 
 SAP Help — Extension Dependencies (SAP Commerce Cloud, 2211)
 https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/20125f0eca6340dba918bda360e3cdfa/8bbf3a9d86691014aa4189bf3ac0eb88.html?locale=en-US
