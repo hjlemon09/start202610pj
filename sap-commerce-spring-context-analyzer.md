@@ -494,7 +494,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 |하는 일|뜻|이 문서에서 다루는 곳|
 |---|---|---|
 |필요한 extension을 자동으로 포함한다.|`localextensions.xml`에 `myextension`만 적어도 `voucher`와 `cms`가 함께 로드된다. 필요한 extension은 따로 적지 않아도 된다.|2.2절|
-|필요한 extension을 `<path>`에서 찾는다.|이름만 있으므로 `localextensions.xml`의 `<path>`(lookup folder) 아래에서 폴더를 찾는다. 같은 이름이 여러 곳에 있으면 먼저 적힌 `<path>`의 위치가 우선한다.|2.1.3절(검색 범위), 2.2절|
+|필요한 extension을 `<path>`에서 찾는다.|이름만 있으므로 `localextensions.xml`의 `<path>`(lookup folder) 아래에서 폴더를 찾는다. 같은 이름이 여러 곳에 있으면 먼저 적힌 `<path>`의 위치가 우선한다.<br>근거: SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US) 「Loading Extensions by Name」의 Note ("…it is loaded from a location your first provided path points to"). CCv2 구성은 [Customization Directory Guidelines (2211)](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html)에 따라 처음 발견한 위치에서 로드하고 나머지는 무시한다. 두 문서 모두 **같은 `<path>` 아래**의 중복은 다루지 않는다.|2.1.3절(검색 범위), 2.2절|
 |연쇄된다.|`voucher`도 자기 `extensioninfo.xml`에 `requires-extension`을 가질 수 있다. 새 이름이 나오지 않을 때까지 따라간다.|2.2절|
 |순서를 보장한다.|`myextension`은 `voucher`와 `cms`가 모두 빌드된 뒤에 빌드된다. 의존 관계가 선언되지 **않은** extension끼리의 빌드 순서와 초기화 순서는 정해져 있지 않다(non-deterministic).|7장|
 |필요한 extension의 코어 소스를 쓸 수 있게 한다.|의존하는 extension은 필요한 extension의 `src`(coremodule) 클래스와 리소스를 사용할 수 있다. `web/src`(webmodule)의 클래스는 사용할 수 없다.|6장(클래스패스)|
@@ -517,7 +517,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 근거:
 - SAP Help [Extension Dependencies (SAP Commerce Cloud, 2211)](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/20125f0eca6340dba918bda360e3cdfa/8bbf3a9d86691014aa4189bf3ac0eb88.html?locale=en-US): 의존성의 정의, `requires-extension` 선언 형식, 빌드 순서 보장과 비결정적 순서, coremodule 접근, 플랫폼 extension 예외, `load-prior-to`, 같은 alias의 덮어쓰기 예.
-- SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Defining Lookup Folder for Dependent Extensions」, 「Loading Extensions by Name」: lookup folder에서 찾는 규칙, 먼저 적힌 `<path>` 우선.
+- SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Defining Lookup Folder for Dependent Extensions」, 「Loading Extensions by Name」: lookup folder에서 찾는 규칙.
 
 |이 절의 결과|사용하는 곳|
 |---|---|
@@ -546,7 +546,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 |선언|뜻|이 절에서 정할 것|
 |---|---|---|
 |`<extensions autoload="…">`|`<path>`·`<extension>`을 감싸는 요소. `autoload`는 **플랫폼 extension(`platform/ext`)을 자동으로 모두 로드할지**를 정한다. 생략하면 `true`다. `false`이면 플랫폼 extension도 이 파일에 직접 적어야 한다.|원문 값 또는 `생략`과 적용값 (2.1.2절에서 기록)|
-|`<path dir="…" autoload="…" depth="…"/>`|extension을 찾아볼 **검색 경로**. `autoload`가 참이면 그 경로에서 발견한 extension을 선언 없이 포함한다.|실제 경로, 자동 포함 여부, 탐색 깊이 (2.1.3절)|
+|`<path dir="…" autoload="…" depth="…"/>`|extension을 찾아볼 **검색 경로**. `autoload`가 참이면 그 경로에서 발견한 extension을 선언 없이 포함한다. 거짓(생략 시 기본값)이면 lookup folder로만 쓰이며, 그 경로의 extension은 `<extension>`으로 명시했거나 `requires-extension`으로 요구될 때만 포함된다.|실제 경로, 자동 포함 여부, 탐색 깊이 (2.1.3절)|
 |`<extension name="…"/>`|포함할 extension을 **이름으로** 지정한다.|그 이름을 가진 실제 폴더 (2.1.4절)|
 |`<extension dir="…"/>`|포함할 extension을 **폴더로** 지정한다.|그 폴더의 정식 extension 이름 (2.1.5절)|
 |`<webapp …/>`|외부 extension(웹 애플리케이션)을 추가하는 선언이다.|원문만 기록한다. 코어 컨텍스트와의 관계는 필요할 때 따로 확인한다.|
@@ -692,7 +692,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 2. 찾은 파일이 검색 경로의 `depth` 범위 안에 있는지 확인한다. 범위 밖에 있는 파일은 대상 빌드가 찾지 않는다.
 3. 찾은 파일의 `<extension>` 요소의 `name` 값이 선언한 이름과 정확히 같은지 확인한다. 다른 요소의 `name` 속성이 검색된 것은 제외한다.
 4. 일치하는 파일의 절대 경로와, 그 파일이 있는 폴더를 기록한다.
-5. 일치하는 폴더가 둘 이상이면 각 폴더가 어느 `<path>` 아래에 있는지 기록한다. 같은 extension이 여러 `<path>` 아래에서 발견되면 **먼저 적힌 `<path>`가 가리키는 위치**에서 로드된다([근거: Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Loading Extensions by Name」 Note).
+5. 일치하는 폴더가 둘 이상이면 각 폴더가 어느 `<path>` 아래에 있는지 기록한다. 같은 extension이 여러 `<path>` 아래에서 발견되면 **먼저 적힌 `<path>`가 가리키는 위치**에서 로드된다.
 
 **판정**
 
@@ -776,7 +776,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 ## 2.3 중복 이름과 누락을 처리한다
 
 • 같은 이름의 extensioninfo.xml이 둘 이상이면 파일의 전체 경로를 전부 기록한다.
-• 후보들이 서로 다른 `<path>` 아래에 있으면 **먼저 적힌 `<path>`가 가리키는 위치**의 것이 로드된다(2.1.4-B). CCv2 구성에서는 처음 발견한 위치의 것이 로드되고 나머지는 무시된다. 근거: [Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Loading Extensions by Name」 Note, [Customization Directory Guidelines](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html).
+• 후보들이 서로 다른 `<path>` 아래에 있으면 **먼저 적힌 `<path>`가 가리키는 위치**의 것이 로드된다(2.1.4-B). CCv2 구성에서는 처음 발견한 위치의 것이 로드되고 나머지는 무시된다.
 • 아래 항목은 같은 `<path>` 아래에 후보가 여러 개 있어 위 규칙으로 정할 수 없을 때(2.1.4-C) 수행한다.
 • 대상 빌드 산출물에 확정 경로가 남아 있으면 그 경로와 각 후보를 비교한다.
 • 산출물이 없으면 대상 PlatformConfig 또는 실제 선택 코드에서 동일 이름이 충돌할 때 어떤 분기가 실행되는지 확인한다.
