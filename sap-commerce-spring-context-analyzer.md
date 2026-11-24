@@ -462,24 +462,251 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 출력. extension 이름, 실제 디렉터리, 포함 근거, 선행 의존성.
 
-## 2.1 명시 선언과 탐색 경로를 읽는다
+## 2.1 `localextensions.xml`에서 명시 선언과 검색 경로를 읽는다
 
-1. CONFIG_DIR/localextensions.xml을 연다.
-2. <extension name="…">마다 지정한 이름과 XML 요소의 위치를 기록한다.
-3. <extension dir="…">이 있으면 그 경로의 변수를 대상 빌드 값으로 치환한다.
-4. 치환한 디렉터리의 최상위 extensioninfo.xml을 열고 <extension name="…">으로 실제 이름을 확인한다.
-5. 각 <path>의 dir, autoload, depth를 원문 그대로 기록한다.
-6. 탐색 경로를 계산할 때 HYBRIS_BIN_DIR 등 변수 정의의 출처를 기록한다.
-7. localextensions.xml이 없는 경우 실제 빌드가 어떤 대체 설정을 읽는지 대상 버전의 빌드 시작 코드나 산출물에서 확인한다.
-8. 빌드나 배포 정의가 먼저 extension 목록을 생성하는 방식이라면 생성된 파일과 생성 입력을 같이 기록한다.
+### 이 절의 목적
 
-|파일 또는 요소                                |찾을 값             |기록 결과                  |
-|----------------------------------------|-----------------|-----------------------|
-|`localextensions.xml`의 `extension@name` |명시 이름            |이름과 검색 가능한 루트 후보       |
-|`localextensions.xml`의 `extension@dir`  |물리 위치를 지정하는 값    |치환된 경로와 실제 extension 이름|
-|`localextensions.xml`의 `path@autoload`  |탐색 대상을 자동 추가하는 조건|해당 경로의 처리 유형           |
-|`localextensions.xml`의 `path@depth`     |대상 버전이 적용하는 탐색 깊이|적용값, 기본값이 적용되면 그 근거    |
-|찾은 `extensioninfo.xml`의 `extension@name`|실제 extension 이름  |후보의 정식 이름과 파일 경로       |
+이 문서의 최종 목표는 정적 분석만으로, 대상 테넌트에서 최종 로드될 것으로 예상되는 Spring 빈을 가능한 범위까지 목록으로 만드는 것이다. 코어 Spring 빈은 각 extension의 Spring XML에 정의된다. 따라서 **어떤 extension이 대상 빌드에 포함되는지가 빈 분석의 범위를 결정한다.**
+
+- 포함된 extension을 빠뜨리면, 그 extension이 정의하는 빈 전체가 목록에서 누락된다.
+- 포함되지 않은 extension을 넣으면, 실제로는 로드되지 않을 빈이 목록에 들어간다.
+
+`localextensions.xml`은 프로젝트가 직접 선언한 포함 목록이며, extension 집합을 구하는 첫 번째 입력이다. 이 절에서는 이 파일만 읽어 **명시적으로 포함된 extension**과 **extension을 찾을 검색 경로**를 확정한다.
+
+이 절의 결과는 아직 최종 extension 목록이 아니다. 플랫폼이 자동으로 포함하는 extension과 `requires-extension`으로 끌려 들어오는 extension은 **2.2절**에서 추가한다.
+
+|이 절의 결과|사용하는 곳|
+|---|---|
+|판독한 `localextensions.xml` 또는 생성 입력의 절대 경로|이 절의 모든 판독의 기준.|
+|검색 경로 목록(`<path>`)|2.1.4절과 2.2절에서 extension 이름을 실제 폴더로 찾을 때의 탐색 범위.|
+|명시 포함 extension 목록(정식 이름·폴더·근거)|2.2절 의존성 해석의 시작 집합. 3장 활성 판정, 4장 `<extension>.application-context` 조회, 6장 Spring XML 위치 확인의 대상 이름과 폴더.|
+|미확정 항목|2.3절에서 해소하거나, 빈 목록의 확정 범위를 제한하는 근거.|
+
+**파일 구조 예시**
+
+아래는 설명용 예시다. 실제 조사는 2.1.1절에서 정한 파일의 원문으로 한다.
+
+```xml
+<hybrisconfig>
+  <extensions>
+    <path dir="${HYBRIS_BIN_DIR}" autoload="false"/>
+    <path dir="${HYBRIS_BIN_DIR}/custom/autoloaded" autoload="true"/>
+
+    <extension name="backoffice"/>
+    <extension dir="${HYBRIS_BIN_DIR}/custom/melco/melcocore"/>
+    <!-- <extension name="oldextension"/> -->
+  </extensions>
+</hybrisconfig>
+```
+
+|선언|뜻|이 절에서 정할 것|
+|---|---|---|
+|`<path dir="…" autoload="…" depth="…"/>`|extension을 찾아볼 **검색 경로**. `autoload`가 참이면 그 경로에서 발견한 extension을 선언 없이 포함한다.|실제 경로, 자동 포함 여부, 탐색 깊이 (2.1.3절)|
+|`<extension name="…"/>`|포함할 extension을 **이름으로** 지정한다.|그 이름을 가진 실제 폴더 (2.1.4절)|
+|`<extension dir="…"/>`|포함할 extension을 **폴더로** 지정한다.|그 폴더의 정식 extension 이름 (2.1.5절)|
+|`<!-- … -->` 안의 선언|주석이므로 빌드가 읽지 않는다.|분석 대상에서 제외 (2.1.2절)|
+
+### 2.1.1 판독할 `localextensions.xml`을 정한다
+
+**무엇을 확인하는가**
+
+1.1절에서 확정한 `CONFIG_DIR`에 `localextensions.xml`이 있는지, 또는 이 파일을 다른 입력에서 생성하는 구성인지 확인한다.
+
+**왜 확인하는가**
+
+이 절의 모든 판독 대상을 정하는 단계다. 특히 SAP Commerce Cloud(CCv2) 프로젝트는 보통 `manifest.json`의 `extensions` 목록에서 `localextensions.xml`을 생성한다. 이때 저장소의 `localextensions.xml`은 없거나 오래된 파일일 수 있으므로, 생성 입력을 읽어야 실제 포함 목록을 얻는다.
+
+**어떻게 확인하는가**
+
+1. 1.1절 기록표의 `localextensions.xml` 절대 경로를 연다.
+2. 저장소 루트 또는 `core-customize` 폴더에 `manifest.json`이 있는지 확인한다. 있다면 `extensions` 항목이 정의되어 있는지 본다.
+
+**판정**
+
+|번호|확인 결과|판정|다음 작업|
+|---|---|---|---|
+|2.1.1-A|1.1절에서 확정한 `CONFIG_DIR`에 `localextensions.xml`이 있고, 생성 구성이 아니다.|이 파일을 **판독 대상으로 확정**한다.|2.1.2절로 이동한다.|
+|2.1.1-B|`manifest.json` 등에서 `localextensions.xml`을 생성하는 구성이다.|**생성 입력**(`manifest.json`의 `extensions` 목록)을 판독 대상으로 한다.|생성 입력의 선언을 2.1.2절부터 같은 방식으로 판독한다. 저장소에 남은 `localextensions.xml`은 참고로만 기록한다.|
+|2.1.1-C|파일이 없고 생성 입력도 없다.|기본 입력이 **없음**으로 기록한다.|1.1.3절의 「파일이 없을 때」 절차를 따른다. 대체 입력을 찾으면 그 파일로 2.1.2절을 진행한다.|
+
+### 2.1.2 주석 처리된 선언을 제외하고 유효한 선언만 고른다
+
+**무엇을 확인하는가**
+
+`<!-- … -->` 주석 안에 있는 `<extension>`과 `<path>`, 그리고 파일이 XML로 올바르게 읽히는지 확인한다.
+
+**왜 확인하는가**
+
+주석 처리된 extension은 빌드에 포함되지 않는다. SAP Help도 선언을 XML 주석(`<!-- -->`)으로 감싸고 다시 빌드하면 그 extension이 빠진다고 설명한다([근거: Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Specifying Required Extensions One by One」). 문자열 검색으로 `extension name=`을 세면 주석 안의 선언까지 포함되어, 로드되지 않을 extension의 빈이 목록에 들어간다.
+
+**어떻게 확인하는가**
+
+1. IntelliJ에서 파일을 XML로 연다. 주석 구간은 회색으로 표시되므로 주석 안의 선언을 구별할 수 있다.
+2. 여러 줄에 걸친 주석은 시작(`<!--`)과 끝(`-->`)의 위치를 확인해 그 사이의 선언을 모두 주석으로 분류한다.
+3. IntelliJ에 XML 오류 표시가 있으면 오류 위치를 기록한다. 파일이 XML로 읽히지 않으면 빌드도 이 파일을 정상적으로 읽지 못한다.
+4. 유효한 선언마다 요소 종류(`path`·`extension name`·`extension dir`), 원문, 줄 번호를 기록한다. 특히 `<path>`는 **선언 순서**를 기록한다. 같은 이름의 extension이 여러 경로에 있으면 먼저 적힌 `<path>`의 위치에서 로드되기 때문이다(2.1.4절 참조).
+
+**판정**
+
+|번호|확인 결과|판정|다음 작업|
+|---|---|---|---|
+|2.1.2-A|주석 밖에 있는 선언이다.|**유효 선언**으로 기록한다.|`<path>`는 2.1.3절, `<extension name>`은 2.1.4절, `<extension dir>`은 2.1.5절로 넘긴다.|
+|2.1.2-B|주석 안에 있는 선언이다.|**제외 선언**으로 기록한다. 이 선언만으로는 extension을 포함하지 않는다.|분석 대상에서 뺀다. 같은 extension이 2.2절 의존성으로 다시 포함될 수 있으므로 이름은 기록해 둔다.|
+|2.1.2-C|XML 오류가 있다.|파일 판독을 **미확정**으로 둔다.|오류 위치를 기록한다. 1.1절에서 확정한 경로의 파일이 맞는지 다시 확인하고, 해결하지 못하면 2.1절 결과 전체를 미확정으로 둔다.|
+
+### 2.1.3 `<path>` 검색 경로와 자동 포함 조건을 해석한다
+
+**배경지식**
+
+`<path>`는 **빌드가 extension 폴더를 찾아볼 위치**를 지정하는 선언이다. 세 속성은 다음 뜻을 가진다.
+
+아래 표의 「생략했을 때」는 직접 작성한 `localextensions.xml`(2.1.1-A) 기준이다. CCv2 구성은 표 아래의 「SAP Commerce Cloud(CCv2) 구성일 때」를 따른다.
+
+|속성|뜻|생략했을 때|
+|---|---|---|
+|`dir`|extension을 찾아볼 폴더. 예: `${HYBRIS_BIN_DIR}/custom`|생략할 수 없다.|
+|`autoload`|그 폴더에서 발견한 extension을 선언 없이 자동으로 포함할지 여부|`false`. 자동 포함하지 않는다.|
+|`depth`|그 폴더 아래 몇 단계 하위 폴더까지 찾아볼지|10단계|
+
+- `autoload="true"`가 아닌 `<path>`는 **lookup folder**다. 그 아래의 extension은 `<extension>`으로 명시했거나, 명시한 extension의 의존성(`requires-extension`)을 채우는 데 필요할 때만 로드된다.
+- `<HYBRIS_BIN_DIR>/platform/ext` 아래의 extension은 `<path>` 선언과 관계없이 모두 자동으로 로드된다. 이 extension들은 2.2절에서 다룬다.
+- 같은 extension이 여러 `<path>` 아래에서 발견되면, **먼저 적힌 `<path>`가 가리키는 위치**에서 로드된다.
+- `<path>`를 먼저 적고, 그 뒤에 `<extension>`을 적는다.
+
+근거: SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US). `depth`의 기본값은 이 문서의 Note에 있는 "The default value is ten levels."에 따른다. [2011판](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US&version=2011)에도 같은 설명이 있다. `autoload`의 기본값 `false`는 설치된 스키마(`extensions.xsd`의 `scanType`)의 `default="false"`와 일치한다.
+
+**SAP Commerce Cloud(CCv2) 구성일 때(2.1.1-B)**
+
+`manifest.json`의 `extensions`에는 이름만 적는다. 검색 위치와 깊이는 SAP가 정한다.
+
+- 검색 위치: 저장소 루트(단일 디렉터리 구조) 또는 `<root>/core-customize`(별도 하위 디렉터리 구조), 자동으로 내려받는 추가 Commerce Cloud extension, manifest에서 활성화한 extension pack, Commerce Cloud의 `bin` 디렉터리.
+- 탐색 깊이: Commerce Cloud `bin` 디렉터리는 5단계, 그 밖의 디렉터리는 10단계.
+- 같은 이름의 extension이 여러 곳에 있으면 처음 발견한 위치의 것을 로드하고 나머지는 무시한다.
+
+근거: SAP Help [Customization Directory Guidelines (SAP Commerce Cloud, 2211)](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html)의 「Core Commerce Customization Directory Guidelines」.
+
+**무엇을 확인하는가**
+
+유효한 `<path>`마다 세 속성의 원문과, `dir`의 변수를 치환한 실제 절대 경로를 확인한다.
+
+**왜 확인하는가**
+
+두 가지를 확정하기 위해서다.
+
+1. **이름으로 폴더를 찾는 범위를 확정하기 위해서.** `<extension name="melcocore"/>`나 2.2절의 `<requires-extension name="…"/>`에는 이름만 있고 폴더 위치가 없다. 빌드는 `<path>`가 가리키는 폴더 아래에서 `extensioninfo.xml`의 이름이 일치하는 폴더를 찾아 사용한다. 이 범위를 모르면, 검색 경로 밖에 있는 같은 이름의 복사본을 잘못 골라 실제로 로드되지 않는 Spring XML을 분석하게 된다. → 2.1.4절과 2.2절에서 이 범위를 사용한다.
+2. **선언 없이 자동으로 포함되는 extension을 알기 위해서.** `autoload`가 참인 경로의 extension은 `<extension>` 선언이 없어도 빌드에 포함된다. 이를 놓치면 그 extension들의 빈이 목록에서 통째로 빠진다. → 2.1.5절에서 자동 포함 후보의 정식 이름을 확인한다.
+
+**어떻게 확인하는가**
+
+1. `dir`의 변수를 치환한다. `${HYBRIS_BIN_DIR}`은 표준 구성에서 `<HYBRIS_HOME>\bin`이다. 다른 변수가 있으면 대상 버전의 플랫폼 빌드 코드에서 그 변수를 정의하는 곳을 찾아 값과 출처를 확인한다.
+2. 치환한 경로가 실제로 존재하는지 확인한다.
+3. `autoload`와 `depth`는 원문을 기록하고, 속성이 없으면 `생략`으로 적는다.
+4. 생략된 속성에는 배경지식 표의 기본값을 적용한다. `autoload`는 `false`, `depth`는 10단계다. 적용값과 함께 근거(SAP Help 문서 또는 스키마)를 기록한다.
+
+   설치된 스키마로 `autoload`의 기본값을 직접 확인하려면 다음 순서로 본다.
+   1. `localextensions.xml` 맨 위 `<hybrisconfig>`의 `xsi:noNamespaceSchemaLocation`이 가리키는 스키마를 연다. 표준 설치에서는 `<HYBRIS_HOME>\bin\platform\resources\schemas\extensions.xsd`다.
+   2. `<xs:element name="path" type="…">`의 `type` 값(표준 설치에서는 `scanType`)을 확인하고, 같은 파일의 `<xs:complexType name="scanType">`을 찾는다.
+   3. 그 안의 `<xs:attribute name="autoload">`와 `<xs:attribute name="depth">`를 읽는다. `default="…"`가 있으면 그 값이 생략 시 적용값이다.
+
+   **참고(2211 설치에서 확인한 값):** `scanType`에는 `autoload`가 `use="optional" default="false"`, `depth`가 `use="optional"`(`default` 없음)로 정의되어 있다. 스키마에는 `depth`의 기본값이 없다. 직접 작성한 `localextensions.xml`(2.1.1-A)에서 `depth`를 생략하면 SAP Help 문서에 따라 10단계를 적용한다. CCv2 구성(2.1.1-B)이라면 이 값 대신 배경지식의 「SAP Commerce Cloud(CCv2) 구성일 때」의 깊이(`bin` 5단계, 그 밖의 디렉터리 10단계)를 적용한다.
+5. `depth`의 적용값으로 경로 아래 몇 단계 폴더까지 `extensioninfo.xml`을 찾는지 정한다. 예를 들어 `depth`가 10이면 `dir` 아래 10단계 하위 폴더까지 찾는다.
+6. 2.1.1-B(CCv2 구성)라면 `<path>` 대신 배경지식의 「SAP Commerce Cloud(CCv2) 구성일 때」에 적힌 검색 위치와 깊이를 검색 경로로 기록한다.
+
+**판정**
+
+|번호|확인 결과|판정|다음 작업|
+|---|---|---|---|
+|2.1.3-A|경로가 해석되었고 `autoload`가 거짓이다.|**탐색 전용 경로**로 확정한다. 이 경로의 extension은 선언되거나 요구될 때만 포함된다.|2.1.4절과 2.2절의 이름 탐색 범위로 사용한다.|
+|2.1.3-B|경로가 해석되었고 `autoload`가 참이다.|**자동 포함 경로**로 확정한다.|`depth` 범위 안의 모든 `extensioninfo.xml`을 찾아 2.1.5절에서 정식 이름을 확인한다. 각 extension의 포함 근거는 `autoload 경로`로 기록한다.|
+|2.1.3-C|`autoload` 또는 `depth`가 생략됐고 대상 버전의 적용값을 확인했다.|적용값에 따라 2.1.3-A 또는 2.1.3-B로 판정한다.|적용값과 근거(SAP Help 문서 또는 스키마 파일의 `default`)를 함께 기록한다.|
+|2.1.3-D|생략된 속성의 적용값이나 `dir`의 변수값을 확인하지 못했다.|해당 경로를 **미확정**으로 둔다.|이 경로에서 찾는 이름과 자동 포함 후보는 모두 `포함 미확정`으로 표시하고, 부족한 값과 확인할 문서·코드를 기록한다.|
+|2.1.3-E|해석한 경로가 존재하지 않는다.|**존재하지 않는 경로**로 기록한다. 이 경로로는 extension을 찾을 수 없다.|변수값이 맞는지 다시 확인한다. 값이 맞다면 이 경로는 탐색 대상에서 제외한다.|
+
+### 2.1.4 `<extension name>` 선언을 실제 폴더에 연결한다
+
+**무엇을 확인하는가**
+
+이름으로 선언한 extension마다, 2.1.3절의 검색 경로 안에서 `extensioninfo.xml`의 `<extension name="…">` 값이 그 이름과 일치하는 폴더를 찾는다.
+
+**왜 확인하는가**
+
+extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 있다. 폴더가 정해져야 4장에서 `<extension>.application-context` 값을, 6장에서 실제 Spring XML 파일을 확인할 수 있다. 폴더 이름과 extension 이름은 다를 수 있으므로 폴더 이름만 보고 연결하지 않는다.
+
+**어떻게 확인하는가**
+
+1. IntelliJ의 Find in Files에서 파일 마스크를 `extensioninfo.xml`로 지정하고, `name="<선언한 이름>"`을 검색한다. 검색 범위는 2.1.3절에서 확정한 검색 경로들이다.
+2. 찾은 파일이 검색 경로의 `depth` 범위 안에 있는지 확인한다. 범위 밖에 있는 파일은 대상 빌드가 찾지 않는다.
+3. 찾은 파일의 `<extension>` 요소의 `name` 값이 선언한 이름과 정확히 같은지 확인한다. 다른 요소의 `name` 속성이 검색된 것은 제외한다.
+4. 일치하는 파일의 절대 경로와, 그 파일이 있는 폴더를 기록한다.
+5. 일치하는 폴더가 둘 이상이면 각 폴더가 어느 `<path>` 아래에 있는지 기록한다. 같은 extension이 여러 `<path>` 아래에서 발견되면 **먼저 적힌 `<path>`가 가리키는 위치**에서 로드된다([근거: Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Loading Extensions by Name」 Note).
+
+**판정**
+
+|번호|확인 결과|판정|다음 작업|
+|---|---|---|---|
+|2.1.4-A|일치하는 폴더가 하나다.|**명시 포함**으로 확정한다. 포함 근거는 `name 선언`과 선언 줄 번호다.|결과 목록에 추가한다.|
+|2.1.4-B|일치하는 폴더가 둘 이상이고, 서로 다른 `<path>` 아래에 있다.|**먼저 적힌 `<path>` 아래의 폴더**로 확정한다. 나머지 폴더는 `중복·미사용`으로 기록한다.|결과 목록에 선택한 폴더로 추가한다. 선택 근거로 두 `<path>`의 선언 줄 번호를 기록한다.|
+|2.1.4-C|일치하는 폴더가 둘 이상이고, 같은 `<path>` 아래에 있다.|폴더를 **후보 여러 개**로 기록한다. 포함 자체는 확정, 폴더는 미확정이다.|문서의 규칙으로는 하나를 고를 수 없다. 2.3절에서 같은 경로 안의 탐색 순서를 확인한다.|
+|2.1.4-D|검색 경로에서 찾지 못했지만 `<HYBRIS_HOME>\bin\platform\ext`에 있다.|**명시 포함**으로 확정하되 폴더는 플랫폼 영역으로 기록한다. `platform/ext` 아래 extension은 선언과 관계없이 자동으로 로드된다([근거](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)).|2.2절의 플랫폼 자동 포함 extension과 겹치는지 확인한다.|
+|2.1.4-E|어디에서도 찾지 못했다.|**누락 선언**으로 기록한다.|검색한 경로와 문자열을 기록한다. 빌드가 이 선언을 오류로 처리하는지 또는 무시하는지 2.3절에서 확인한다. 이 extension의 빈은 목록에 넣지 않는다.|
+
+### 2.1.5 `<extension dir>` 선언과 자동 포함 후보의 정식 이름을 확인한다
+
+**무엇을 확인하는가**
+
+폴더로 선언한 extension과 2.1.3-B의 자동 포함 후보마다, 그 폴더 바로 아래 `extensioninfo.xml`의 `<extension name="…">` 값을 확인한다.
+
+**왜 확인하는가**
+
+이후 장은 모두 **정식 extension 이름**을 기준으로 한다. 3장의 테넌트 활성 판정, 4장의 `<extension>.application-context` 프로퍼티 키, 7장의 의존 순서가 모두 이 이름을 쓴다. 폴더 이름으로 기록하면 이후 장에서 프로퍼티 키와 의존 관계를 잘못 찾는다.
+
+**어떻게 확인하는가**
+
+1. `dir`의 변수를 2.1.3절과 같은 방법으로 치환해 절대 경로를 구한다. 상대 경로라면 대상 버전이 무엇을 기준으로 해석하는지 확인한다.
+2. 그 폴더 바로 아래의 `extensioninfo.xml`을 연다.
+3. `<extension>` 요소의 `name` 값을 정식 이름으로 기록한다.
+
+**판정**
+
+|번호|확인 결과|판정|다음 작업|
+|---|---|---|---|
+|2.1.5-A|`extensioninfo.xml`이 있고 `name`을 읽었다.|**포함**으로 확정한다. 포함 근거는 `dir 선언` 또는 `autoload 경로`다.|결과 목록에 정식 이름으로 추가한다.|
+|2.1.5-B|폴더는 있지만 바로 아래에 `extensioninfo.xml`이 없다.|이 폴더는 **extension이 아님**으로 기록한다.|`dir` 선언이라면 선언 원문과 변수 치환을 다시 확인한다. autoload 후보라면 제외한다.|
+|2.1.5-C|`dir`의 변수나 상대 경로 기준을 확인하지 못했다.|폴더를 **미확정**으로 둔다.|추측한 경로로 이름을 정하지 않는다. 부족한 변수값과 출처를 기록한다.|
+|2.1.5-D|정식 이름이 다른 선언이나 다른 폴더의 이름과 같다.|**중복 이름**으로 기록한다.|서로 다른 `<path>` 아래에 있으면 2.1.4-B와 같이 먼저 적힌 `<path>` 아래의 폴더를 선택한다. 같은 `<path>` 아래에 있으면 2.1.4-C와 같이 2.3절에서 확인한다.|
+
+### 2.1.6 조사 결과를 2.2절의 입력으로 정리한다
+
+**검색 경로 기록**
+
+|선언 순서|`dir` 원문|실제 절대 경로|`autoload` 원문 / 적용값|`depth` 원문 / 적용값|판정 번호|
+|---|---|---|---|---|---|
+| | | | | | |
+
+`autoload`나 `depth`를 생략했다면 원문에 `생략`, 적용값에 기본값(`false`, 10)을 적는다.
+
+**명시 포함 extension 기록**
+
+|정식 이름|포함 근거|선언 위치(파일:줄)|`extensioninfo.xml` 절대 경로|판정 번호|상태|
+|---|---|---|---|---|---|
+| |`name 선언` / `dir 선언` / `autoload 경로`| | | |확정 / 후보 여러 개 / 미확정 / 누락|
+
+같은 이름의 폴더가 여러 개였던 extension은, 선택하지 않은 폴더를 아래 「제외 선언과 미확정 항목」에 `중복·미사용`으로 기록한다.
+
+**제외 선언과 미확정 항목**
+
+|항목|원문 또는 이름|이유|확인할 곳|
+|---|---|---|---|
+| | | | |
+
+### 2.1절 완료 기준
+
+- 판독할 `localextensions.xml` 또는 생성 입력을 정했다.
+- 주석 처리된 선언을 모두 제외하고 유효 선언만 판독했다.
+- 모든 `<path>`의 실제 경로, 자동 포함 여부, 탐색 깊이를 정했거나 미확정 사유를 기록했다.
+- 모든 유효 `<extension>` 선언과 자동 포함 후보에 정식 이름과 폴더를 연결했거나, `후보 여러 개`·`누락`·`미확정` 상태와 다음 확인 위치를 기록했다.
+
+이 기준을 충족하면 **2.2절**로 이동해 플랫폼 자동 포함 extension과 `requires-extension` 의존성을 추가한다.
 
 ## 2.2 플랫폼 자동 로드와 의존성을 반영한다
 
@@ -495,6 +722,8 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 ## 2.3 중복 이름과 누락을 처리한다
 
 • 같은 이름의 extensioninfo.xml이 둘 이상이면 파일의 전체 경로를 전부 기록한다.
+• 후보들이 서로 다른 `<path>` 아래에 있으면 **먼저 적힌 `<path>`가 가리키는 위치**의 것이 로드된다(2.1.4-B). CCv2 구성에서는 처음 발견한 위치의 것이 로드되고 나머지는 무시된다. 근거: [Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Loading Extensions by Name」 Note, [Customization Directory Guidelines](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html).
+• 아래 항목은 같은 `<path>` 아래에 후보가 여러 개 있어 위 규칙으로 정할 수 없을 때(2.1.4-C) 수행한다.
 • 대상 빌드 산출물에 확정 경로가 남아 있으면 그 경로와 각 후보를 비교한다.
 • 산출물이 없으면 대상 PlatformConfig 또는 실제 선택 코드에서 동일 이름이 충돌할 때 어떤 분기가 실행되는지 확인한다.
 • 선택 규칙이 입력 순서에 의존한다면 탐색 경로의 순서와 동일 경로 내부 열거 규칙까지 확인한다.
@@ -514,8 +743,17 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 완료 기준. 대상 배포의 포함 extension마다 이름, 실제 경로, 포함 이유가 있고, 각 requires-extension edge의 대상이 해석되었다.
 중복 후보나 누락이 남아 있다면 그 이름과 조건을 명시해 3장의 확정 범위를 제한한다.
 
-SAP Help — Configuration Options in localextensions.xml
-https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html
+SAP Help — Configuration Options in localextensions.xml (2205)
+https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US
+2.1절의 `depth` 기본값(10단계), `autoload`가 아닌 경로의 lookup folder 동작, `platform/ext` 자동 로드, 같은 이름일 때 먼저 적힌 `<path>` 우선, 주석 처리에 의한 제외의 근거.
+
+SAP Help — Configuration Options in localextensions.xml (2011, 지원 종료판)
+https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US&version=2011
+2205판과 같은 설명. 버전이 달라도 규칙이 유지됐다는 보조 근거.
+
+SAP Help — Customization Directory Guidelines (SAP Commerce Cloud, 2211)
+https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html
+CCv2 구성(2.1.1-B)의 검색 위치, 탐색 깊이(`bin` 5단계, 그 밖의 디렉터리 10단계), 중복 이름 처리의 근거.
 
 SAP Help — Extension Configurations
 https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8bbf6b5e86691014ad49fd1bc0172e5c.html
