@@ -475,6 +475,50 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 이 절의 결과는 아직 최종 extension 목록이 아니다. 플랫폼이 자동으로 포함하는 extension과 `requires-extension`으로 끌려 들어오는 extension은 **2.2절**에서 추가한다.
 
+**배경지식: `requires-extension`**
+
+**extension 의존성이란.** 어떤 extension이 다른 extension에 정의된 타입이나 기능을 사용·수정·확장하면, 그 extension은 다른 extension에 **의존**한다. 의존하는 extension은 필요한 extension이 있어야 정상 동작한다. 예를 들어 CronJob을 확장하면 `processing` extension에, Product 타입만 써도 플랫폼 `core` extension에 의존한다.
+
+**`requires-extension`은 이 의존성을 명시하는 선언이다.** `localextensions.xml`이 아니라 각 extension 폴더의 `extensioninfo.xml`에서, `<extension>` 요소의 자식으로 적는다. 이름만 적고 경로는 적지 않는다.
+
+```xml
+<!-- myextension/extensioninfo.xml (SAP Help의 예) -->
+<extension name="myextension">
+  <requires-extension name="voucher"/>
+  <requires-extension name="cms"/>
+</extension>
+```
+
+**이 선언이 하는 일**
+
+|하는 일|뜻|이 문서에서 다루는 곳|
+|---|---|---|
+|필요한 extension을 자동으로 포함한다.|`localextensions.xml`에 `myextension`만 적어도 `voucher`와 `cms`가 함께 로드된다. 필요한 extension은 따로 적지 않아도 된다.|2.2절|
+|필요한 extension을 `<path>`에서 찾는다.|이름만 있으므로 `localextensions.xml`의 `<path>`(lookup folder) 아래에서 폴더를 찾는다. 같은 이름이 여러 곳에 있으면 먼저 적힌 `<path>`의 위치가 우선한다.|2.1.3절(검색 범위), 2.2절|
+|연쇄된다.|`voucher`도 자기 `extensioninfo.xml`에 `requires-extension`을 가질 수 있다. 새 이름이 나오지 않을 때까지 따라간다.|2.2절|
+|순서를 보장한다.|`myextension`은 `voucher`와 `cms`가 모두 빌드된 뒤에 빌드된다. 의존 관계가 선언되지 **않은** extension끼리의 빌드 순서와 초기화 순서는 정해져 있지 않다(non-deterministic).|7장|
+|필요한 extension의 코어 소스를 쓸 수 있게 한다.|의존하는 extension은 필요한 extension의 `src`(coremodule) 클래스와 리소스를 사용할 수 있다. `web/src`(webmodule)의 클래스는 사용할 수 없다.|6장(클래스패스)|
+
+**예외 1: 플랫폼 extension에 대한 의존은 적지 않아도 된다.** `<HYBRIS_BIN_DIR>/platform/ext` 밖에 있는 extension은 모두 플랫폼 extension에 의존한다고 간주된다. 그래서 `core` 같은 플랫폼 extension은 `requires-extension`으로 적지 않는 경우가 많다. 2.2절에서 의존성을 따라갈 때, 플랫폼 extension이 선언에 없다고 의존 관계가 없다고 판단하지 않는다.
+
+**예외 2: `load-prior-to`는 순서만 정하고 포함시키지는 않는다.** 의존 관계 없이 로드 순서만 정하고 싶을 때는 먼저 로드될 extension의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="extA"/>`를 적는다. `requires-extension`과 방향이 반대다.
+
+|선언|적는 곳|A를 B보다 먼저 로드하려면|자동 포함|
+|---|---|---|---|
+|`requires-extension`|B의 `extensioninfo.xml`|B가 `<requires-extension name="A"/>`를 적는다.|B가 포함되면 A도 자동으로 포함된다. A를 `localextensions.xml`에 따로 적지 않아도 된다.|
+|`load-prior-to`|A의 `extensioninfo.xml`|A가 `<meta key="load-prior-to" value="B"/>`를 적는다.|어느 쪽도 자동으로 포함하지 **않는다**. B가 `localextensions.xml`에 없으면 B는 로드되지 않고, 순서 지정도 적용되지 않는다.|
+
+**빈 목록과의 관계**
+
+- **누락 방지:** 의존성으로 포함된 extension의 Spring XML도 로드된다. `localextensions.xml`에 이름이 없다고 이 extension들을 빠뜨리면, 그 빈이 목록에서 누락된다.
+- **덮어쓰기 판단:** 여러 extension이 같은 빈 이름(또는 alias)을 정의하면, **나중에 로드된 extension의 정의가 앞의 정의를 덮어쓴다.** SAP Help는 의존 관계가 없는 두 extension이 같은 alias `myBean`을 정의하면, 로드 순서가 정해져 있지 않아 기대와 다른 빈이 최종 값이 될 수 있다는 예를 든다. 따라서 어떤 빈이 최종으로 남는지는 `requires-extension`과 `load-prior-to`로 정해지는 로드 순서로 판단하고, 둘 다 없으면 순서 미확정으로 기록한다(7장).
+
+**예외 1의 전제.** 플랫폼 extension에 대한 위 자동 처리는 `localextensions.xml`의 **`<extensions>` 요소의 `autoload`**로 켜고 끈다. 생략하면 `true`이고, `false`이면 필요한 플랫폼 extension을 `localextensions.xml`에 직접 적어야 한다. 이것은 2.1.3절에서 다루는 `<path>`의 `autoload`(기본값 `false`)와 이름만 같은 다른 설정이다. 설치된 `extensions.xsd`에서 `extensionsType`의 `autoload`가 `use="optional" default="true"`로 정의되어 있고, 설명에 "Loads automatically all extensions of the platform"이라고 적혀 있는 것으로 확인했다.
+
+근거:
+- SAP Help [Extension Dependencies (SAP Commerce Cloud, 2211)](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/20125f0eca6340dba918bda360e3cdfa/8bbf3a9d86691014aa4189bf3ac0eb88.html?locale=en-US): 의존성의 정의, `requires-extension` 선언 형식, 빌드 순서 보장과 비결정적 순서, coremodule 접근, 플랫폼 extension 예외, `load-prior-to`, 같은 alias의 덮어쓰기 예.
+- SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)의 「Defining Lookup Folder for Dependent Extensions」, 「Loading Extensions by Name」: lookup folder에서 찾는 규칙, 먼저 적힌 `<path>` 우선.
+
 |이 절의 결과|사용하는 곳|
 |---|---|
 |판독한 `localextensions.xml` 또는 생성 입력의 절대 경로|이 절의 모든 판독의 기준.|
@@ -501,10 +545,19 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 
 |선언|뜻|이 절에서 정할 것|
 |---|---|---|
+|`<extensions autoload="…">`|`<path>`·`<extension>`을 감싸는 요소. `autoload`는 **플랫폼 extension(`platform/ext`)을 자동으로 모두 로드할지**를 정한다. 생략하면 `true`다. `false`이면 플랫폼 extension도 이 파일에 직접 적어야 한다.|원문 값 또는 `생략`과 적용값 (2.1.2절에서 기록)|
 |`<path dir="…" autoload="…" depth="…"/>`|extension을 찾아볼 **검색 경로**. `autoload`가 참이면 그 경로에서 발견한 extension을 선언 없이 포함한다.|실제 경로, 자동 포함 여부, 탐색 깊이 (2.1.3절)|
 |`<extension name="…"/>`|포함할 extension을 **이름으로** 지정한다.|그 이름을 가진 실제 폴더 (2.1.4절)|
 |`<extension dir="…"/>`|포함할 extension을 **폴더로** 지정한다.|그 폴더의 정식 extension 이름 (2.1.5절)|
+|`<webapp …/>`|외부 extension(웹 애플리케이션)을 추가하는 선언이다.|원문만 기록한다. 코어 컨텍스트와의 관계는 필요할 때 따로 확인한다.|
 |`<!-- … -->` 안의 선언|주석이므로 빌드가 읽지 않는다.|분석 대상에서 제외 (2.1.2절)|
+
+`autoload`라는 이름의 속성이 두 곳에 있으므로 구분한다. 근거는 설치된 스키마 `<HYBRIS_HOME>\bin\platform\resources\schemas\extensions.xsd`다.
+
+|속성|정의 위치(스키마)|뜻|생략했을 때|
+|---|---|---|---|
+|`<extensions autoload>`|`extensionsType`|플랫폼 extension 전체를 자동으로 로드할지|`true`|
+|`<path autoload>`|`scanType`|그 경로에서 발견한 extension을 자동으로 포함할지|`false`|
 
 ### 2.1.1 판독할 `localextensions.xml`을 정한다
 
@@ -544,7 +597,8 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 1. IntelliJ에서 파일을 XML로 연다. 주석 구간은 회색으로 표시되므로 주석 안의 선언을 구별할 수 있다.
 2. 여러 줄에 걸친 주석은 시작(`<!--`)과 끝(`-->`)의 위치를 확인해 그 사이의 선언을 모두 주석으로 분류한다.
 3. IntelliJ에 XML 오류 표시가 있으면 오류 위치를 기록한다. 파일이 XML로 읽히지 않으면 빌드도 이 파일을 정상적으로 읽지 못한다.
-4. 유효한 선언마다 요소 종류(`path`·`extension name`·`extension dir`), 원문, 줄 번호를 기록한다. 특히 `<path>`는 **선언 순서**를 기록한다. 같은 이름의 extension이 여러 경로에 있으면 먼저 적힌 `<path>`의 위치에서 로드되기 때문이다(2.1.4절 참조).
+4. `<extensions>` 요소의 `autoload` 원문을 기록한다. 속성이 없으면 `생략`으로 적고 적용값은 `true`로 기록한다. 이 값은 2.2절에서 플랫폼 extension을 자동 포함할지 판단하는 근거다.
+5. 유효한 선언마다 요소 종류(`path`·`extension name`·`extension dir`·`webapp`), 원문, 줄 번호를 기록한다. 특히 `<path>`는 **선언 순서**를 기록한다. 같은 이름의 extension이 여러 경로에 있으면 먼저 적힌 `<path>`의 위치에서 로드되기 때문이다(2.1.4절 참조).
 
 **판정**
 
@@ -569,7 +623,7 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 |`depth`|그 폴더 아래 몇 단계 하위 폴더까지 찾아볼지|10단계|
 
 - `autoload="true"`가 아닌 `<path>`는 **lookup folder**다. 그 아래의 extension은 `<extension>`으로 명시했거나, 명시한 extension의 의존성(`requires-extension`)을 채우는 데 필요할 때만 로드된다.
-- `<HYBRIS_BIN_DIR>/platform/ext` 아래의 extension은 `<path>` 선언과 관계없이 모두 자동으로 로드된다. 이 extension들은 2.2절에서 다룬다.
+- `<HYBRIS_BIN_DIR>/platform/ext` 아래의 extension은 `<path>` 선언과 관계없이 모두 자동으로 로드된다. 단, `<extensions>` 요소의 `autoload`가 `true`(생략 시 기본값)일 때다. 이 extension들은 2.2절에서 다룬다.
 - 같은 extension이 여러 `<path>` 아래에서 발견되면, **먼저 적힌 `<path>`가 가리키는 위치**에서 로드된다.
 - `<path>`를 먼저 적고, 그 뒤에 `<extension>`을 적는다.
 
@@ -647,7 +701,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 |2.1.4-A|일치하는 폴더가 하나다.|**명시 포함**으로 확정한다. 포함 근거는 `name 선언`과 선언 줄 번호다.|결과 목록에 추가한다.|
 |2.1.4-B|일치하는 폴더가 둘 이상이고, 서로 다른 `<path>` 아래에 있다.|**먼저 적힌 `<path>` 아래의 폴더**로 확정한다. 나머지 폴더는 `중복·미사용`으로 기록한다.|결과 목록에 선택한 폴더로 추가한다. 선택 근거로 두 `<path>`의 선언 줄 번호를 기록한다.|
 |2.1.4-C|일치하는 폴더가 둘 이상이고, 같은 `<path>` 아래에 있다.|폴더를 **후보 여러 개**로 기록한다. 포함 자체는 확정, 폴더는 미확정이다.|문서의 규칙으로는 하나를 고를 수 없다. 2.3절에서 같은 경로 안의 탐색 순서를 확인한다.|
-|2.1.4-D|검색 경로에서 찾지 못했지만 `<HYBRIS_HOME>\bin\platform\ext`에 있다.|**명시 포함**으로 확정하되 폴더는 플랫폼 영역으로 기록한다. `platform/ext` 아래 extension은 선언과 관계없이 자동으로 로드된다([근거](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)).|2.2절의 플랫폼 자동 포함 extension과 겹치는지 확인한다.|
+|2.1.4-D|검색 경로에서 찾지 못했지만 `<HYBRIS_HOME>\bin\platform\ext`에 있다.|**명시 포함**으로 확정하되 폴더는 플랫폼 영역으로 기록한다. `<extensions autoload>`가 `true`(생략 시 기본값)이면 `platform/ext` 아래 extension은 선언과 관계없이 자동으로 로드된다([근거](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US)). `false`이면 이 선언이 있어야 포함된다.|2.2절의 플랫폼 자동 포함 extension과 겹치는지 확인한다.|
 |2.1.4-E|어디에서도 찾지 못했다.|**누락 선언**으로 기록한다.|검색한 경로와 문자열을 기록한다. 빌드가 이 선언을 오류로 처리하는지 또는 무시하는지 2.3절에서 확인한다. 이 extension의 빈은 목록에 넣지 않는다.|
 
 ### 2.1.5 `<extension dir>` 선언과 자동 포함 후보의 정식 이름을 확인한다
@@ -754,6 +808,10 @@ https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8e
 SAP Help — Customization Directory Guidelines (SAP Commerce Cloud, 2211)
 https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/1be46286b36a4aa48205be5a96240672/be943987b7004f06abfd36e64db119f0.html
 CCv2 구성(2.1.1-B)의 검색 위치, 탐색 깊이(`bin` 5단계, 그 밖의 디렉터리 10단계), 중복 이름 처리의 근거.
+
+SAP Help — Extension Dependencies (SAP Commerce Cloud, 2211)
+https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/20125f0eca6340dba918bda360e3cdfa/8bbf3a9d86691014aa4189bf3ac0eb88.html?locale=en-US
+2.1절 `requires-extension` 배경지식(의존성 정의, 빌드 순서 보장, 플랫폼 extension 예외, `load-prior-to`, 같은 alias의 덮어쓰기)의 근거.
 
 SAP Help — Extension Configurations
 https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8bbf6b5e86691014ad49fd1bc0172e5c.html
