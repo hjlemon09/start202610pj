@@ -95,6 +95,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
 | `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 |
 | `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 |
+| *(카테고리 값 전체)* | 모든 CSV의 상태·종류 열에 들어가는 값과 뜻: `docs/CSV_CATEGORY_REFERENCE.md` |
 | `extension-duplicates.csv` | 같은 이름의 정의 중 사용하지 않은 것과 그 이유(`SHADOWED_BY_EARLIER_PATH`, `OUT_OF_LOOKUP`, `SAME_PATH_AMBIGUOUS`, `OVERRIDDEN_BY_DIR_DECLARATION`) |
 | `spring-xml-files.csv` | 선택된 Extension에서 조사한 XML, Spring 여부, 파싱 결과, import 수 |
 | `spring-imports.csv` | import 출발 XML·줄 번호·원문 resource·대상 후보·해석 상태 |
