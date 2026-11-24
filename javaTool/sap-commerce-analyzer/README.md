@@ -95,6 +95,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
 | `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 |
 | `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 |
+| `extension-duplicates.csv` | 같은 이름의 정의 중 사용하지 않은 것과 그 이유(`SHADOWED_BY_EARLIER_PATH`, `OUT_OF_LOOKUP`, `SAME_PATH_AMBIGUOUS`, `OVERRIDDEN_BY_DIR_DECLARATION`) |
 | `spring-xml-files.csv` | 선택된 Extension에서 조사한 XML, Spring 여부, 파싱 결과, import 수 |
 | `spring-imports.csv` | import 출발 XML·줄 번호·원문 resource·대상 후보·해석 상태 |
 | `spring-reverse-imports.csv` | 대상 XML을 참조하는 출발 XML 목록 |
@@ -135,11 +136,11 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
   파싱 실패 등일 수 있으며 실제 Extension 부재를 단정하지 않습니다.
 - `[ALREADY VISITED]`: 앞에서 분석한 Extension. 하위 트리의 중복 출력을 생략합니다.
 - `[CYCLE]`: 현재 탐색 경로에 있는 Extension을 다시 참조합니다.
-- 동일 이름의 XML이 여러 개면 경로를 출력하고 트리 분석을 중단합니다.
-  복사본이나 템플릿이 있는지 확인하고 분석 루트를 좁히세요. 임의의 정의를 선택하지 않습니다.
-  이 경우 전체 의존관계 분석과 CSV 저장도 생략합니다.
+- 동일 이름의 XML이 여러 개면 분석을 중단하지 않고 `localextensions.xml`의 lookup 순서로 하나를 고릅니다.
+  규칙은 아래 「localextensions.xml 기반 활성 대상 추정」의 「같은 이름의 정의가 여러 개일 때」를 참고하세요.
+  고르지 않은 정의는 콘솔 `[DUPLICATE]`와 `extension-duplicates.csv`에 남습니다.
 - 파싱 또는 접근 실패가 있으면 결과가 불완전할 수 있습니다. 정상 종료 코드는 0,
-  검색·파싱 오류/중복/시작 Extension 누락은 1입니다. 하위 의존관계의 `[NOT FOUND]`는
+  검색·파싱 오류/선택 해석 문제(같은 lookup 경로 안의 중복 포함)/시작 Extension 누락은 1입니다. 하위 의존관계의 `[NOT FOUND]`는
   표시만 하며 단독으로 종료 코드를 변경하지 않습니다.
 - 전체 분석의 누락 참조와 순환 그룹도 단독으로 종료 코드를 변경하지 않습니다.
   파싱·접근 실패 시 가능한 범위에서 CSV를 저장하고 `scan_complete=false`로 표시합니다.
@@ -203,6 +204,21 @@ Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선
 - `${HYBRIS_BIN_DIR}`, `${HYBRIS_CONFIG_DIR}`, `${HYBRIS_PLATFORM_DIR}`를 분석 루트 기준으로 확장합니다.
 - 필수 의존 대상은 지정 lookup 경로에서 확인되어야 합니다. 이미 명시 지정된 대상도 사용할 수 있습니다.
 - XML 주석은 무시하고, 순환 의존관계에서도 탐색을 종료합니다.
+- `<webapp>` 선언은 콘솔 `[SELECTION NOTE]`로 기록만 하고 선택 판정에는 영향을 주지 않습니다.
+
+같은 이름의 정의가 여러 개일 때:
+
+| 경우 | 처리 | `extension-duplicates.csv`의 reason |
+| --- | --- | --- |
+| 서로 다른 `<path>` 아래에 있음 | 먼저 적힌 `<path>` 아래의 정의를 사용 | `SHADOWED_BY_EARLIER_PATH` |
+| 어느 lookup 경로에도 속하지 않음(백업 복사본 등) | 무시 | `OUT_OF_LOOKUP` |
+| `<extension dir>`로 위치를 지정함 | 지정한 폴더의 정의를 사용 | `OVERRIDDEN_BY_DIR_DECLARATION` |
+| 같은 `<path>` 아래에 둘 이상 | 경로순 첫 번째를 쓰되 `activation-issues.csv`에 문제로 기록(선택 미완료) | `SAME_PATH_AMBIGUOUS` |
+
+- 근거: SAP Help 「Configuration Options in localextensions.xml」의 Loading Extensions by Name Note
+  ("loaded from a location your first provided path points to").
+- `bin/platform/ext`는 첫 번째 lookup으로 취급합니다. 문서에 명시되지 않은 가정입니다.
+- 같은 `<path>` 안의 우선순위는 문서에 없습니다. 빌드 로그의 `path:` 또는 bootstrap 코드로 확인하세요.
 
 이 버전은 검색 루트 안에서 수집한 정의만 사용합니다. 외부 경로, 상대 경로, 알 수 없는
 `${...}` 속성은 임의 해석하지 않고 `activation-issues.csv`에 남깁니다.
@@ -482,7 +498,7 @@ Spring Java Config/코드에 의한 동적 등록 및 전체 서버 속성 계�
 
 ## XML Bean 선언과 명시적 참조 목록
 
-ExtensionScanner의 기본 실행에 Bean 목록 작성을 추가했습니다. 현재 CSV 총수는 **21개**입니다.
+ExtensionScanner의 기본 실행에 Bean 목록 작성을 추가했습니다. 현재 CSV 총수는 **22개**입니다(`extension-duplicates.csv` 포함).
 
 | 신규 파일 | 내용 |
 | --- | --- |
@@ -498,7 +514,7 @@ Bean 참조는 실제 메서드 호출이 아닙니다. Annotation 스캔과 최
 util:list/set/map/constant를 선언 목록에 포함하고 내부 명시 참조를 해당 선언에 연결합니다.
 spring-beans.csv 끝에 declaration_kind와 declared_namespace_attributes 열을 추가했습니다.
 미지원 범위는 Annotation/Component scan/Context/AOP/Integration/기타로 구분합니다.
-콘솔에서 Util declarations 및 상태별 이슈 수를 확인할 수 있습니다. CSV 총수는 21개입니다.
+콘솔에서 Util declarations 및 상태별 이슈 수를 확인할 수 있습니다. CSV 총수는 22개입니다.
 최종 대상 바인딩과 실제 등록/호출은 계속 미검증입니다.
 상세 기록과 검증 절차: docs/UTIL_NAMESPACE_SUPPORT.md.
 ## Bean 참조 선언 후보 연결
@@ -506,6 +522,6 @@ spring-beans.csv 끝에 declaration_kind와 declared_namespace_attributes 열을
 SpringBeanReferenceResolver를 추가했습니다. id/name 및 alias chain을 같은 모델링 컨텍스트 안에서 대조합니다.
 spring-bean-references.csv의 binding_status에 후보 1개/여러 개/없음 등을 구분하고,
 lookup_modeled_context, candidate_count, candidate_details, lookup_warnings, assessment, binding_certainty 열을 추가했습니다.
-CSV는 21개이며 참조는 문맥별 행으로 확장될 수 있습니다.
+CSV는 22개이며 참조는 문맥별 행으로 확장될 수 있습니다.
 후보 1개도 실제 바인딩 확정은 아닙니다. 부모 Context, profile/override 최종 선택은 미확정입니다.
 상세 목적·조건별 결과·검증: docs/BEAN_REFERENCE_CANDIDATES.md.

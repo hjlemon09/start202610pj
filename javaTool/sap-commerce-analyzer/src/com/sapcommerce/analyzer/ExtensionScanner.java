@@ -95,8 +95,8 @@ public final class ExtensionScanner {
         });
         xmlFiles.sort(null);
 
-        Map<String, ExtensionInfo> extensionMap = new LinkedHashMap<>();
-        Set<String> duplicateNames = new java.util.HashSet<>();
+        List<ExtensionInfo> definitions = new ArrayList<>();
+        Set<String> seenNames = new java.util.HashSet<>();
         int parsedCount = 0;
         int failedCount = 0;
         int duplicateCount = 0;
@@ -104,13 +104,9 @@ public final class ExtensionScanner {
             try {
                 ExtensionInfo info = ExtensionInfoParser.parse(xmlPath);
                 parsedCount++;
-                ExtensionInfo previous = extensionMap.putIfAbsent(info.getName(), info);
-                if (previous != null) {
+                definitions.add(info);
+                if (!seenNames.add(info.getName())) {
                     duplicateCount++;
-                    duplicateNames.add(info.getName());
-                    System.err.println("[DUPLICATE] " + info.getName());
-                    System.err.println("  First: " + previous.getXmlPath());
-                    System.err.println("  Other: " + info.getXmlPath());
                 }
                 System.out.println("[OK] " + info.getName() + " (dependencies: "
                         + info.getDependencies().size() + ")");
@@ -125,15 +121,26 @@ public final class ExtensionScanner {
         System.out.println("Found XML files : " + xmlFiles.size());
         System.out.println("Parsed          : " + parsedCount);
         System.out.println("Failed          : " + failedCount);
-        System.out.println("Unique names    : " + extensionMap.size());
+        System.out.println("Unique names    : " + seenNames.size());
         System.out.println("Duplicate files : " + duplicateCount);
         System.out.println("Access failures : " + accessFailures[0]);
         System.out.println("Runtime state is not inspected; selection below is configuration-based inference.");
 
-        if (!duplicateNames.isEmpty()) {
-            System.err.println("[ERROR] Dependency analysis and CSV export skipped: duplicate extension "
-                    + "names must be resolved by narrowing the scan root or removing duplicate copies.");
-            return 1;
+        // Resolve the configuration first: it decides which copy of a duplicated name is used.
+        Path config = Path.of(System.getProperty("analyzer.localextensions",
+                hybrisRoot.resolve("config/localextensions.xml").toString()));
+        ActiveExtensionAnalyzer.Resolution resolution = ActiveExtensionAnalyzer.resolve(
+                hybrisRoot, config, definitions, failedCount == 0 && accessFailures[0] == 0);
+        ActiveExtensionAnalyzer.Result activation = resolution.result();
+        Map<String, ExtensionInfo> extensionMap = new LinkedHashMap<>(new java.util.TreeMap<>(resolution.effective()));
+        if (!resolution.duplicates().isEmpty()) {
+            System.out.println();
+            System.out.println("=== Duplicate Extension Names (lookup-order rule applied) ===");
+            for (ActiveExtensionAnalyzer.Duplicate duplicate : resolution.duplicates()) {
+                System.out.println("[DUPLICATE] " + duplicate.name() + " - " + duplicate.reason());
+                System.out.println("  Used : " + duplicate.effectiveXml());
+                System.out.println("  Other: " + duplicate.otherXml());
+            }
         }
         ExtensionDependencyAnalyzer analyzer = new ExtensionDependencyAnalyzer(extensionMap);
         ExtensionDependencyAnalyzer.Analysis analysis = analyzer.analyzeAll();
@@ -151,10 +158,6 @@ public final class ExtensionScanner {
             System.out.println("[CYCLE GROUP " + (i + 1) + "] "
                     + String.join(", ", analysis.cycleGroups().get(i)));
         }
-        Path config = Path.of(System.getProperty("analyzer.localextensions",
-                hybrisRoot.resolve("config/localextensions.xml").toString()));
-        ActiveExtensionAnalyzer.Result activation = ActiveExtensionAnalyzer.analyze(
-                hybrisRoot, config, extensionMap, failedCount == 0 && accessFailures[0] == 0);
         System.out.println();
         System.out.println("=== Extension Selection Analysis (STATIC INFERENCE) ===");
         System.out.println("Config file     : " + activation.config());
@@ -169,6 +172,9 @@ public final class ExtensionScanner {
         System.out.println("Selection complete: " + activation.complete());
         for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
             System.out.println("[SELECTION WARN] " + issue.reference() + " - " + issue.message());
+        }
+        for (ActiveExtensionAnalyzer.Issue note : resolution.notes()) {
+            System.out.println("[SELECTION NOTE] " + note.reference() + " - " + note.message());
         }
         SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(hybrisRoot, extensionMap, activation);
         System.out.println();
@@ -221,6 +227,13 @@ public final class ExtensionScanner {
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
                 new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,
                         failedCount, accessFailures[0]), activation, spring);
+        try (java.io.BufferedWriter out = DependencyReportWriter.csv(reports.resolve("extension-duplicates.csv"))) {
+            DependencyReportWriter.row(out, "extension", "reason", "used_xml_path", "other_xml_path");
+            for (ActiveExtensionAnalyzer.Duplicate duplicate : resolution.duplicates()) {
+                DependencyReportWriter.row(out, duplicate.name(), duplicate.reason(), duplicate.effectiveXml(),
+                        duplicate.otherXml());
+            }
+        }
         System.out.println("CSV reports: " + reports);
         if (failedCount > 0 || accessFailures[0] > 0) {
             System.out.println("[WARN] Reports are partial; review scan failures before interpretation.");
@@ -233,7 +246,7 @@ public final class ExtensionScanner {
                 return 1;
             }
         }
-        return failedCount > 0 || accessFailures[0] > 0 || duplicateCount > 0
-                || !activation.complete() ? 1 : 0;
+        // Duplicates resolved by lookup order are not failures; same-path ambiguity is reported as an issue.
+        return failedCount > 0 || accessFailures[0] > 0 || !activation.complete() ? 1 : 0;
     }
 }

@@ -108,6 +108,17 @@ public final class ActiveExtensionAnalyzerTest {
         result = ActiveExtensionAnalyzer.analyze(root, root.resolve("missing.xml"), EXTENSIONS, true);
         check(!result.complete() && result.count("UNKNOWN") == EXTENSIONS.size(), "Missing config");
 
+        // <webapp> is recorded as a note and must not make the whole selection UNKNOWN.
+        write("<path dir='${HYBRIS_BIN_DIR}'/><extension name='app'/>"
+                + "<webapp contextroot='/ext' path='${HYBRIS_BIN_DIR}/ext.war'/>", "");
+        var withWebapp = ActiveExtensionAnalyzer.resolve(root, config,
+                new java.util.ArrayList<>(EXTENSIONS.values()), true);
+        check(withWebapp.result().complete(), "webapp must not create a selection issue");
+        check(withWebapp.notes().size() == 1, "webapp must be recorded as a note");
+        status(withWebapp.result(), "app", "EXPLICIT");
+
+        duplicateRules();
+
         // Exercise the unchanged no-second-argument entry point and real CSV generation.
         write("<path dir='${HYBRIS_BIN_DIR}'/><extension name='app'/>", "");
         Path output = root.resolve("reports");
@@ -122,8 +133,10 @@ public final class ActiveExtensionAnalyzerTest {
             report = directories.findFirst().orElseThrow();
         }
         try (var files = Files.list(report)) {
-            check(files.count() == 21, "Expected eighteen reports plus three bean inventory reports");
+            check(files.count() == 22, "Expected nineteen reports plus three bean inventory reports");
         }
+        check(Files.readString(report.resolve("extension-duplicates.csv")).contains("used_xml_path"),
+                "Duplicate report header");
         String activationCsv = Files.readString(report.resolve("extension-activation.csv"));
         check(activationCsv.startsWith("\uFEFF") && activationCsv.contains("\"app\",\"EXPLICIT\""),
                 "CSV encoding/status");
@@ -134,7 +147,71 @@ public final class ActiveExtensionAnalyzerTest {
         System.out.println("PASS: explicit names/dirs, transitive and cyclic closure, comments, "
                 + "platform defaults/disable, path autoload/depth, lookup boundaries, unknown names/properties, "
                 + "relative paths, bad depth, name/dir mismatch, incomplete scan, XML safety/missing/malformed, "
-                + "scanner and twenty-one CSV reports. Fixtures: " + root);
+                + "webapp notes, duplicate names by lookup order, scanner and twenty-two CSV reports. Fixtures: "
+                + root);
+    }
+
+    /** Duplicate names: earliest declared path wins, copies outside lookups are ignored, same path is ambiguous. */
+    private static void duplicateRules() throws Exception {
+        Path dupRoot = Files.createTempDirectory("activation-dup-test-");
+        Path dupConfig = dupRoot.resolve("config/localextensions.xml");
+        Files.createDirectories(dupConfig.getParent());
+        java.util.List<ExtensionInfo> defs = new java.util.ArrayList<>();
+        defs.add(definition(dupRoot, "bin/first/core2", "core2", "lib"));
+        defs.add(definition(dupRoot, "bin/second/core2", "core2"));
+        defs.add(definition(dupRoot, "backup/old/core2", "core2"));
+        defs.add(definition(dupRoot, "bin/second/lib", "lib"));
+        defs.add(definition(dupRoot, "bin/second/twin/a/twin", "twin"));
+        defs.add(definition(dupRoot, "bin/second/twin/b/twin", "twin"));
+
+        // second path is declared first, so its copy of core2 wins.
+        Files.writeString(dupConfig, "<hybrisconfig><extensions autoload='false'>"
+                + "<path dir='${HYBRIS_BIN_DIR}/second'/><path dir='${HYBRIS_BIN_DIR}/first'/>"
+                + "<extension name='core2'/></extensions></hybrisconfig>");
+        var resolution = ActiveExtensionAnalyzer.resolve(dupRoot, dupConfig, defs, true);
+        check(resolution.effective().get("core2").getXmlPath().toString().contains("second"),
+                "Earlier declared path must win");
+        check(resolution.result().selections().get("core2").status().equals("EXPLICIT"), "core2 explicit");
+        check(resolution.duplicates().stream().anyMatch(d -> d.name().equals("core2")
+                && d.reason().equals("SHADOWED_BY_EARLIER_PATH")), "Shadowed copy recorded");
+        check(resolution.duplicates().stream().anyMatch(d -> d.name().equals("core2")
+                && d.reason().equals("OUT_OF_LOOKUP")), "Out-of-lookup copy recorded");
+        check(resolution.duplicates().stream().anyMatch(d -> d.name().equals("twin")
+                && d.reason().equals("SAME_PATH_AMBIGUOUS")), "Same-path duplicate recorded");
+        check(!resolution.result().complete(), "Same-path duplicate must be reported as an issue");
+
+        // Reversed order: first path wins and pulls lib through its requires-extension.
+        Files.writeString(dupConfig, "<hybrisconfig><extensions autoload='false'>"
+                + "<path dir='${HYBRIS_BIN_DIR}/first' depth='1'/><path dir='${HYBRIS_BIN_DIR}/second' depth='1'/>"
+                + "<extension name='core2'/></extensions></hybrisconfig>");
+        resolution = ActiveExtensionAnalyzer.resolve(dupRoot, dupConfig, defs, true);
+        check(resolution.effective().get("core2").getXmlPath().toString().contains("first"),
+                "First declared path must win");
+        check(resolution.result().selections().get("lib").status().equals("DEPENDENCY"),
+                "Dependency of the effective copy must be followed");
+        check(resolution.result().complete(), "twin is out of depth here, so no ambiguity issue");
+
+        // A dir declaration pins the location even against lookup order.
+        Files.writeString(dupConfig, "<hybrisconfig><extensions autoload='false'>"
+                + "<path dir='${HYBRIS_BIN_DIR}/second' depth='1'/><path dir='${HYBRIS_BIN_DIR}/first' depth='1'/>"
+                + "<extension dir='${HYBRIS_BIN_DIR}/first/core2'/></extensions></hybrisconfig>");
+        resolution = ActiveExtensionAnalyzer.resolve(dupRoot, dupConfig, defs, true);
+        check(resolution.effective().get("core2").getXmlPath().toString().contains("first"),
+                "dir declaration must pin the location");
+        check(resolution.duplicates().stream().anyMatch(d -> d.reason().equals("OVERRIDDEN_BY_DIR_DECLARATION")),
+                "Overridden copy recorded");
+    }
+
+    private static ExtensionInfo definition(Path base, String dir, String name, String... dependencies)
+            throws Exception {
+        Path xml = base.resolve(dir).resolve("extensioninfo.xml");
+        Files.createDirectories(xml.getParent());
+        StringBuilder content = new StringBuilder("<extensioninfo><extension name='").append(name).append("'>");
+        for (String dependency : dependencies) {
+            content.append("<requires-extension name='").append(dependency).append("'/>");
+        }
+        Files.writeString(xml, content.append("</extension></extensioninfo>"));
+        return ExtensionInfoParser.parse(xml);
     }
 
     private static void extension(String name, String dir, String... dependencies) throws Exception {

@@ -30,6 +30,18 @@ public final class ActiveExtensionAnalyzer {
     public record Issue(String reference, String message) {
     }
 
+    /**
+     * A definition that shares its extension name with the effective definition but is not used.
+     * reason: SHADOWED_BY_EARLIER_PATH, SAME_PATH_AMBIGUOUS, OUT_OF_LOOKUP, OVERRIDDEN_BY_DIR_DECLARATION.
+     */
+    public record Duplicate(String name, Path effectiveXml, Path otherXml, String reason) {
+    }
+
+    /** Selection result plus the one definition chosen per name and the unused duplicate definitions. */
+    public record Resolution(Result result, Map<String, ExtensionInfo> effective, List<Duplicate> duplicates,
+            List<Issue> notes) {
+    }
+
     public record Result(Path config, Map<String, Selection> selections, List<Issue> issues) {
         public boolean complete() {
             return issues.isEmpty();
@@ -53,21 +65,87 @@ public final class ActiveExtensionAnalyzer {
     }
 
     private final Path root;
-    private final Map<String, ExtensionInfo> extensions;
+    /** All parsed definitions per name, sorted by extensioninfo.xml path. */
+    private final Map<String, List<ExtensionInfo>> candidates = new TreeMap<>();
+    /** The one definition used per name (lookup-order rule applied). */
+    private final Map<String, ExtensionInfo> extensions = new TreeMap<>();
     private final Map<String, Selection> selected = new HashMap<>();
     private final List<Issue> issues = new ArrayList<>();
+    private final List<Issue> notes = new ArrayList<>();
+    private final List<Duplicate> duplicates = new ArrayList<>();
     private final List<Lookup> lookups = new ArrayList<>();
     private final Deque<String> queue = new ArrayDeque<>();
 
-    private ActiveExtensionAnalyzer(Path root, Map<String, ExtensionInfo> extensions) {
+    private ActiveExtensionAnalyzer(Path root, List<ExtensionInfo> definitions) {
         this.root = root.toAbsolutePath().normalize();
-        this.extensions = new TreeMap<>(extensions);
+        for (ExtensionInfo info : definitions) {
+            candidates.computeIfAbsent(info.getName(), key -> new ArrayList<>()).add(info);
+        }
+        candidates.values().forEach(list -> list.sort(
+                java.util.Comparator.comparing(info -> info.getXmlPath().toString())));
     }
 
+    /** Unique-name entry point kept for callers that already resolved duplicates. */
     public static Result analyze(Path root, Path config, Map<String, ExtensionInfo> extensions,
             boolean scanComplete) {
-        return new ActiveExtensionAnalyzer(root, extensions).run(config.toAbsolutePath().normalize(),
-                scanComplete);
+        return resolve(root, config, new ArrayList<>(extensions.values()), scanComplete).result();
+    }
+
+    /**
+     * Accepts every parsed definition, including several with the same extension name. A name found under
+     * several lookup paths is taken from the earliest declared path (SAP Help: "Configuration Options in
+     * localextensions.xml", Loading Extensions by Name). platform/ext is treated as the first lookup.
+     */
+    public static Resolution resolve(Path root, Path config, List<ExtensionInfo> definitions,
+            boolean scanComplete) {
+        ActiveExtensionAnalyzer analyzer = new ActiveExtensionAnalyzer(root, definitions);
+        Result result = analyzer.run(config.toAbsolutePath().normalize(), scanComplete);
+        return new Resolution(result, Map.copyOf(analyzer.extensions), List.copyOf(analyzer.duplicates),
+                List.copyOf(analyzer.notes));
+    }
+
+    /** Chooses one definition per name by lookup order; records unused duplicates. */
+    private void chooseEffectiveDefinitions() {
+        for (Map.Entry<String, List<ExtensionInfo>> entry : candidates.entrySet()) {
+            List<ExtensionInfo> list = entry.getValue();
+            if (list.size() == 1) {
+                extensions.put(entry.getKey(), list.getFirst());
+                continue;
+            }
+            int best = Integer.MAX_VALUE;
+            for (ExtensionInfo info : list) {
+                best = Math.min(best, lookupIndex(info));
+            }
+            final int bestIndex = best;
+            List<ExtensionInfo> winners = list.stream().filter(info -> lookupIndex(info) == bestIndex).toList();
+            ExtensionInfo chosen = winners.getFirst();
+            extensions.put(entry.getKey(), chosen);
+            if (bestIndex != Integer.MAX_VALUE && winners.size() > 1) {
+                issue(entry.getKey(), "Duplicate extension name under the same lookup path "
+                        + lookups.get(bestIndex).directory() + "; the selection order inside one path is not "
+                        + "documented. Confirm with the build log (path:) and remove or exclude the copy.");
+            }
+            for (ExtensionInfo info : list) {
+                if (info == chosen) {
+                    continue;
+                }
+                int index = lookupIndex(info);
+                String reason = index == Integer.MAX_VALUE ? "OUT_OF_LOOKUP"
+                        : index == bestIndex ? "SAME_PATH_AMBIGUOUS" : "SHADOWED_BY_EARLIER_PATH";
+                duplicates.add(new Duplicate(entry.getKey(), chosen.getXmlPath(), info.getXmlPath(), reason));
+            }
+        }
+    }
+
+    /** Index of the first lookup that contains the definition, or MAX_VALUE when none does. */
+    private int lookupIndex(ExtensionInfo info) {
+        Path directory = info.getXmlPath().getParent();
+        for (int i = 0; i < lookups.size(); i++) {
+            if (lookups.get(i).contains(directory)) {
+                return i;
+            }
+        }
+        return Integer.MAX_VALUE;
     }
 
     private Result run(Path config, boolean scanComplete) {
@@ -103,24 +181,33 @@ public final class ActiveExtensionAnalyzer {
                     }
                 } else if ("extension".equals(element.getLocalName())) {
                     declarations.add(element);
+                } else if ("webapp".equals(element.getLocalName())) {
+                    // External web applications are recorded only; they do not change core extension selection.
+                    notes.add(new Issue(element.getAttribute("contextroot") + " " + element.getAttribute("path"),
+                            "webapp declaration recorded; not modeled for extension selection"));
                 } else {
                     issue(element.getTagName(), "Unsupported configuration element");
                 }
             }
 
+            chooseEffectiveDefinitions();
             // Resolve explicit declarations before autoload so their reason takes precedence.
             for (Element declaration : declarations) {
                 resolveExplicit(declaration);
             }
-            for (ExtensionInfo info : extensions.values()) {
-                Path directory = info.getXmlPath().getParent();
-                if (platformAutoload && platform.contains(directory)) {
-                    select(info.getName(), "PLATFORM", "Default platform/ext autoload", "platform/ext");
-                } else {
-                    for (Lookup lookup : lookups) {
-                        if (lookup.autoload() && lookup.contains(directory)) {
-                            select(info.getName(), "AUTOLOAD", "path autoload=true", lookup.directory().toString());
-                            break;
+            // Any copy inside an autoload location selects the name; the effective copy is chosen above.
+            for (Map.Entry<String, List<ExtensionInfo>> entry : candidates.entrySet()) {
+                for (ExtensionInfo info : entry.getValue()) {
+                    Path directory = info.getXmlPath().getParent();
+                    if (platformAutoload && platform.contains(directory)) {
+                        select(entry.getKey(), "PLATFORM", "Default platform/ext autoload", "platform/ext");
+                    } else {
+                        for (Lookup lookup : lookups) {
+                            if (lookup.autoload() && lookup.contains(directory)) {
+                                select(entry.getKey(), "AUTOLOAD", "path autoload=true",
+                                        lookup.directory().toString());
+                                break;
+                            }
                         }
                     }
                 }
@@ -144,6 +231,10 @@ public final class ActiveExtensionAnalyzer {
         } catch (Exception exception) {
             issue(config.toString(), "Cannot evaluate localextensions.xml: " + exception.getMessage());
         }
+        if (extensions.isEmpty()) {
+            // Configuration could not be read: still expose one definition per name for the reports.
+            chooseEffectiveDefinitions();
+        }
         Map<String, Selection> result = new TreeMap<>();
         for (String name : extensions.keySet()) {
             result.put(name, selected.getOrDefault(name, new Selection(
@@ -163,12 +254,23 @@ public final class ActiveExtensionAnalyzer {
             if (!dir.isEmpty()) {
                 Path directory = resolveDirectory(dir);
                 checkScope(directory);
-                info = extensions.values().stream()
+                info = candidates.values().stream().flatMap(List::stream)
                         .filter(candidate -> candidate.getXmlPath().getParent().equals(directory))
                         .findFirst().orElseThrow(() -> new IllegalArgumentException(
                                 "No scanned extensioninfo.xml at configured directory"));
                 if (!name.isEmpty() && !name.equals(info.getName())) {
                     throw new IllegalArgumentException("Configured name does not match directory definition");
+                }
+                // A dir declaration pins the location even if another copy would win by lookup order.
+                ExtensionInfo previous = extensions.put(info.getName(), info);
+                if (previous != null && previous != info) {
+                    final ExtensionInfo pinned = info;
+                    duplicates.removeIf(item -> item.otherXml().equals(pinned.getXmlPath()));
+                    duplicates.replaceAll(item -> item.name().equals(pinned.getName())
+                            ? new Duplicate(item.name(), pinned.getXmlPath(), item.otherXml(), item.reason())
+                            : item);
+                    duplicates.add(new Duplicate(info.getName(), info.getXmlPath(), previous.getXmlPath(),
+                            "OVERRIDDEN_BY_DIR_DECLARATION"));
                 }
             } else {
                 info = extensions.get(name);
