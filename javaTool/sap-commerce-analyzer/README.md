@@ -168,6 +168,28 @@ src/com/sapcommerce/analyzer/
 
 ## localextensions.xml 기반 활성 대상 추정
 
+### 분석 순서: 설치 루트 전체 스캔 → localextensions.xml로 선택 판정
+
+extension 선택은 두 단계로 진행합니다. `localextensions.xml`에 적힌 것만 찾아보는 방식이 아닙니다.
+
+1. **설치 루트 전체 스캔:** 분석 루트(기본 `C:\hybris`) 아래의 **모든 `extensioninfo.xml`**을 찾습니다
+   (`node_modules`, `.git`, `temp` 제외). `localextensions.xml`에 선언되었는지와 관계없이 찾은 정의는 모두 후보입니다.
+2. **localextensions.xml로 선택 판정:** 찾은 extension마다 `localextensions.xml`의 규칙
+   (`<extension>` 선언, `<path>` 검색 범위와 `autoload`, `<extensions autoload>`, `requires-extension` 연쇄)을 적용해
+   선택 여부와 이유를 정합니다.
+
+이 순서 때문에 결과를 다음과 같이 읽습니다.
+
+| 상황 | 나오는 곳 |
+| --- | --- |
+| 폴더에 있고 규칙으로 선택됨 | `extension-activation.csv`에 `EXPLICIT`/`AUTOLOAD`/`PLATFORM`/`DEPENDENCY` |
+| 폴더에 있지만 어떤 규칙으로도 선택되지 않음 | `extension-activation.csv`에 `NOT_SELECTED` (예: 사용하지 않는 모듈, 템플릿 extension) |
+| `localextensions.xml`에 선언했지만 폴더를 찾지 못함 | `extension-activation.csv`에는 **행이 없음**. `activation-issues.csv`에 `Name not found within configured lookup paths` |
+| `requires-extension` 대상을 찾지 못함 | `extension-activation.csv`에는 행이 없음. `activation-issues.csv`, `missing-dependencies.csv` |
+
+`extension-activation.csv`는 **찾은 `extensioninfo.xml` 하나당(이름이 같으면 사용하는 정의 하나당) 한 행**입니다.
+그래서 행 수는 "설치 루트에 있는 extension 수"이며 "로드되는 extension 수"가 아닙니다.
+
 기존처럼 **Program arguments 없이 실행**합니다. 기본 파일은
 `C:\hybris\config\localextensions.xml`입니다. 다른 루트를 첫 인자로 주면 그 루트의
 `config/localextensions.xml`을 읽습니다. 기존 파일은 수정하지 않습니다.
