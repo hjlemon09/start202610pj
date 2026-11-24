@@ -59,6 +59,17 @@ public final class ActiveExtensionAnalyzerTest {
         status(result, "app", "EXPLICIT");
         status(result, "unused", "UNKNOWN");
 
+        // Platform autoload disabled: platform/ext is not searched unless a declared <path> covers it.
+        write("<path dir='${HYBRIS_BIN_DIR}/custom'/><extension name='platform'/>", "autoload='false'");
+        result = analyze(true);
+        check(!result.complete(), "platform/ext must not be an implicit lookup when autoload=false");
+        check(result.issues().stream().anyMatch(i -> i.reference().equals("platform")
+                && i.message().contains("lookup paths")), "Platform name outside declared paths is an issue");
+        write("<path dir='${HYBRIS_BIN_DIR}'/><extension name='platform'/>", "autoload='false'");
+        result = analyze(true);
+        check(result.complete(), "Platform extension found through a declared path");
+        status(result, "platform", "EXPLICIT");
+
         write("<path dir='${HYBRIS_BIN_DIR}'/><extension name='notFound'/>", "");
         result = analyze(true);
         check(!result.complete(), "Missing explicit name must be reported");

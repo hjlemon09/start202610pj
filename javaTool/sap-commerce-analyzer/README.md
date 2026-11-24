@@ -201,6 +201,10 @@ Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선
 - `<path>`는 기본 lookup 역할이며 `autoload=true`인 경우에만 그 범위 전체를 선택합니다.
 - `depth` 기본값은 10입니다. 지정 폴더 자체는 깊이 0, 직접 하위 Extension 폴더는 깊이 1로 계산합니다.
 - `<extensions autoload="false">`이면 플랫폼 기본 자동 포함을 끕니다.
+- `bin/platform/ext`를 검색 경로로 쓰는지는 `<extensions autoload>`에 따릅니다.
+  `true`(생략 시 기본값)이면 그 아래 extension이 모두 로드되므로 검색 경로로도 사용합니다.
+  `false`이면 암묵적으로 검색하지 않습니다. 플랫폼 extension도 `<extension>`으로 선언하거나
+  의존 대상이 되어야 하며, 선언된 `<path>` 아래에 있어야 찾습니다(예: `<path dir="${HYBRIS_BIN_DIR}"/>`).
 - `${HYBRIS_BIN_DIR}`, `${HYBRIS_CONFIG_DIR}`, `${HYBRIS_PLATFORM_DIR}`를 분석 루트 기준으로 확장합니다.
 - 필수 의존 대상은 지정 lookup 경로에서 확인되어야 합니다. 이미 명시 지정된 대상도 사용할 수 있습니다.
 - XML 주석은 무시하고, 순환 의존관계에서도 탐색을 종료합니다.
@@ -217,7 +221,7 @@ Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선
 
 - 근거: SAP Help 「Configuration Options in localextensions.xml」의 Loading Extensions by Name Note
   ("loaded from a location your first provided path points to").
-- `bin/platform/ext`는 첫 번째 lookup으로 취급합니다. 문서에 명시되지 않은 가정입니다.
+- `<extensions autoload>`가 `true`이면 `bin/platform/ext`를 첫 번째 lookup으로 취급합니다(중복 판정 순서). 문서에 명시되지 않은 가정입니다.
 - 같은 `<path>` 안의 우선순위는 문서에 없습니다. 빌드 로그의 `path:` 또는 bootstrap 코드로 확인하세요.
 
 같은 extension을 `<extension>`으로 두 번 이상 선언했을 때:

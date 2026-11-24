@@ -98,7 +98,8 @@ public final class ActiveExtensionAnalyzer {
     /**
      * Accepts every parsed definition, including several with the same extension name. A name found under
      * several lookup paths is taken from the earliest declared path (SAP Help: "Configuration Options in
-     * localextensions.xml", Loading Extensions by Name). platform/ext is treated as the first lookup.
+     * localextensions.xml", Loading Extensions by Name). With platform autoload enabled, platform/ext is
+     * treated as the first lookup; with it disabled, only declared paths are searched.
      */
     public static Resolution resolve(Path root, Path config, List<ExtensionInfo> definitions,
             boolean scanComplete) {
@@ -160,9 +161,13 @@ public final class ActiveExtensionAnalyzer {
             Element container = readContainer(config);
             validateAttributes(container, "autoload");
             boolean platformAutoload = booleanAttribute(container, "autoload", true);
-            // Platform extensions form an implicit lookup location even with autoload=false.
             Lookup platform = new Lookup(root.resolve("bin/platform/ext"), 10, platformAutoload);
-            lookups.add(platform);
+            // With <extensions autoload="true"> every platform/ext extension is loaded, so platform/ext also acts
+            // as a lookup location. With autoload="false" it is not searched implicitly: platform extensions
+            // must be declared and found under a declared <path>, like any other extension.
+            if (platformAutoload) {
+                lookups.add(platform);
+            }
             List<Element> declarations = new ArrayList<>();
             for (Node child = container.getFirstChild(); child != null; child = child.getNextSibling()) {
                 if (!(child instanceof Element element)) {
