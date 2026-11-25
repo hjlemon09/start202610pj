@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
  *   --include-models          also trace model/data/form/dto classes
  *   --extensions-csv <csv>    activated-extension-extractor extensions.csv: analyze activated extensions only
  *                             (ignored, i.e. all extensions, when the sibling summary.csv says scan_complete=false)
+ *   --include-ext <name>      with --extensions-csv: also analyze this extension (repeatable, or comma-separated)
  */
 public class CallTreeExtractor {
 
@@ -63,6 +64,7 @@ public class CallTreeExtractor {
     static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom";   // 컨트롤러 스캔 범위, 전체면 null
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
     static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로. 지정하면 활성 extension만 대상, 전체면 null
+    static final String[] INCLUDE_EXTENSIONS = {};                       // EXTENSIONS_CSV 사용 시 추가로 포함할 extension 이름. 예: {"myaddon", "mytest"}
     static final boolean PRUNE_ENABLED = false;                          // false: 가지치기 없이 모든 노드 출력 (true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력)
     static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 프로젝트 루트(작업 디렉터리)에 생성. 가지치기 여부로 파일명 결정
     static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)"); // 클래스 단순명에 포함되어야 할 문자열
@@ -73,6 +75,7 @@ public class CallTreeExtractor {
     static Path base = Paths.get("").toAbsolutePath().normalize();
     static String outFile, localExt, webExtOpt, filterOpt, extensionsCsv;
     static final List<String> activatedOrder = new ArrayList<>(); // extensions.csv의 extension 이름 (순서 시드)
+    static final List<String> includeExts = new ArrayList<>();    // 수동으로 추가 포함할 extension 이름
     static int maxDepth = 20;
     static boolean full = false, includeModels = false;
 
@@ -201,6 +204,7 @@ public class CallTreeExtractor {
         if (CONTROLLER_ROOT != null) controllerRoots.add(Paths.get(CONTROLLER_ROOT).toAbsolutePath().normalize());
         filterOpt = FILTER;
         extensionsCsv = EXTENSIONS_CSV;
+        includeExts.addAll(Arrays.asList(INCLUDE_EXTENSIONS));
         outFile = Paths.get(System.getProperty("user.dir"), OUT_NAME).toString();
         if (a.length > 0) { // program args, if any, replace the defaults
             roots.clear();
@@ -209,6 +213,7 @@ public class CallTreeExtractor {
             localExt = null;
             filterOpt = null;
             extensionsCsv = null;
+            includeExts.clear();
         }
         log("output: " + (outFile == null ? "stdout" : outFile));
         for (int i = 0; i < a.length; i++) {
@@ -223,6 +228,9 @@ public class CallTreeExtractor {
                 case "--full": full = true; break;
                 case "--include-models": includeModels = true; break;
                 case "--extensions-csv": extensionsCsv = a[++i]; break;
+                case "--include-ext": // 반복 지정 또는 쉼표 구분 가능
+                    for (String x : a[++i].split(",")) if (!x.trim().isEmpty()) includeExts.add(x.trim());
+                    break;
                 default: roots.add(Paths.get(a[i]).toAbsolutePath().normalize());
             }
         }
@@ -244,6 +252,8 @@ public class CallTreeExtractor {
             applyActivatedFilter(javaFiles, extInfos, springFiles);
             log("files after activated filter: java=" + javaFiles.size() + " extensioninfo=" + extInfos.size()
                     + " spring-xml=" + springFiles.size());
+        } else if (!includeExts.isEmpty()) {
+            log("[warn] --include-ext has no effect without --extensions-csv (all extensions are analyzed)");
         }
 
         // 2) java index (later roots win)
@@ -437,11 +447,39 @@ public class CallTreeExtractor {
         }
         if (matched.size() < active.size())
             log("[warn] " + (active.size() - matched.size()) + " activated extension(s) in extensions.csv are not under the roots");
+        // 수동 지정 extension: extensioninfo.xml의 이름으로 찾아서 포함 (같은 이름이 여러 폴더면 모두 포함)
+        if (!includeExts.isEmpty()) {
+            Map<String, List<Path>> dirsByName = new HashMap<>();
+            for (Path p : extInfos) {
+                String n = extNameOf(p);
+                if (n != null) dirsByName.computeIfAbsent(n, k -> new ArrayList<>()).add(p.getParent().toAbsolutePath().normalize());
+            }
+            for (String n : new LinkedHashSet<>(includeExts)) {
+                List<Path> dirs = dirsByName.get(n);
+                if (dirs == null) { log("[warn] --include-ext " + n + ": extension not found under the roots"); continue; }
+                if (dirs.size() > 1) log("[warn] --include-ext " + n + ": " + dirs.size() + " folders have this name; all are included");
+                int before = matched.size();
+                matched.addAll(dirs);
+                log("include-ext " + n + (matched.size() == before ? " (already activated)" : " -> " + rel(dirs.get(0))));
+                names.add(n);
+            }
+        }
         java.removeIf(p -> !keepActivated(p, extDirs, matched));
         extInfos.removeIf(p -> !keepActivated(p, extDirs, matched));
         spring.removeIf(p -> !keepActivated(p, extDirs, matched));
         activatedOrder.addAll(names);
         log("activated extensions: csv=" + active.size() + " matched=" + matched.size() + " of found=" + extDirs.size());
+    }
+
+    static String extNameOf(Path extensionInfo) {
+        Document d = xml(extensionInfo);
+        if (d == null) return null;
+        NodeList nl = d.getElementsByTagName("extension");
+        for (int i = 0; i < nl.getLength(); i++) {
+            String n = ((Element) nl.item(i)).getAttribute("name");
+            if (!n.isEmpty()) return n;
+        }
+        return null;
     }
 
     // 파일이 속한 가장 안쪽 extension 폴더가 활성이면 유지. extension에 속하지 않는 파일도 유지.

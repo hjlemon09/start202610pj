@@ -34,6 +34,7 @@ static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xm
 static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom"; // 컨트롤러를 찾을 범위, 전체면 null
 static final String FILTER = null;                               // 예: "/mystorefront/"
 static final String EXTENSIONS_CSV = null;                       // 예: "C:/work/reports/20261125_101500_xxx/extensions.csv", 전체면 null
+static final String[] INCLUDE_EXTENSIONS = {};                   // EXTENSIONS_CSV 사용 시 추가로 포함할 extension. 예: {"myaddon", "mytest"}
 static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (기본값: false)
 static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 작업 디렉터리에 생성
 static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
@@ -54,7 +55,7 @@ Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입�
 
 ### 2. 명령행 인자로 실행
 
-인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `EXTENSIONS_CSV`, 출력 파일 설정은 **모두 무시**됩니다. 출력 파일은 `--out`으로 직접 지정합니다. `PRUNE_ENABLED`에 따른 파일명 규칙은 적용되지 않습니다.
+인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `EXTENSIONS_CSV`, `INCLUDE_EXTENSIONS`, 출력 파일 설정은 **모두 무시**됩니다. 출력 파일은 `--out`으로 직접 지정합니다. `PRUNE_ENABLED`에 따른 파일명 규칙은 적용되지 않습니다.
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
@@ -73,6 +74,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out call
 | `--full` | 이미 전개한 서브트리도 다시 전개합니다. 기본은 `(expanded above)`로 접습니다. |
 | `--include-models` | model/data/form/dto 계열 클래스도 추적합니다. |
 | `--extensions-csv <csv>` | `activated-extension-extractor`의 `extensions.csv`. 활성 extension만 분석합니다(아래 참고). |
+| `--include-ext <name>` | `--extensions-csv`와 함께 쓸 때, 이 extension도 분석 대상에 추가합니다. 여러 번 줄 수 있고 쉼표로 묶어도 됩니다(`--include-ext a,b --include-ext c`). |
 
 `PRUNE_ENABLED`와 `NAME_FILTER`는 옵션으로 바꿀 수 없습니다. 소스에서 직접 수정해야 합니다.
 
@@ -91,6 +93,24 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out call
 - 활성 extension 폴더는 `extensions.csv`의 `relative_dir`을 `--base`(기본값 `HYBRIS_HOME`)에 붙여서 정합니다. `relative_dir`이 비어 있으면 `xml_path`의 폴더를 씁니다. 그래서 **`--base`는 extractor를 실행할 때 쓴 `HYBRIS_HOME`과 같은 구조여야 합니다.**
 - 같은 이름의 extension이 여러 개 있으면 extractor가 고른 폴더만 남습니다. 백업 복사본 같은 다른 폴더는 빠집니다.
 - extension 로드 순서는 `localextensions.xml` 순서, `extensions.csv`의 extension 순서, 알파벳 순서 순으로 시작점을 잡고, `requires-extension` 대상을 먼저 배치합니다. 필터를 쓰면 남은 extension이 모두 활성 extension이라서, 비활성 extension이 끼어들지 않습니다.
+
+**수동으로 extension 추가 (`--include-ext` / `INCLUDE_EXTENSIONS`)**
+
+`extensions.csv`에 없는 extension도 이름을 지정하면 분석 대상에 넣습니다. 여러 개를 지정할 수 있습니다.
+
+```powershell
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --extensions-csv C:/work/reports/xxx/extensions.csv --include-ext myaddon,mytest --include-ext myextra C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+```
+
+소스 안 설정에서는 `INCLUDE_EXTENSIONS = {"myaddon", "mytest", "myextra"};`처럼 씁니다.
+
+- 이름은 루트 아래 `extensioninfo.xml`의 `<extension name>`과 비교합니다. 대소문자를 구분합니다.
+- 같은 이름의 폴더가 여러 개 있으면 **모두** 포함하고 경고를 출력합니다.
+- 루트 아래에서 찾지 못한 이름은 경고만 출력하고 넘어갑니다. 이미 활성 목록에 있는 이름은 `(already activated)`로 표시합니다.
+- 지정한 extension이 `requires-extension`으로 요구하는 다른 extension은 **자동으로 추가되지 않습니다.** 필요하면 그 extension도 함께 지정하세요.
+- 로드 순서에서 수동 지정 extension은 보통 `extensions.csv`의 extension보다 뒤에 놓입니다. 그래서 같은 bean id가 있으면 수동 지정한 쪽의 정의가 덮어씁니다. 예외도 있습니다. `localextensions.xml`에 적혀 있거나, 다른 활성 extension이 의존하는 extension이면 앞에 놓일 수 있습니다.
+- `--extensions-csv` 없이 지정하면 효과가 없습니다. 이때는 원래 전체가 분석 대상이므로 경고만 출력합니다.
+- `scan_complete=false` 등으로 전체 분석으로 돌아가는 경우에도 전체가 대상이므로 지정한 extension은 당연히 포함됩니다.
 
 **효과**
 - 비활성 extension의 bean이 registry에 들어가지 않습니다. 그래서 `[MULTI]`/`[UNRESOLVED]` 후보가 줄어듭니다.
