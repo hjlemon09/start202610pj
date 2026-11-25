@@ -36,10 +36,10 @@ Renderer는 이행 후 이용하지 않는것이 전제이며. 이 이행에 대
 response←(facade또는service←facade또는service← … )←dao
 루트가 완전히 일치하는표준 api가 존재하는 경우, YES로 판단한다.
  
-예를들어, 현행에서 사용되는 ProductReferencesComponentController의 경우, getProductReferences(String, int, String, String)에서 얻은 결과를 모델에 설정하고 있다.
+예를들어, 현행에서 사용되는 ProductReferencesComponentController의 경우, getProductReferences(final String code, final List<ProductReferenceTypeEnum> referenceTypes, final List<ProductOption> options, final Integer limit) (*파일패스: /bin/moduels/commerce-services/commercefacades/src/de/hybris/platform/commercefacades/product/impl/DefaultProductFacade.java)에서 얻은 결과를 모델에 설정하고 있다.
 이것은 표준 occ api인
 /{baseSiteId}/products/{productCode}/references(ProductsController)에서
-컴포넌트컨트롤러와 완전히 같은 파일에 기술된 완전히 같은 메서드 getProductReferences(String, int, String, String)를 사용하여 해당 결과전부를 response에 설정하므로 완전히 대체 가능하다고 판단 가능하다. 
+컴포넌트컨트롤러와 완전히 같은 파일에 기술된 완전히 같은 메서드 getProductReferences를 사용하여 해당 결과전부를 response에 설정하므로 완전히 대체 가능하다고 판단 가능하다. 
 
 1.<판단>의 결과가 YES인경우:
 해당 occ api로 대체한다.
