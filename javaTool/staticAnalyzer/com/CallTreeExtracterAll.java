@@ -30,8 +30,8 @@ import java.util.stream.Collectors;
 /**
  * SAP Commerce (Hybris) static call-tree extractor.
  *
- * Run (Java 11+):
- *   java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtracterAll.java \
+ * Run (Java 11+, JavaParser 3.26.0+ for JAVA_21):
+ *   java -Xmx6g -cp javaparser-core-3.27.1.jar CallTreeExtracterAll.java \
  *        --out calltree.txt --base /path/to/hybris \
  *        --localextensions /path/to/hybris/config/localextensions.xml \
  *        --controller-root /path/to/hybris/bin/custom \
@@ -224,7 +224,7 @@ public class CallTreeExtracterAll {
             return;
         }
         ParserConfiguration cfg = new ParserConfiguration();
-        cfg.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        cfg.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
         cfg.setAttributeComments(false);
         cfg.setCharacterEncoding(StandardCharsets.UTF_8);
         PARSER = new JavaParser(cfg);

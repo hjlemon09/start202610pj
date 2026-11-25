@@ -19,8 +19,8 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 ## 준비물
 
-- JDK 11 이상. 분석 대상 소스는 Java 17 문법으로 파싱합니다.
-- JavaParser core jar. 코드 주석에는 `javaparser-core-3.25.10.jar`를 기준으로 적혀 있습니다. 이 폴더에는 jar가 들어 있지 않으니 따로 받아야 합니다.
+- JDK 11 이상. 분석 대상 소스는 **Java 21 문법**(`LanguageLevel.JAVA_21`)으로 파싱합니다. Java 17 이하 소스도 그대로 파싱됩니다.
+- JavaParser core jar **3.26.0 이상**. `JAVA_21`은 3.26.0부터 있어서 3.25.x jar로는 컴파일되지 않습니다. 동작을 확인한 버전은 `javaparser-core-3.27.1.jar`입니다. 이 폴더에는 jar가 들어 있지 않으니 따로 받아야 합니다.
 - 메모리: 플랫폼 전체를 분석하므로 `-Xmx6g` 정도를 권장합니다.
 - 분석 대상: `hybris/bin/platform`, `bin/modules`, `bin/custom` 같은 **소스(`.java`)가 있는 폴더**. jar 안의 클래스는 분석하지 않습니다.
 
@@ -42,7 +42,7 @@ static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
 ```
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.25.10.jar com/CallTreeExtracterAll.java
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java
 ```
 
 결과는 **작업 디렉터리**(`user.dir`)의 `calltreeAll.txt`에 UTF-8로 저장됩니다. Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
@@ -53,7 +53,7 @@ java -Xmx6g -cp javaparser-core-3.25.10.jar com/CallTreeExtracterAll.java
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.25.10.jar com/CallTreeExtracterAll.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 | 옵션 | 설명 |
