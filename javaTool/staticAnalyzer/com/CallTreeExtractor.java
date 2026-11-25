@@ -195,6 +195,7 @@ public class CallTreeExtractor {
         CI decl;
         MethodDeclaration m;
         Target recv;
+        List<Integer> callLines = new ArrayList<>(); // 호출하는 쪽(부모 노드) 소스에서 이 메서드를 호출한 행 번호
     }
 
     static class Inj {
@@ -1375,6 +1376,8 @@ public class CallTreeExtractor {
 
     static String label(Callee ce) {
         StringBuilder sb = new StringBuilder();
+        if (!ce.callLines.isEmpty()) // 호출 위치: 부모 노드 파일의 행 번호
+            sb.append("[L").append(ce.callLines.stream().map(String::valueOf).collect(Collectors.joining(",L"))).append("] ");
         sb.append(simple(ce.decl.fqn)).append('#').append(sig(ce.m))
                 .append("  [").append(rel(ce.decl.path)).append(':')
                 .append(ce.m.getBegin().map(p -> p.line).orElse(0)).append(']');
@@ -1386,15 +1389,21 @@ public class CallTreeExtractor {
 
     static List<Callee> childrenOf(Frame nf, Callee ce) {
         List<Callee> res = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        Set<String> seen = new HashSet<>(); // populator 중복 방지용
         if (!nf.m.getBody().isPresent()) return res;
+        // 호출문 하나당 노드 하나. 같은 메서드를 여러 번 호출하면 호출할 때마다 각각의 행 번호로 출력한다.
         for (MethodCallExpr c : nf.m.findAll(MethodCallExpr.class)) {
             boolean selfGetter = (!c.getScope().isPresent() || c.getScope().get().isThisExpr())
                     && c.getArguments().isEmpty() && c.getNameAsString().startsWith("get");
+            int line = c.getBegin().map(p -> p.line).orElse(0);
+            Set<String> thisCall = new HashSet<>(); // 한 호출문이 같은 대상으로 중복 해석되는 경우만 제거
             for (Callee x : resolveCall(c, nf)) {
                 if (skip(x.decl) || trivial(x.m)) continue;
                 if (selfGetter && !x.m.getBody().isPresent()) continue;
-                if (seen.add(key(x))) res.add(x);
+                if (!thisCall.add(key(x))) continue;
+                if (line > 0) x.callLines.add(line);
+                seen.add(key(x));
+                res.add(x);
             }
         }
         // converter -> populators (spring list, incl. ListMergeDirective)

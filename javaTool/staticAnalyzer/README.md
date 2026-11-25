@@ -226,14 +226,15 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 [CONTROLLER] bin/custom/mystorefront/web/src/.../CartPageController.java  "/cart"  (bean cartPageController)
   @ [GET] /add
   CartPageController#addToCart(String, Model)  [bin/custom/.../CartPageController.java:85]
-     └─ CartFacade#addToCart(String, long)  [bin/modules/.../CartFacade.java:40]  {impl=de.hybris...DefaultCartFacade}  <= xml property 'cartFacade' -> bean[cartFacade] bin/modules/.../commercefacades-spring.xml
-        ├─ DefaultCommerceCartService#addToCart(CommerceCartParameter)  [...:120]  <= type-based
-        └─ Converter#convert(Object)  [...]  (expanded above)
+     └─ [L92] CartFacade#addToCart(String, long)  [bin/modules/.../CartFacade.java:40]  {impl=de.hybris...DefaultCartFacade}  <= xml property 'cartFacade' -> bean[cartFacade] bin/modules/.../commercefacades-spring.xml
+        ├─ [L55] DefaultCommerceCartService#addToCart(CommerceCartParameter)  [...:120]  <= type-based
+        ├─ [L58] Converter#convert(Object)  [...]
+        └─ [L71] Converter#convert(Object)  [...]  (expanded above)
 
 [CONTROLLER] bin/custom/mystorefront/web/src/.../ProductCarouselComponentController.java  (bean productCarouselComponentController)  (extends AbstractAcceleratorCMSComponentController)
   @ [CMS-COMPONENT] protected fillModel(HttpServletRequest, Model, ProductCarouselComponentModel)
   ProductCarouselComponentController#fillModel(HttpServletRequest, Model, ProductCarouselComponentModel)  [...:60]
-     └─ ProductFacade#getProductForCodeAndOptions(String, Collection<ProductOption>)  [...]  {impl=...DefaultProductFacade}  <= @Resource("productFacade") -> bean[productFacade] ...
+     └─ [L66] ProductFacade#getProductForCodeAndOptions(String, Collection<ProductOption>)  [...]  {impl=...DefaultProductFacade}  <= @Resource("productFacade") -> bean[productFacade] ...
 ```
 
 | 표기 | 의미 |
@@ -242,7 +243,8 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 | `@ [HTTP] path` | 엔드포인트 메서드의 매핑 |
 | `(extends AbstractAcceleratorCMSComponentController)` | CMS 컴포넌트 컨트롤러로 판정된 컨트롤러 (`[CONTROLLER]` 줄 끝에 표시) |
 | `@ [CMS-COMPONENT] 접근제어자 method(타입...)` | CMS 컴포넌트 컨트롤러의 매핑 없는 비 private 메서드. 예: `@ [CMS-COMPONENT] protected fillModel(HttpServletRequest, Model, BannerComponentModel)` |
-| `Class#method(타입...)  [경로:줄]` | 메서드가 **선언된** 클래스와 위치 |
+| `[L행]` | **호출 위치**: 바로 위(부모) 노드의 메서드 안에서 이 메서드를 호출한 행 번호입니다. 부모 노드 `[경로:줄]`의 파일 기준입니다. 같은 메서드를 여러 번 호출하면 **호출할 때마다 노드를 따로** 출력합니다(호출 순서대로, 각자의 행 번호). 두 번째 이후 노드는 하위가 이미 위에서 전개되었으므로 `(expanded above)`로 표시됩니다(`--full`이면 매번 전개). 엔드포인트(루트) 노드와 Converter → Populator로 붙인 노드에는 없습니다. |
+| `Class#method(타입...)  [경로:줄]` | 메서드가 **선언된** 클래스와, 그 파일에서 메서드 선언이 시작되는 행 |
 | `{impl=FQN}` | 실제 호출을 받는 구현 클래스. 선언 클래스와 다를 때만 표시합니다. |
 | `<= ...` | 구현을 결정한 근거. `xml property`, `xml constructor-arg`, `@Resource`, `@Qualifier`, `type-based`, `local var type`, `lookup-method`, `populators[...]`, `static`, `new`, `cast`, `return type of m()` |
 | `-> bean[id] 파일` | 근거가 된 bean 정의와 그 XML 파일 |
