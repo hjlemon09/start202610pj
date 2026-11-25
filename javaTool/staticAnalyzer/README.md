@@ -7,13 +7,15 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 ## 폴더 구성
 
-| 파일 | 내용 |
-|---|---|
-| `CallTreeExtracterAll.java` | 이 문서가 설명하는 도구입니다. 결과를 `calltreeAll.txt`로 출력합니다. |
-| `CallTreeExtracter.java` | 같은 도구입니다. 차이는 출력 파일명(`OUT_NAME = "calltree.txt"`) 한 줄뿐입니다. |
+두 파일 모두 `com` 폴더 아래에 있고 패키지는 `package com;`입니다.
 
-> 두 파일 모두 클래스명이 `CallTreeExtractor`입니다. 아래의 **단일 파일 실행(source-file mode)** 에서는 파일명과 클래스명이 달라도 실행됩니다.
-> 다만 `javac`나 Eclipse에서 컴파일하려면 파일을 `CallTreeExtractor.java`로 바꿔야 합니다. 두 파일을 같은 소스 폴더에 두면 클래스가 중복되므로 하나만 두세요.
+| 파일 | 클래스 | 내용 |
+|---|---|---|
+| `com/CallTreeExtracterAll.java` | `com.CallTreeExtracterAll` | 이 문서가 설명하는 도구입니다. **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 `calltreeAll.txt`로 출력합니다. |
+| `com/CallTreeExtracter.java` | `com.CallTreeExtractor` | 같은 분석 로직에 가지치기를 켠 버전(`PRUNE_ENABLED = true`)입니다. `calltree.txt`로 출력합니다. |
+
+> `CallTreeExtracter.java`는 파일명과 클래스명(`CallTreeExtractor`)이 다릅니다. 단일 파일 실행(source-file mode)에서는 문제없이 실행됩니다.
+> `javac`나 Eclipse로 컴파일할 때는 이 파일이 오류가 나므로, 파일명이나 클래스명 중 하나를 바꿔 맞춰야 합니다.
 
 ## 준비물
 
@@ -35,12 +37,12 @@ static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xm
 static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom"; // 컨트롤러를 찾을 범위, 전체면 null
 static final String FILTER = null;                               // 예: "/mystorefront/"
 static final String OUT_NAME = "calltreeAll.txt";                // 작업 디렉터리에 생성
-static final boolean PRUNE_ENABLED = true;                       // 가지치기 사용 여부
+static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (All 버전 기본값: false)
 static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
 ```
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtracterAll.java
+java -Xmx6g -cp javaparser-core-3.25.10.jar com/CallTreeExtracterAll.java
 ```
 
 결과는 **작업 디렉터리**(`user.dir`)의 `calltreeAll.txt`에 UTF-8로 저장됩니다. Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
@@ -51,7 +53,7 @@ java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtracterAll.java
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtracterAll.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.25.10.jar com/CallTreeExtracterAll.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 | 옵션 | 설명 |
@@ -103,7 +105,10 @@ java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtracterAll.java --out call
 - `--include-models`가 없으면 패키지에 `.model.`, `.data.`, `.dto.`, `.jalo.`, `.form(s).`, `.enum(s).`가 들어가거나, 클래스명이 `Model`/`Data`/`Form`/`Dto`/`Enum`으로 끝나거나, `/gensrc/` 아래에 있는 클래스
 - 필드를 반환하기만 하는 getter, 문장이 하나 이하인 setter
 
-### 가지치기 (`PRUNE_ENABLED = true`)
+### 가지치기 (`PRUNE_ENABLED = true`일 때만)
+
+`CallTreeExtracterAll`은 기본값이 `false`라서 가지치기를 하지 않습니다. 매핑 메서드가 있는 모든 엔드포인트와, 위 "생략되는 노드"를 뺀 모든 호출 노드를 출력합니다.
+`true`로 바꾸면 아래처럼 동작합니다(`CallTreeExtracter.java`의 기본 동작).
 
 노드 자신의 선언 클래스나 구현 클래스의 단순명이 `NAME_FILTER`(기본값 `facade|service|dao`, 대소문자 무시)에 맞거나, 맞는 자손이 있는 가지만 남깁니다.
 남는 노드가 하나도 없는 엔드포인트와, 출력할 엔드포인트가 없는 컨트롤러는 결과에서 빠집니다.

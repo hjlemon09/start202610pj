@@ -1,3 +1,5 @@
+package com;
+
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
@@ -29,7 +31,7 @@ import java.util.stream.Collectors;
  * SAP Commerce (Hybris) static call-tree extractor.
  *
  * Run (Java 11+):
- *   java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtractor.java \
+ *   java -Xmx6g -cp javaparser-core-3.25.10.jar CallTreeExtracterAll.java \
  *        --out calltree.txt --base /path/to/hybris \
  *        --localextensions /path/to/hybris/config/localextensions.xml \
  *        --controller-root /path/to/hybris/bin/custom \
@@ -47,7 +49,7 @@ import java.util.stream.Collectors;
  *   --full                    do not collapse repeated subtrees
  *   --include-models          also trace model/data/form/dto classes
  */
-public class CallTreeExtractor {
+public class CallTreeExtracterAll {
 
     // ===================== EDIT HERE: embedded settings (used when no program args are given) =====================
     static final String HYBRIS_HOME = "C:/hybris";                       // hybris 폴더 (bin, config 상위)
@@ -59,7 +61,7 @@ public class CallTreeExtractor {
     static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom";   // 컨트롤러 스캔 범위, 전체면 null
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
     static final String OUT_NAME = "calltreeAll.txt";                       // 프로젝트 루트(작업 디렉터리)에 생성
-    static final boolean PRUNE_ENABLED = true;                           // true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력
+    static final boolean PRUNE_ENABLED = false;                          // false: 가지치기 없이 모든 노드 출력 (true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력)
     static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)"); // 클래스 단순명에 포함되어야 할 문자열
 
     // ===================== options =====================
@@ -218,7 +220,7 @@ public class CallTreeExtractor {
             }
         }
         if (roots.isEmpty()) {
-            System.err.println("usage: java -cp javaparser-core.jar CallTreeExtractor.java [options] <root>...");
+            System.err.println("usage: java -cp javaparser-core.jar CallTreeExtracterAll.java [options] <root>...");
             return;
         }
         ParserConfiguration cfg = new ParserConfiguration();
@@ -233,7 +235,7 @@ public class CallTreeExtractor {
         log("files: java=" + javaFiles.size() + " extensioninfo=" + extInfos.size() + " spring-xml=" + springFiles.size());
 
         // 2) java index (later roots win)
-        List<String> fqns = javaFiles.parallelStream().map(CallTreeExtractor::fqnOf).collect(Collectors.toList());
+        List<String> fqns = javaFiles.parallelStream().map(CallTreeExtracterAll::fqnOf).collect(Collectors.toList());
         for (int i = 0; i < fqns.size(); i++) fqnToPath.put(fqns.get(i), javaFiles.get(i));
         for (String f : fqnToPath.keySet()) {
             String s = f.substring(f.lastIndexOf('.') + 1);
@@ -289,8 +291,8 @@ public class CallTreeExtractor {
                 : javaFiles.stream().filter(p -> controllerRoots.stream().anyMatch(p::startsWith)).collect(Collectors.toList());
         List<String> cfqns = scan.parallelStream()
                 .filter(p -> filterOpt == null || p.toString().replace('\\', '/').contains(filterOpt))
-                .filter(CallTreeExtractor::looksController)
-                .map(CallTreeExtractor::fqnOf)
+                .filter(CallTreeExtracterAll::looksController)
+                .map(CallTreeExtracterAll::fqnOf)
                 .distinct().collect(Collectors.toList());
         cfqns.removeIf(c -> !fqnToPath.containsKey(c));
         cfqns.sort(Comparator.comparing(c -> fqnToPath.get(c).toString()));
