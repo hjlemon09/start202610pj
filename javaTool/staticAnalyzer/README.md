@@ -1,6 +1,7 @@
 # staticAnalyzer — CallTreeExtractor
 
 SAP Commerce(Hybris) 소스를 정적으로 분석해서 **Controller 엔드포인트별 호출 트리**를 텍스트 파일로 출력하는 단일 파일 Java 도구입니다.
+분석 대상 extension 안의 컨트롤러 중 **accelerator 계열(`AbstractController` 상속)**과 **OCC 계열(`BaseController` 상속)**을 각각 다른 파일로 출력합니다(아래 「대상 컨트롤러와 출력 파일」).
 Accelerator의 **CMS 컴포넌트 컨트롤러**(`AbstractAcceleratorCMSComponentController` 상속)는 매핑 어노테이션이 없는 `fillModel` 같은 메서드도 분석합니다.
 대상 시스템을 기동하지 않습니다. `.java` 소스는 JavaParser로, Spring XML과 `extensioninfo.xml`은 DOM으로 읽습니다.
 
@@ -12,7 +13,24 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 | 파일 | 클래스 | 내용 |
 |---|---|---|
-| `com/CallTreeExtractor.java` | `com.CallTreeExtractor` (`package com;`) | 이 문서가 설명하는 도구입니다. 기본값은 **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 `calltreeAll.txt`로 출력합니다. `true`로 바꾸면 가지치기한 결과를 `calltree.txt`로 출력합니다. |
+| `com/CallTreeExtractor.java` | `com.CallTreeExtractor` (`package com;`) | 이 문서가 설명하는 도구입니다. 기본값은 **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 출력합니다(`calltree_accelerator_all.txt`, `calltree_occ_all.txt`). `true`로 바꾸면 가지치기한 결과를 `_pruned` 파일로 출력합니다. |
+
+## 대상 컨트롤러와 출력 파일
+
+분석 대상 extension 안에 있는 `@Controller`/`@RestController` 클래스 중에서, 상속 관계로 아래처럼 나눠서 출력합니다.
+- 분석 대상 extension은 `--extensions-csv`를 쓰면 활성 extension과 `--include-ext`로 지정한 extension이고, 쓰지 않으면 루트 아래 전체입니다.
+- 이전처럼 `bin/custom`으로 범위를 제한하지 않습니다. `CONTROLLER_ROOT` 기본값이 `null`입니다.
+
+| 상속 관계 (간접 상속 포함) | 계열 | `PRUNE_ENABLED = false` | `PRUNE_ENABLED = true` |
+|---|---|---|---|
+| `AbstractController` (`org.springframework.*`의 같은 이름 클래스는 제외) | accelerator 스토어프론트 | `calltree_accelerator_all.txt` | `calltree_accelerator_pruned.txt` |
+| `BaseController` | OCC (웹서비스 API) | `calltree_occ_all.txt` | `calltree_occ_pruned.txt` |
+
+- 상속 여부는 `extends` 절을 따라 올라가면서 **단순 클래스명**으로 판정합니다. 예를 들어 `AbstractPageController`, `AbstractCMSComponentController`, `AbstractAcceleratorCMSComponentController`를 거쳐 `AbstractController`에 닿으면 accelerator 계열입니다.
+- `import org.springframework.web.servlet.mvc.AbstractController`처럼 Spring MVC의 `AbstractController`를 상속한 경우는 대상이 아닙니다.
+- 둘 중 어디에도 해당하지 않는 컨트롤러는 출력하지 않고 건너뜁니다. 건너뛴 수는 진행 로그에 나옵니다.
+- **중간 상위 클래스의 소스를 찾지 못하면** 더 올라갈 수 없어서 건너뜁니다. 예를 들어 `acceleratorstorefrontcommons`가 분석 대상에 없는 경우입니다. 이때는 그 상위 클래스 이름과 컨트롤러 수를 `[warn]` 로그로 출력합니다. 대상에 넣어야 하는 컨트롤러라면 해당 extension을 `--include-ext`로 추가하거나 루트에 포함하세요.
+- 두 파일은 항상 함께 만들어집니다. 해당하는 컨트롤러가 없으면 빈 파일이 됩니다.
 
 ## 준비물
 
@@ -31,12 +49,13 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 static final String HYBRIS_HOME = "C:/hybris";                 // bin, config의 상위 폴더
 static final String[] ROOTS = { .../bin/platform, .../bin/modules, .../bin/custom }; // 순서 중요: custom을 마지막에
 static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
-static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom"; // 컨트롤러를 찾을 범위, 전체면 null
+static final String CONTROLLER_ROOT = null;                      // 컨트롤러 범위를 더 좁힐 때만 지정. null이면 분석 대상 extension 전체
 static final String FILTER = null;                               // 예: "/mystorefront/"
 static final String EXTENSIONS_CSV = null;                       // 예: "C:/work/reports/20261125_101500_xxx/extensions.csv", 전체면 null
 static final String[] INCLUDE_EXTENSIONS = {};                   // EXTENSIONS_CSV 사용 시 추가로 포함할 extension. 예: {"myaddon", "mytest"}
 static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (기본값: false)
-static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 작업 디렉터리에 생성
+static final String OUT_DIR = null;                              // 출력 폴더. null이면 작업 디렉터리
+static final String OUT_SUFFIX = PRUNE_ENABLED ? "pruned" : "all"; // calltree_accelerator_<suffix>.txt, calltree_occ_<suffix>.txt
 static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
 ```
 
@@ -44,30 +63,24 @@ static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
 java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java
 ```
 
-결과는 **작업 디렉터리**(`user.dir`)에 UTF-8로 저장됩니다. 파일명은 `PRUNE_ENABLED`에 따라 정해집니다.
-
-| `PRUNE_ENABLED` | 출력 파일 |
-|---|---|
-| `false` (기본값) | `calltreeAll.txt` (가지치기 없음) |
-| `true` | `calltree.txt` (가지치기 적용) |
-
+결과 두 파일은 `OUT_DIR`(기본값은 **작업 디렉터리** `user.dir`)에 UTF-8로 저장됩니다. 파일명은 위 「대상 컨트롤러와 출력 파일」과 같습니다.
 Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
 
 ### 2. 명령행 인자로 실행
 
-인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `EXTENSIONS_CSV`, `INCLUDE_EXTENSIONS`, 출력 파일 설정은 **모두 무시**됩니다. 출력 파일은 `--out`으로 직접 지정합니다. `PRUNE_ENABLED`에 따른 파일명 규칙은 적용되지 않습니다.
+인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `EXTENSIONS_CSV`, `INCLUDE_EXTENSIONS`, `OUT_DIR` 설정은 **모두 무시**됩니다. 출력 폴더는 `--out-dir`로 지정하고, 생략하면 작업 디렉터리입니다. 파일명 규칙(`_all`/`_pruned`)은 인자 실행에서도 같습니다.
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 | 옵션 | 설명 |
 |---|---|
-| `--out <file>` | 출력 파일. **생략하면 stdout**으로 출력합니다(인자 실행 시). |
+| `--out-dir <dir>` | 두 출력 파일을 저장할 폴더. 없으면 만듭니다. 생략하면 작업 디렉터리입니다. 예전의 `--out <file>`은 없어졌습니다(주면 오류 메시지를 출력하고 끝납니다). |
 | `--base <dir>` | 출력에 표시할 경로의 기준 폴더. 생략하면 `HYBRIS_HOME` 값이 그대로 쓰입니다. 코드 주석에는 "cwd"라고 적혀 있지만 실제 동작은 이렇습니다. |
 | `--localextensions <xml>` | extension 로드 순서의 시작점. 생략하면 알파벳 순서와 `requires-extension`으로 정합니다. |
-| `--controller-root <dir>` | 이 폴더 아래의 컨트롤러만 분석합니다. 여러 번 줄 수 있습니다. 생략하면 모든 루트가 대상입니다. |
+| `--controller-root <dir>` | 컨트롤러 범위를 더 좁힐 때만 씁니다. 이 폴더 아래의 컨트롤러만 분석하며, 여러 번 줄 수 있습니다. 생략하면 분석 대상 extension 전체가 대상입니다. |
 | `--web-ext <name>` | 모든 컨트롤러의 웹 컨텍스트를 이 extension으로 고정합니다. |
 | `--filter <substr>` | 파일 경로에 이 문자열이 들어간 컨트롤러만 분석합니다. |
 | `--max-depth <n>` | 트리 최대 깊이. 기본값은 20입니다. |
@@ -83,7 +96,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out call
 먼저 [`activated-extension-extractor`](../activated-extension-extractor/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그 결과 폴더의 `extensions.csv`를 `--extensions-csv`(또는 `EXTENSIONS_CSV`)로 지정합니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 **동작**
@@ -148,7 +161,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
    - 웹 XML: 경로에 `/web/webroot/`가 있거나, 파일명이 `-web-spring.xml` 또는 `-servlet.xml`로 끝나는 것
    - 그 밖의 XML은 core XML
 4. **core registry**: 모든 extension의 core XML을 위 순서대로 읽습니다. 같은 bean id는 나중 것이 덮어씁니다.
-5. **컨트롤러 분석**: `@Controller` 또는 `@RestController`가 붙은 클래스마다 다음을 처리합니다.
+5. **컨트롤러 분석**: `@Controller` 또는 `@RestController`가 붙은 클래스를 accelerator / OCC 계열로 나누고(어디에도 속하지 않으면 건너뜀), 각 클래스마다 다음을 처리합니다. 결과는 계열별 파일에 씁니다.
    - 그 컨트롤러가 속한 extension과 그 의존 extension들의 웹 XML로 **web registry**를 만듭니다. 부모는 core registry입니다.
    - `@RequestMapping`, `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`, `@PatchMapping`이 붙은 메서드마다 호출 트리를 만듭니다.
    - **CMS 컴포넌트 컨트롤러**: `AbstractAcceleratorCMSComponentController<T extends AbstractCMSComponentModel>`를 상속(간접 상속 포함)한 컨트롤러는, 매핑 어노테이션이 없어도 **그 클래스에 선언된 private가 아닌 메서드 전부**(public / protected / package-private, 예: `fillModel`)를 시작점으로 삼습니다.

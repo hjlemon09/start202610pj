@@ -32,14 +32,18 @@ import java.util.stream.Collectors;
  *
  * Run (Java 11+, JavaParser 3.26.0+ for JAVA_21):
  *   java -Xmx6g -cp javaparser-core-3.27.1.jar CallTreeExtractor.java \
- *        --out calltree.txt --base /path/to/hybris \
+ *        --out-dir . --base /path/to/hybris \
  *        --localextensions /path/to/hybris/config/localextensions.xml \
- *        --controller-root /path/to/hybris/bin/custom \
+ *        --extensions-csv /path/to/reports/xxx/extensions.csv \
  *        /path/to/hybris/bin/platform /path/to/hybris/bin/modules /path/to/hybris/bin/custom
  *
  * Positional args = source roots. Later roots override earlier ones when the same FQN exists. List custom last.
+ * Target controllers: @Controller/@RestController classes that (indirectly) extend
+ *   AbstractController (accelerator storefront, not org.springframework.*) -> calltree_accelerator_{all|pruned}.txt
+ *   BaseController (OCC web services)                                   -> calltree_occ_{all|pruned}.txt
+ * Other controllers are skipped.
  * Options:
- *   --out <file>              output file (default stdout, UTF-8 file recommended)
+ *   --out-dir <dir>           output directory for the two files (default: working directory)
  *   --base <dir>              paths in output are relative to this dir (default: cwd)
  *   --localextensions <xml>   extension load order seed (default: alphabetical + requires-extension)
  *   --controller-root <dir>   only scan controllers under this dir (repeatable; default: all roots)
@@ -61,19 +65,20 @@ public class CallTreeExtractor {
             HYBRIS_HOME + "/bin/modules",
             HYBRIS_HOME + "/bin/custom"};
     static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
-    static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom";   // 컨트롤러 스캔 범위, 전체면 null
+    static final String CONTROLLER_ROOT = null;                          // 컨트롤러 스캔 범위를 더 좁힐 때만 지정. null이면 분석 대상 extension 전체
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
     static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로. 지정하면 활성 extension만 대상, 전체면 null
     static final String[] INCLUDE_EXTENSIONS = {};                       // EXTENSIONS_CSV 사용 시 추가로 포함할 extension 이름. 예: {"myaddon", "mytest"}
     static final boolean PRUNE_ENABLED = false;                          // false: 가지치기 없이 모든 노드 출력 (true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력)
-    static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 프로젝트 루트(작업 디렉터리)에 생성. 가지치기 여부로 파일명 결정
+    static final String OUT_DIR = null;                                  // 출력 폴더. null이면 작업 디렉터리(프로젝트 루트)
+    static final String OUT_SUFFIX = PRUNE_ENABLED ? "pruned" : "all";   // calltree_accelerator_<suffix>.txt, calltree_occ_<suffix>.txt
     static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)"); // 클래스 단순명에 포함되어야 할 문자열
 
     // ===================== options =====================
     static List<Path> roots = new ArrayList<>();
     static List<Path> controllerRoots = new ArrayList<>();
     static Path base = Paths.get("").toAbsolutePath().normalize();
-    static String outFile, localExt, webExtOpt, filterOpt, extensionsCsv;
+    static String outDir, localExt, webExtOpt, filterOpt, extensionsCsv;
     static final List<String> activatedOrder = new ArrayList<>(); // extensions.csv의 extension 이름 (순서 시드)
     static final List<String> includeExts = new ArrayList<>();    // 수동으로 추가 포함할 extension 이름
     static int maxDepth = 20;
@@ -205,20 +210,22 @@ public class CallTreeExtractor {
         filterOpt = FILTER;
         extensionsCsv = EXTENSIONS_CSV;
         includeExts.addAll(Arrays.asList(INCLUDE_EXTENSIONS));
-        outFile = Paths.get(System.getProperty("user.dir"), OUT_NAME).toString();
+        outDir = OUT_DIR != null ? OUT_DIR : System.getProperty("user.dir");
         if (a.length > 0) { // program args, if any, replace the defaults
             roots.clear();
             controllerRoots.clear();
-            outFile = null;
+            outDir = System.getProperty("user.dir");
             localExt = null;
             filterOpt = null;
             extensionsCsv = null;
             includeExts.clear();
         }
-        log("output: " + (outFile == null ? "stdout" : outFile));
         for (int i = 0; i < a.length; i++) {
             switch (a[i]) {
-                case "--out": outFile = a[++i]; break;
+                case "--out-dir": outDir = a[++i]; break;
+                case "--out":
+                    System.err.println("--out is no longer supported: two files are written; use --out-dir <dir>");
+                    return;
                 case "--base": base = Paths.get(a[++i]).toAbsolutePath().normalize(); break;
                 case "--localextensions": localExt = a[++i]; break;
                 case "--controller-root": controllerRoots.add(Paths.get(a[++i]).toAbsolutePath().normalize()); break;
@@ -321,14 +328,26 @@ public class CallTreeExtractor {
         cfqns.sort(Comparator.comparing(c -> fqnToPath.get(c).toString()));
         log("controller candidates=" + cfqns.size());
 
-        PrintWriter out = outFile == null
-                ? new PrintWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8), true)
-                : new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outFile), StandardCharsets.UTF_8)));
-        int n = 0;
+        Path od = Paths.get(outDir).toAbsolutePath().normalize();
+        Files.createDirectories(od);
+        Map<String, Path> outPaths = new LinkedHashMap<>();
+        Map<String, PrintWriter> outs = new LinkedHashMap<>();
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String kind : new String[]{KIND_ACCELERATOR, KIND_OCC}) {
+            Path p = od.resolve("calltree_" + kind + "_" + OUT_SUFFIX + ".txt");
+            outPaths.put(kind, p);
+            outs.put(kind, new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(p.toFile()), StandardCharsets.UTF_8))));
+            counts.put(kind, 0);
+            log("output (" + kind + "): " + p);
+        }
+        int n = 0, skipped = 0;
         for (String cfqn : cfqns) {
             CI cc = ci(cfqn);
             if (cc == null) continue;
             if (!cc.td.getAnnotationByName("Controller").isPresent() && !cc.td.getAnnotationByName("RestController").isPresent()) continue;
+            String kind = controllerKind(cc);
+            if (kind == null) { skipped++; continue; } // AbstractController / BaseController 계열이 아니면 대상 외
+            PrintWriter out = outs.get(kind);
             Ext ext = extOf(cc.path);
             String webName = webExtOpt != null ? webExtOpt : (ext == null ? null : ext.name);
             Registry reg = webName == null ? new Registry() {{ parent = core; }} : webReg(webName);
@@ -359,12 +378,17 @@ public class CallTreeExtractor {
                         + (cmsComp ? "  (extends " + CMS_COMPONENT_BASE + ")" : ""));
                 out.print(sw.toString());
                 out.println();
+                counts.merge(kind, 1, Integer::sum);
             }
             if (++n % 20 == 0) { out.flush(); log("controllers done=" + n); }
         }
-        out.flush();
-        if (outFile != null) out.close();
-        log("done. controllers=" + n);
+        for (PrintWriter w : outs.values()) w.close();
+        log("done. controllers analyzed=" + n + " (accelerator written=" + counts.get(KIND_ACCELERATOR)
+                + ", occ written=" + counts.get(KIND_OCC) + "), skipped (not AbstractController/BaseController)=" + skipped);
+        if (!unresolvedSupers.isEmpty()) {
+            log("[warn] skipped controllers whose superclass source was not found (add its extension/root if it should be a target):");
+            for (Map.Entry<String, Integer> e : unresolvedSupers.entrySet()) log("  " + e.getKey() + " : " + e.getValue() + " controller(s)");
+        }
     }
 
     static void log(String s) { System.err.println("[info] " + s); }
@@ -986,6 +1010,35 @@ public class CallTreeExtractor {
         }
         return false;
     }
+
+    // 출력 대상 컨트롤러 분류. extends 절을 따라 올라가며 단순 클래스명으로 판정한다(상위 클래스 소스가 없어도 됨).
+    //   AbstractController (org.springframework.* 제외) -> accelerator 스토어프론트 계열
+    //   BaseController                                  -> OCC(웹서비스) 계열
+    static final String KIND_ACCELERATOR = "accelerator", KIND_OCC = "occ";
+
+    static String controllerKind(CI start) {
+        Set<String> seen = new HashSet<>();
+        CI c = start;
+        while (c != null && seen.add(c.fqn) && seen.size() < 30) {
+            if (!(c.td instanceof ClassOrInterfaceDeclaration)) return null;
+            ClassOrInterfaceDeclaration d = (ClassOrInterfaceDeclaration) c.td;
+            if (d.isInterface() || d.getExtendedTypes().isEmpty()) return null;
+            ClassOrInterfaceType st = d.getExtendedTypes(0);
+            String resolved = resolveTypeNode(c, st);
+            String scoped = st.getNameWithScope();
+            String fq = resolved != null ? resolved : (scoped.indexOf('.') >= 0 ? scoped : null);
+            String sn = st.getNameAsString();
+            if (sn.equals("AbstractController"))
+                return fq != null && fq.startsWith("org.springframework.") ? null : KIND_ACCELERATOR; // Spring MVC의 AbstractController는 대상 외
+            if (sn.equals("BaseController")) return KIND_OCC;
+            CI next = ci(resolved);
+            if (next == null) unresolvedSupers.merge(fq != null ? fq : sn, 1, Integer::sum); // 소스가 없어 더 올라갈 수 없음
+            c = next;
+        }
+        return null;
+    }
+
+    static final Map<String, Integer> unresolvedSupers = new TreeMap<>(); // 분류 중 소스를 찾지 못한 상위 클래스 -> 컨트롤러 수
 
     static String access(MethodDeclaration m) {
         String a = m.getAccessSpecifier().asString();
