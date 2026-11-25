@@ -8,15 +8,9 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 ## 폴더 구성
 
-두 파일 모두 `com` 폴더 아래에 있고 패키지는 `package com;`입니다.
-
 | 파일 | 클래스 | 내용 |
 |---|---|---|
-| `com/CallTreeExtracterAll.java` | `com.CallTreeExtracterAll` | 이 문서가 설명하는 도구입니다. **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 `calltreeAll.txt`로 출력합니다. |
-| `com/CallTreeExtracter.java` | `com.CallTreeExtractor` | 같은 분석 로직에 가지치기를 켠 버전(`PRUNE_ENABLED = true`)입니다. `calltree.txt`로 출력합니다. |
-
-> `CallTreeExtracter.java`는 파일명과 클래스명(`CallTreeExtractor`)이 다릅니다. 단일 파일 실행(source-file mode)에서는 문제없이 실행됩니다.
-> `javac`나 Eclipse로 컴파일할 때는 이 파일이 오류가 나므로, 파일명이나 클래스명 중 하나를 바꿔 맞춰야 합니다.
+| `com/CallTreeExtracterAll.java` | `com.CallTreeExtracterAll` (`package com;`) | 이 문서가 설명하는 도구입니다. 기본값은 **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 `calltreeAll.txt`로 출력합니다. |
 
 ## 준비물
 
@@ -113,7 +107,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out c
 ### 가지치기 (`PRUNE_ENABLED = true`일 때만)
 
 `CallTreeExtracterAll`은 기본값이 `false`라서 가지치기를 하지 않습니다. 매핑 메서드가 있는 모든 엔드포인트(CMS 컴포넌트 컨트롤러는 private가 아닌 모든 메서드)와, 위 "생략되는 노드"를 뺀 모든 호출 노드를 출력합니다.
-`true`로 바꾸면 아래처럼 동작합니다(`CallTreeExtracter.java`의 기본 동작).
+`true`로 바꾸면 아래처럼 동작합니다.
 
 노드 자신의 선언 클래스나 구현 클래스의 단순명이 `NAME_FILTER`(기본값 `facade|service|dao`, 대소문자 무시)에 맞거나, 맞는 자손이 있는 가지만 남깁니다.
 남는 노드가 하나도 없는 엔드포인트와, 출력할 엔드포인트가 없는 컨트롤러는 결과에서 빠집니다.
