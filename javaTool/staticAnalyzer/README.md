@@ -1,6 +1,7 @@
 # staticAnalyzer — CallTreeExtracterAll
 
 SAP Commerce(Hybris) 소스를 정적으로 분석해서 **Controller 엔드포인트별 호출 트리**를 텍스트 파일로 출력하는 단일 파일 Java 도구입니다.
+Accelerator의 **CMS 컴포넌트 컨트롤러**(`AbstractAcceleratorCMSComponentController` 상속)는 매핑 어노테이션이 없는 `fillModel` 같은 메서드도 분석합니다.
 대상 시스템을 기동하지 않습니다. `.java` 소스는 JavaParser로, Spring XML과 `extensioninfo.xml`은 DOM으로 읽습니다.
 
 Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-method`, `ListMergeDirective` 포함)를 해석하여, 인터페이스 호출이 실제로 어느 구현 bean으로 가는지까지 따라갑니다.
@@ -83,6 +84,10 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out c
 5. **컨트롤러 분석**: `@Controller` 또는 `@RestController`가 붙은 클래스마다 다음을 처리합니다.
    - 그 컨트롤러가 속한 extension과 그 의존 extension들의 웹 XML로 **web registry**를 만듭니다. 부모는 core registry입니다.
    - `@RequestMapping`, `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`, `@PatchMapping`이 붙은 메서드마다 호출 트리를 만듭니다.
+   - **CMS 컴포넌트 컨트롤러**: `AbstractAcceleratorCMSComponentController<T extends AbstractCMSComponentModel>`를 상속(간접 상속 포함)한 컨트롤러는, 매핑 어노테이션이 없어도 **그 클래스에 선언된 private가 아닌 메서드 전부**(public / protected / package-private, 예: `fillModel`)를 시작점으로 삼습니다.
+     - 상속 여부는 `extends` 절을 따라 올라가면서 단순 클래스명으로 판정합니다. 그래서 상위 클래스 소스가 분석 루트에 없어도(jar로만 제공되는 경우) 인식합니다.
+     - private 메서드는 시작점이 되지 않지만, 다른 메서드에서 호출하면 트리 안에 자식 노드로 나옵니다.
+     - 상위 클래스에서 상속만 받고 재정의하지 않은 메서드는 대상이 아닙니다.
 
 ### 호출 대상 해석
 
@@ -107,7 +112,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out c
 
 ### 가지치기 (`PRUNE_ENABLED = true`일 때만)
 
-`CallTreeExtracterAll`은 기본값이 `false`라서 가지치기를 하지 않습니다. 매핑 메서드가 있는 모든 엔드포인트와, 위 "생략되는 노드"를 뺀 모든 호출 노드를 출력합니다.
+`CallTreeExtracterAll`은 기본값이 `false`라서 가지치기를 하지 않습니다. 매핑 메서드가 있는 모든 엔드포인트(CMS 컴포넌트 컨트롤러는 private가 아닌 모든 메서드)와, 위 "생략되는 노드"를 뺀 모든 호출 노드를 출력합니다.
 `true`로 바꾸면 아래처럼 동작합니다(`CallTreeExtracter.java`의 기본 동작).
 
 노드 자신의 선언 클래스나 구현 클래스의 단순명이 `NAME_FILTER`(기본값 `facade|service|dao`, 대소문자 무시)에 맞거나, 맞는 자손이 있는 가지만 남깁니다.
@@ -124,12 +129,19 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out c
      └─ CartFacade#addToCart(String, long)  [bin/modules/.../CartFacade.java:40]  {impl=de.hybris...DefaultCartFacade}  <= xml property 'cartFacade' -> bean[cartFacade] bin/modules/.../commercefacades-spring.xml
         ├─ DefaultCommerceCartService#addToCart(CommerceCartParameter)  [...:120]  <= type-based
         └─ Converter#convert(Object)  [...]  (expanded above)
+
+[CONTROLLER] bin/custom/mystorefront/web/src/.../ProductCarouselComponentController.java  (bean productCarouselComponentController)  (extends AbstractAcceleratorCMSComponentController)
+  @ [CMS-COMPONENT] protected fillModel(HttpServletRequest, Model, ProductCarouselComponentModel)
+  ProductCarouselComponentController#fillModel(HttpServletRequest, Model, ProductCarouselComponentModel)  [...:60]
+     └─ ProductFacade#getProductForCodeAndOptions(String, Collection<ProductOption>)  [...]  {impl=...DefaultProductFacade}  <= @Resource("productFacade") -> bean[productFacade] ...
 ```
 
 | 표기 | 의미 |
 |---|---|
 | `[CONTROLLER] 경로  매핑  (bean id)` | 컨트롤러 파일, 클래스 레벨 매핑, 해당 컨트롤러 bean id |
 | `@ [HTTP] path` | 엔드포인트 메서드의 매핑 |
+| `(extends AbstractAcceleratorCMSComponentController)` | CMS 컴포넌트 컨트롤러로 판정된 컨트롤러 (`[CONTROLLER]` 줄 끝에 표시) |
+| `@ [CMS-COMPONENT] 접근제어자 method(타입...)` | CMS 컴포넌트 컨트롤러의 매핑 없는 비 private 메서드. 예: `@ [CMS-COMPONENT] protected fillModel(HttpServletRequest, Model, BannerComponentModel)` |
 | `Class#method(타입...)  [경로:줄]` | 메서드가 **선언된** 클래스와 위치 |
 | `{impl=FQN}` | 실제 호출을 받는 구현 클래스. 선언 클래스와 다를 때만 표시합니다. |
 | `<= ...` | 구현을 결정한 근거. `xml property`, `xml constructor-arg`, `@Resource`, `@Qualifier`, `type-based`, `local var type`, `lookup-method`, `populators[...]`, `static`, `new`, `cast`, `return type of m()` |
@@ -153,3 +165,5 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out c
 - 메서드 참조(`Foo::bar`)는 따라가지 않습니다. 람다 안의 일반 메서드 호출은 따라갑니다.
 - jar로만 제공되는 클래스, AOP/인터셉터, 이벤트 리스너, 리플렉션, `${...}` 플레이스홀더로 지정한 class 속성은 추적하지 않습니다.
 - 클래스 단위 파싱 결과는 최대 3000개까지 캐시합니다(LRU).
+- CMS 컴포넌트 컨트롤러 판정은 상위 클래스의 **단순 클래스명**(`AbstractAcceleratorCMSComponentController`)만 비교합니다. 패키지가 다른 같은 이름의 클래스도 똑같이 판정됩니다.
+- CMS 컴포넌트 컨트롤러는 실제로는 상위 클래스의 요청 처리 메서드가 `fillModel` 등을 호출하는 구조입니다. 이 도구는 하위 컨트롤러의 메서드를 바로 시작점으로 삼기 때문에, 상위 클래스 쪽 처리는 트리에 나오지 않습니다.

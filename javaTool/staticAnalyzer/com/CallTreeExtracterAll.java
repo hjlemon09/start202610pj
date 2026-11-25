@@ -311,10 +311,12 @@ public class CallTreeExtracterAll {
             Registry reg = webName == null ? new Registry() {{ parent = core; }} : webReg(webName);
             BeanDef cb = beanByClass(reg, cfqn);
             String cm = mapping(cc.td);
+            boolean cmsComp = isCmsComponentController(cc);
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
             for (MethodDeclaration m : cc.td.getMethods()) {
                 String mp = mapping(m);
+                if (mp == null && cmsComp && !m.isPrivate()) mp = "[CMS-COMPONENT] " + access(m) + " " + sig(m); // 매핑이 없어도 private 외 메서드는 대상
                 if (mp == null) continue;
                 Frame fr = new Frame();
                 fr.decl = cc; fr.m = m; fr.bean = cb; fr.runtime = cfqn; fr.reg = reg;
@@ -330,7 +332,8 @@ public class CallTreeExtracterAll {
             }
             pw.flush();
             if (sw.getBuffer().length() > 0) {
-                out.println("[CONTROLLER] " + rel(cc.path) + (cm == null ? "" : "  " + cm) + (cb != null ? "  (bean " + cb.id + ")" : ""));
+                out.println("[CONTROLLER] " + rel(cc.path) + (cm == null ? "" : "  " + cm) + (cb != null ? "  (bean " + cb.id + ")" : "")
+                        + (cmsComp ? "  (extends " + CMS_COMPONENT_BASE + ")" : ""));
                 out.print(sw.toString());
                 out.println();
             }
@@ -809,6 +812,29 @@ public class CallTreeExtracterAll {
         }
         CLOSURE.put(fqn, s);
         return s;
+    }
+
+    // AbstractAcceleratorCMSComponentController<T extends AbstractCMSComponentModel>를 (간접) 상속하는 컨트롤러인지.
+    // 상위 클래스 소스가 루트에 없어도(jar 제공 등) extends 절의 단순명으로 판정한다.
+    static final String CMS_COMPONENT_BASE = "AbstractAcceleratorCMSComponentController";
+
+    static boolean isCmsComponentController(CI start) {
+        Set<String> seen = new HashSet<>();
+        CI c = start;
+        while (c != null && seen.add(c.fqn) && seen.size() < 30) {
+            if (!(c.td instanceof ClassOrInterfaceDeclaration)) return false;
+            ClassOrInterfaceDeclaration d = (ClassOrInterfaceDeclaration) c.td;
+            if (d.isInterface() || d.getExtendedTypes().isEmpty()) return false;
+            ClassOrInterfaceType st = d.getExtendedTypes(0);
+            if (st.getNameAsString().equals(CMS_COMPONENT_BASE)) return true;
+            c = ci(resolveTypeNode(c, st));
+        }
+        return false;
+    }
+
+    static String access(MethodDeclaration m) {
+        String a = m.getAccessSpecifier().asString();
+        return a.isEmpty() ? "package-private" : a;
     }
 
     static boolean isInterface(CI c) {
