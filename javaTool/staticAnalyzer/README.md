@@ -1,4 +1,4 @@
-# staticAnalyzer — CallTreeExtracterAll
+# staticAnalyzer — CallTreeExtracter
 
 SAP Commerce(Hybris) 소스를 정적으로 분석해서 **Controller 엔드포인트별 호출 트리**를 텍스트 파일로 출력하는 단일 파일 Java 도구입니다.
 Accelerator의 **CMS 컴포넌트 컨트롤러**(`AbstractAcceleratorCMSComponentController` 상속)는 매핑 어노테이션이 없는 `fillModel` 같은 메서드도 분석합니다.
@@ -10,7 +10,7 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 | 파일 | 클래스 | 내용 |
 |---|---|---|
-| `com/CallTreeExtracterAll.java` | `com.CallTreeExtracterAll` (`package com;`) | 이 문서가 설명하는 도구입니다. 기본값은 **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 `calltreeAll.txt`로 출력합니다. |
+| `com/CallTreeExtracter.java` | `com.CallTreeExtracter` (`package com;`) | 이 문서가 설명하는 도구입니다. 기본값은 **가지치기 없이**(`PRUNE_ENABLED = false`) 모든 노드를 `calltreeAll.txt`로 출력합니다. `true`로 바꾸면 가지치기한 결과를 `calltree.txt`로 출력합니다. |
 
 ## 준비물
 
@@ -31,24 +31,30 @@ static final String[] ROOTS = { .../bin/platform, .../bin/modules, .../bin/custo
 static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
 static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom"; // 컨트롤러를 찾을 범위, 전체면 null
 static final String FILTER = null;                               // 예: "/mystorefront/"
-static final String OUT_NAME = "calltreeAll.txt";                // 작업 디렉터리에 생성
-static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (All 버전 기본값: false)
+static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (기본값: false)
+static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 작업 디렉터리에 생성
 static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
 ```
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracter.java
 ```
 
-결과는 **작업 디렉터리**(`user.dir`)의 `calltreeAll.txt`에 UTF-8로 저장됩니다. Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
+결과는 **작업 디렉터리**(`user.dir`)에 UTF-8로 저장됩니다. 파일명은 `PRUNE_ENABLED`에 따라 정해집니다.
+
+| `PRUNE_ENABLED` | 출력 파일 |
+|---|---|
+| `false` (기본값) | `calltreeAll.txt` (가지치기 없음) |
+| `true` | `calltree.txt` (가지치기 적용) |
+ Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
 
 ### 2. 명령행 인자로 실행
 
-인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, 출력 파일 설정은 **모두 무시**됩니다.
+인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, 출력 파일 설정은 **모두 무시**됩니다. 출력 파일은 `--out`으로 직접 지정합니다. `PRUNE_ENABLED`에 따른 파일명 규칙은 적용되지 않습니다.
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracter.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 | 옵션 | 설명 |
@@ -106,7 +112,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtracterAll.java --out c
 
 ### 가지치기 (`PRUNE_ENABLED = true`일 때만)
 
-`CallTreeExtracterAll`은 기본값이 `false`라서 가지치기를 하지 않습니다. 매핑 메서드가 있는 모든 엔드포인트(CMS 컴포넌트 컨트롤러는 private가 아닌 모든 메서드)와, 위 "생략되는 노드"를 뺀 모든 호출 노드를 출력합니다.
+`CallTreeExtracter`는 기본값이 `false`라서 가지치기를 하지 않습니다. 매핑 메서드가 있는 모든 엔드포인트(CMS 컴포넌트 컨트롤러는 private가 아닌 모든 메서드)와, 위 "생략되는 노드"를 뺀 모든 호출 노드를 출력합니다.
 `true`로 바꾸면 아래처럼 동작합니다.
 
 노드 자신의 선언 클래스나 구현 클래스의 단순명이 `NAME_FILTER`(기본값 `facade|service|dao`, 대소문자 무시)에 맞거나, 맞는 자손이 있는 가지만 남깁니다.
