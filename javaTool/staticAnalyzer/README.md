@@ -203,6 +203,26 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 
 메서드 본문은 상속 계층을 따라 **본문이 있는 첫 번째 클래스**에서 찾습니다. `super.xxx()`는 현재 클래스의 상위부터 찾습니다.
 
+**오버로드 구분**: 같은 이름이고 인자 수도 같은 메서드가 여러 개면, 호출하는 쪽의 **인자 타입을 추정**해서 파라미터 타입과 비교합니다.
+- 인자 타입은 다음에서 추정합니다.
+  - 리터럴 (`"…"`→String, `1`→int, `null` 등)
+  - 파라미터, 지역 변수, 필드의 선언 타입
+  - `new X()`, 캐스트
+  - 다른 메서드 호출의 반환 타입. 예: `component.getProductReferenceTypes()` → `List`
+  - `Type.CONSTANT` 형태의 상수와 enum 값
+  - 문자열 연결(`+`)
+- 비교는 erasure 기준 단순 클래스명으로 합니다. 제네릭 인자는 비교하지 않습니다.
+  - 기본형은 widening과 박싱/언박싱을 허용합니다.
+  - `Object`는 모든 참조 타입과 맞습니다.
+  - 소스가 있는 타입은 상속/구현 관계로 판정합니다.
+  - `List`/`ArrayList`/`Map`/`String`/`Integer` 같은 주요 JDK 타입은 알려진 상위 타입으로 판정합니다.
+- 타입이 맞지 않는 후보는 제외합니다. 모든 인자가 맞는 후보가 하나면 그것만 출력합니다.
+- 하나로 좁히지 못하면 후보를 모두(최대 3개) 출력하고, 각 노드에 `[OVERLOAD-AMBIGUOUS n (이유)]`를 붙입니다.
+  - `argument types not determined`: 인자 타입을 알 수 없어서 판정하지 못함
+  - `argument types matched none`: 추정한 타입이 어느 후보와도 맞지 않음
+  - `argument types not checked`: 호출문 없이 붙인 노드(Converter → Populator)
+- 한 클래스의 후보가 모두 타입 불일치이면, 상위 클래스의 같은 이름 메서드를 이어서 찾습니다.
+
 **Converter → Populator**: 2인자 `populate(...)`를 호출하는 bean이면, 그 bean의 `populators` 목록(`parent`의 `merge="true"` 목록과 `ListMergeDirective`로 추가된 것 포함)에 있는 각 populator의 `populate`도 자식 노드로 붙입니다.
 
 ### 생략되는 노드
@@ -253,6 +273,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 | `[NO-BEAN-FOUND for X]` | 인터페이스/추상 타입인데 맞는 bean이 없음 |
 | `(no bean; declared class)` | bean이 없어 선언된 구체 클래스를 그대로 사용 |
 | `[NO-IMPL/ABSTRACT]` | 본문이 있는 구현을 찾지 못함 |
+| `[OVERLOAD-AMBIGUOUS n (이유)]` | 인자 타입으로 오버로드를 하나로 좁히지 못해 후보 n개를 모두 출력함 (위 「오버로드 구분」) |
 | `(expanded above)` | 같은 메서드를 이미 위에서 전개함 (`--full`이면 다시 전개) |
 | `(recursion)` / `(max-depth)` | 재귀 호출이거나 최대 깊이에 도달함 |
 
@@ -263,7 +284,12 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 정적 분석이라서 아래와 같은 경우는 실제 런타임 동작과 다를 수 있습니다.
 
 - **XML에 정의된 bean만** registry에 들어갑니다. `component-scan`으로 등록되는 `@Component`/`@Service` bean은 인식하지 않습니다. 이런 bean은 `(no bean; declared class)`나 `NO-BEAN-FOUND`로 나옵니다.
-- 오버로드는 **인자 개수로만** 구분하고 인자 타입은 비교하지 않습니다. 같은 이름과 인자 수의 메서드가 여러 개면 최대 3개까지 함께 나옵니다.
+- 오버로드는 인자 타입을 **추정해서** 구분합니다. 아래 경우에는 판정하지 못해 `[OVERLOAD-AMBIGUOUS]`로 남습니다.
+  - 인자가 jar로만 제공되는 메서드의 반환값인 경우
+  - 람다나 메서드 참조, 제네릭 타입 변수(`T`), 가변 인자인 경우
+  - 후보마다 반환 타입이 다른 호출의 결과인 경우
+  - hybris model getter(`getXxx()`)의 반환 타입은 `gensrc`에 생성된 model 소스가 있어야 알 수 있습니다. `ant build`를 한 번 실행한 소스 트리를 분석하세요.
+  - 제네릭 인자는 비교하지 않으므로 `List<A>`와 `List<B>` 오버로드는 구분하지 못합니다.
 - 메서드 참조(`Foo::bar`)는 따라가지 않습니다. 람다 안의 일반 메서드 호출은 따라갑니다.
 - jar로만 제공되는 클래스, AOP/인터셉터, 이벤트 리스너, 리플렉션, `${...}` 플레이스홀더로 지정한 class 속성은 추적하지 않습니다.
 - 클래스 단위 파싱 결과는 최대 3000개까지 캐시합니다(LRU).

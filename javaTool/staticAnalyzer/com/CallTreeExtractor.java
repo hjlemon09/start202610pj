@@ -11,6 +11,7 @@ import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
+import com.github.javaparser.ast.type.TypeParameter;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -196,6 +197,7 @@ public class CallTreeExtractor {
         MethodDeclaration m;
         Target recv;
         List<Integer> callLines = new ArrayList<>(); // 호출하는 쪽(부모 노드) 소스에서 이 메서드를 호출한 행 번호
+        String overload; // 인자 타입으로 오버로드를 하나로 좁히지 못했을 때의 표시
     }
 
     static class Inj {
@@ -1295,11 +1297,17 @@ public class CallTreeExtractor {
     }
 
     static List<Callee> findMethods(String cls, String name, int argc, String after, Target t) {
+        return findMethods(cls, name, argc, after, t, null, null);
+    }
+
+    // call/caller가 있으면 인자 타입으로 오버로드를 좁힌다. 좁히지 못하면 후보를 모두(최대 3개) 반환하고 overload 표시를 붙인다.
+    static List<Callee> findMethods(String cls, String name, int argc, String after, Target t, MethodCallExpr call, Frame caller) {
         List<String> h = hierarchy(cls);
         int start = 0;
         if (after != null)
             for (int i = 0; i < h.size(); i++) if (h.get(i).equals(after)) { start = i + 1; break; }
-        List<Callee> abs = new ArrayList<>();
+        List<Callee> abs = new ArrayList<>(), firstWithBody = null;
+        List<TRef> argTypes = null;
         for (int i = start; i < h.size(); i++) {
             CI c = ci(h.get(i));
             if (c == null) continue;
@@ -1309,11 +1317,236 @@ public class CallTreeExtractor {
                 Callee ce = new Callee();
                 ce.decl = c; ce.m = m; ce.recv = t;
                 if (m.getBody().isPresent()) withBody.add(ce);
-                else if (abs.isEmpty()) abs.add(ce);
+                else abs.add(ce);
             }
-            if (!withBody.isEmpty()) return withBody.size() > 3 ? withBody.subList(0, 3) : withBody;
+            if (withBody.isEmpty()) continue;
+            if (withBody.size() == 1 || call == null) return cap(withBody, withBody.size() > 1 ? "argument types not checked" : null);
+            if (argTypes == null) argTypes = argTypes(call, caller);
+            List<Callee> kept = byArgTypes(withBody, argTypes);
+            if (!kept.isEmpty()) return cap(kept, kept.size() > 1 ? "argument types not determined" : null);
+            if (firstWithBody == null) firstWithBody = withBody; // 이 클래스의 오버로드가 모두 타입 불일치 -> 상위 클래스에서 계속 찾음
         }
-        return abs;
+        if (firstWithBody != null) return cap(firstWithBody, "argument types matched none");
+        if (abs.size() <= 1 || call == null) return abs.size() <= 1 ? abs : cap(abs, "argument types not checked");
+        if (argTypes == null) argTypes = argTypes(call, caller);
+        List<Callee> kept = byArgTypes(abs, argTypes);
+        return kept.isEmpty() ? cap(abs, "argument types matched none") : cap(kept, kept.size() > 1 ? "argument types not determined" : null);
+    }
+
+    static List<Callee> cap(List<Callee> l, String why) {
+        List<Callee> r = l.size() > 3 ? new ArrayList<>(l.subList(0, 3)) : l;
+        if (why != null) for (Callee c : r) c.overload = "[OVERLOAD-AMBIGUOUS " + l.size() + " (" + why + ")]";
+        return r;
+    }
+
+    // 하나라도 NO인 후보는 제외. 남은 후보 중 모든 인자가 MATCH인 것이 정확히 하나면 그것만.
+    static List<Callee> byArgTypes(List<Callee> cands, List<TRef> args) {
+        List<Callee> ok = new ArrayList<>(), exact = new ArrayList<>();
+        for (Callee c : cands) {
+            int r = paramsMatch(c, args);
+            if (r == NO) continue;
+            ok.add(c);
+            if (r == MATCH) exact.add(c);
+        }
+        if (exact.size() == 1) return exact;
+        return ok;
+    }
+
+    // ===================== argument static types (overload resolution) =====================
+    static final int MATCH = 1, UNKNOWN = 0, NO = -1;
+
+    static class TRef {
+        String name; // 단순명(erasure). 기본형은 int 등, 배열은 X[]
+        String fqn;  // 알 수 있으면
+        boolean nullLit;
+        TRef(String n, String f) { name = n; fqn = f; }
+    }
+
+    static final Set<String> PRIMS = new HashSet<>(Arrays.asList("byte", "short", "char", "int", "long", "float", "double", "boolean"));
+    static final Map<String, String> BOX = new HashMap<>();
+    static final Map<String, Set<String>> JDK_SUPERS = new HashMap<>();
+    static final List<String> WIDEN = Arrays.asList("byte", "short", "int", "long", "float", "double");
+
+    static {
+        String[][] b = {{"byte", "Byte"}, {"short", "Short"}, {"char", "Character"}, {"int", "Integer"}, {"long", "Long"},
+                {"float", "Float"}, {"double", "Double"}, {"boolean", "Boolean"}};
+        for (String[] x : b) { BOX.put(x[0], x[1]); BOX.put(x[1], x[0]); }
+        jdk("String", "CharSequence", "Comparable", "Serializable");
+        for (String n : new String[]{"Integer", "Long", "Short", "Byte", "Double", "Float", "BigDecimal", "BigInteger"}) jdk(n, "Number", "Comparable", "Serializable");
+        jdk("Boolean", "Comparable", "Serializable");
+        jdk("Character", "Comparable", "Serializable");
+        jdk("List", "Collection", "Iterable");
+        jdk("Set", "Collection", "Iterable");
+        jdk("SortedSet", "Set", "Collection", "Iterable");
+        jdk("Queue", "Collection", "Iterable");
+        jdk("Collection", "Iterable");
+        for (String n : new String[]{"ArrayList", "LinkedList"}) jdk(n, "List", "Collection", "Iterable", "Serializable");
+        for (String n : new String[]{"HashSet", "LinkedHashSet", "TreeSet"}) jdk(n, "Set", "Collection", "Iterable", "Serializable");
+        for (String n : new String[]{"HashMap", "LinkedHashMap", "TreeMap", "ConcurrentHashMap"}) jdk(n, "Map", "Serializable");
+        jdk("SortedMap", "Map");
+        jdk("Map");
+        jdk("Iterable");
+        jdk("Optional");
+        jdk("Date", "Serializable", "Comparable");
+        jdk("Locale", "Serializable");
+    }
+
+    static void jdk(String n, String... supers) { JDK_SUPERS.put(n, new HashSet<>(Arrays.asList(supers))); }
+
+    static List<TRef> argTypes(MethodCallExpr call, Frame f) {
+        List<TRef> l = new ArrayList<>();
+        for (Expression e : call.getArguments()) {
+            TRef r = null;
+            try { r = exprType(e, f, 0); } catch (RuntimeException ignore) { }
+            l.add(r);
+        }
+        return l;
+    }
+
+    static TRef typeRef(CI ctx, Type t, MethodDeclaration m) {
+        if (t == null || t.isVarType() || t.isUnknownType() || t.isVoidType()) return null;
+        if (t.isPrimitiveType()) return new TRef(t.asString(), null);
+        if (t.isArrayType()) {
+            TRef c = typeRef(ctx, t.asArrayType().getComponentType(), m);
+            return c == null ? null : new TRef(c.name + "[]", null);
+        }
+        if (!t.isClassOrInterfaceType()) return null;
+        String sn = t.asClassOrInterfaceType().getNameAsString();
+        if (isTypeParam(ctx, m, sn)) return null; // 제네릭 타입 변수는 판정하지 않음
+        return new TRef(sn, resolveTypeNode(ctx, t));
+    }
+
+    static boolean isTypeParam(CI ctx, MethodDeclaration m, String sn) {
+        if (m != null) for (TypeParameter p : m.getTypeParameters()) if (p.getNameAsString().equals(sn)) return true;
+        if (ctx != null && ctx.td instanceof ClassOrInterfaceDeclaration)
+            for (TypeParameter p : ((ClassOrInterfaceDeclaration) ctx.td).getTypeParameters()) if (p.getNameAsString().equals(sn)) return true;
+        return false;
+    }
+
+    static TRef exprType(Expression e, Frame f, int depth) {
+        if (depth > 6) return null;
+        if (e.isEnclosedExpr()) return exprType(e.asEnclosedExpr().getInner(), f, depth + 1);
+        if (e.isStringLiteralExpr() || e.isTextBlockLiteralExpr()) return new TRef("String", "java.lang.String");
+        if (e.isIntegerLiteralExpr()) return new TRef("int", null);
+        if (e.isLongLiteralExpr()) return new TRef("long", null);
+        if (e.isDoubleLiteralExpr()) return new TRef(e.toString().matches("(?i).*f$") ? "float" : "double", null);
+        if (e.isCharLiteralExpr()) return new TRef("char", null);
+        if (e.isBooleanLiteralExpr()) return new TRef("boolean", null);
+        if (e.isNullLiteralExpr()) { TRef r = new TRef("null", null); r.nullLit = true; return r; }
+        if (e.isCastExpr()) return typeRef(f.decl, e.asCastExpr().getType(), f.m);
+        if (e.isObjectCreationExpr()) return typeRef(f.decl, e.asObjectCreationExpr().getType(), f.m);
+        if (e.isThisExpr()) return new TRef(simple(f.runtime), f.runtime);
+        if (e.isConditionalExpr()) return exprType(e.asConditionalExpr().getThenExpr(), f, depth + 1);
+        if (e.isBinaryExpr() && e.asBinaryExpr().getOperator() == BinaryExpr.Operator.PLUS) {
+            TRef l = exprType(e.asBinaryExpr().getLeft(), f, depth + 1), r = exprType(e.asBinaryExpr().getRight(), f, depth + 1);
+            if ((l != null && l.name.equals("String")) || (r != null && r.name.equals("String"))) return new TRef("String", "java.lang.String");
+            return null;
+        }
+        if (e.isNameExpr()) {
+            String n = e.asNameExpr().getNameAsString();
+            Type lt = localType(f, n);
+            if (lt != null) return typeRef(f.decl, lt, f.m);
+            Inj inj = findInj(f.decl, n);
+            if (inj != null) return typeRef(inj.ctx, inj.type, null);
+            return null;
+        }
+        if (e.isFieldAccessExpr()) {
+            FieldAccessExpr fa = e.asFieldAccessExpr();
+            String fn = fa.getNameAsString();
+            Expression sc = fa.getScope();
+            if (sc.isThisExpr()) {
+                Inj inj = findInj(f.decl, fn);
+                return inj == null ? null : typeRef(inj.ctx, inj.type, null);
+            }
+            if (sc.isNameExpr() && Character.isUpperCase(sc.asNameExpr().getNameAsString().charAt(0))
+                    && localType(f, sc.asNameExpr().getNameAsString()) == null) { // Type.CONSTANT
+                String tn = sc.asNameExpr().getNameAsString();
+                String tf = resolveType(f.decl, tn);
+                CI tc = ci(tf);
+                if (tc != null) {
+                    Inj inj = findInj(tc, fn);
+                    if (inj != null) return typeRef(inj.ctx, inj.type, null);
+                    if (tc.td instanceof EnumDeclaration) return new TRef(tn, tf);
+                }
+                if (fn.equals(fn.toUpperCase())) return new TRef(tn, tf); // 소스 없는 enum/상수 클래스: Type.VALUE -> Type으로 추정
+            }
+            return null;
+        }
+        if (e.isMethodCallExpr()) {
+            String ret = null; TRef first = null;
+            for (Callee c : resolveCall(e.asMethodCallExpr(), f)) {
+                TRef r = typeRef(c.decl, c.m.getType(), c.m);
+                if (r == null) return null;
+                if (first == null) { first = r; ret = r.name; }
+                else if (!ret.equals(r.name)) return null; // 후보마다 반환 타입이 다르면 판정 불가
+            }
+            return first;
+        }
+        return null;
+    }
+
+    static int paramsMatch(Callee c, List<TRef> args) {
+        List<Parameter> ps = c.m.getParameters();
+        int res = MATCH;
+        for (int i = 0; i < args.size(); i++) {
+            if (i >= ps.size()) break;
+            Parameter p = ps.get(i);
+            if (p.isVarArgs()) break; // 가변 인자는 판정하지 않음
+            int r = compatible(args.get(i), typeRef(c.decl, p.getType(), c.m));
+            if (r == NO) return NO;
+            if (r == UNKNOWN) res = UNKNOWN;
+        }
+        return res;
+    }
+
+    static int compatible(TRef a, TRef p) {
+        if (a == null || p == null) return UNKNOWN;
+        if (a.nullLit) return PRIMS.contains(p.name) ? NO : MATCH;
+        if (a.name.equals(p.name)) return MATCH;
+        boolean ap = PRIMS.contains(a.name), pp = PRIMS.contains(p.name);
+        if (ap && pp) {
+            int ai = WIDEN.indexOf(a.name.equals("char") ? "int" : a.name), pi = WIDEN.indexOf(p.name);
+            if (a.name.equals("char") && p.name.equals("char")) return MATCH;
+            return ai >= 0 && pi >= 0 && ai <= pi ? MATCH : NO;
+        }
+        if (ap) { // boxing
+            String box = BOX.get(a.name);
+            if (p.name.equals(box) || p.name.equals("Object") || p.name.equals("Serializable")
+                    || (p.name.equals("Number") && !a.name.equals("boolean") && !a.name.equals("char"))
+                    || p.name.equals("Comparable")) return MATCH;
+            return NO;
+        }
+        if (pp) return a.name.equals(BOX.get(p.name)) ? MATCH : NO; // unboxing
+        if (p.name.equals("Object")) return MATCH;
+        if (a.name.endsWith("[]") || p.name.endsWith("[]")) return NO;
+        if (JDK_SUPERS.containsKey(a.name) && (a.fqn == null || a.fqn.startsWith("java."))) // 알려진 JDK 타입
+            return JDK_SUPERS.get(a.name).contains(p.name) ? MATCH : NO;
+        if (a.fqn != null && ci(a.fqn) != null) { // 소스가 있는 타입: 상위 타입을 끝까지 알 수 있으면 확정
+            boolean complete = true;
+            for (String s : closure(a.fqn)) {
+                if (simple(s).equals(p.name)) return MATCH;
+                CI sc = ci(s);
+                if (sc == null) complete = false;
+                else for (ClassOrInterfaceType st : superTypeNodes(sc))
+                    if (resolveTypeNode(sc, st) == null) {
+                        String sn = st.getNameAsString();
+                        if (sn.equals(p.name)) return MATCH;
+                        if (!JDK_SUPERS.containsKey(sn)) complete = false; // 소스 없는 상위 타입이 있음
+                        else if (JDK_SUPERS.get(sn).contains(p.name)) return MATCH;
+                    }
+            }
+            return complete ? NO : UNKNOWN;
+        }
+        return UNKNOWN;
+    }
+
+    static List<ClassOrInterfaceType> superTypeNodes(CI c) {
+        List<ClassOrInterfaceType> r = new ArrayList<>();
+        if (c.td instanceof ClassOrInterfaceDeclaration) {
+            r.addAll(((ClassOrInterfaceDeclaration) c.td).getExtendedTypes());
+            r.addAll(((ClassOrInterfaceDeclaration) c.td).getImplementedTypes());
+        } else if (c.td instanceof EnumDeclaration) r.addAll(((EnumDeclaration) c.td).getImplementedTypes());
+        return r;
     }
 
     static List<Callee> resolveCall(MethodCallExpr c, Frame f) {
@@ -1330,7 +1563,7 @@ public class CallTreeExtractor {
         } else recvs = exprTargets(c.getScope().get(), f);
         for (Target t : recvs) {
             if (t.cls == null || ci(t.cls) == null) continue;
-            out.addAll(findMethods(t.cls, name, argc, sup ? f.decl.fqn : null, t));
+            out.addAll(findMethods(t.cls, name, argc, sup ? f.decl.fqn : null, t, c, f));
         }
         return out;
     }
@@ -1384,6 +1617,7 @@ public class CallTreeExtractor {
         if (ce.recv.cls != null && !ce.recv.cls.equals(ce.decl.fqn)) sb.append("  {impl=").append(ce.recv.cls).append('}');
         if (ce.recv.note != null) sb.append("  <= ").append(ce.recv.note);
         if (!ce.m.getBody().isPresent()) sb.append("  [NO-IMPL/ABSTRACT]");
+        if (ce.overload != null) sb.append("  ").append(ce.overload);
         return sb.toString();
     }
 
