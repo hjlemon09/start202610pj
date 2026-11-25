@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * SAP Commerce (Hybris) static call-tree extractor.
  *
  * Run (Java 11+, JavaParser 3.26.0+ for JAVA_21):
- *   java -Xmx6g -cp javaparser-core-3.27.1.jar CallTreeExtracter.java \
+ *   java -Xmx6g -cp javaparser-core-3.27.1.jar CallTreeExtractor.java \
  *        --out calltree.txt --base /path/to/hybris \
  *        --localextensions /path/to/hybris/config/localextensions.xml \
  *        --controller-root /path/to/hybris/bin/custom \
@@ -49,7 +49,7 @@ import java.util.stream.Collectors;
  *   --full                    do not collapse repeated subtrees
  *   --include-models          also trace model/data/form/dto classes
  */
-public class CallTreeExtracter {
+public class CallTreeExtractor {
 
     // ===================== EDIT HERE: embedded settings (used when no program args are given) =====================
     static final String HYBRIS_HOME = "C:/hybris";                       // hybris 폴더 (bin, config 상위)
@@ -220,7 +220,7 @@ public class CallTreeExtracter {
             }
         }
         if (roots.isEmpty()) {
-            System.err.println("usage: java -cp javaparser-core.jar CallTreeExtracter.java [options] <root>...");
+            System.err.println("usage: java -cp javaparser-core.jar CallTreeExtractor.java [options] <root>...");
             return;
         }
         ParserConfiguration cfg = new ParserConfiguration();
@@ -235,7 +235,7 @@ public class CallTreeExtracter {
         log("files: java=" + javaFiles.size() + " extensioninfo=" + extInfos.size() + " spring-xml=" + springFiles.size());
 
         // 2) java index (later roots win)
-        List<String> fqns = javaFiles.parallelStream().map(CallTreeExtracter::fqnOf).collect(Collectors.toList());
+        List<String> fqns = javaFiles.parallelStream().map(CallTreeExtractor::fqnOf).collect(Collectors.toList());
         for (int i = 0; i < fqns.size(); i++) fqnToPath.put(fqns.get(i), javaFiles.get(i));
         for (String f : fqnToPath.keySet()) {
             String s = f.substring(f.lastIndexOf('.') + 1);
@@ -291,8 +291,8 @@ public class CallTreeExtracter {
                 : javaFiles.stream().filter(p -> controllerRoots.stream().anyMatch(p::startsWith)).collect(Collectors.toList());
         List<String> cfqns = scan.parallelStream()
                 .filter(p -> filterOpt == null || p.toString().replace('\\', '/').contains(filterOpt))
-                .filter(CallTreeExtracter::looksController)
-                .map(CallTreeExtracter::fqnOf)
+                .filter(CallTreeExtractor::looksController)
+                .map(CallTreeExtractor::fqnOf)
                 .distinct().collect(Collectors.toList());
         cfqns.removeIf(c -> !fqnToPath.containsKey(c));
         cfqns.sort(Comparator.comparing(c -> fqnToPath.get(c).toString()));
