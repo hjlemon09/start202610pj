@@ -51,7 +51,8 @@ static final String[] ROOTS = { .../bin/platform, .../bin/modules, .../bin/custo
 static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
 static final String CONTROLLER_ROOT = null;                      // 컨트롤러 범위를 더 좁힐 때만 지정. null이면 분석 대상 extension 전체
 static final String FILTER = null;                               // 예: "/mystorefront/"
-static final String EXTENSIONS_CSV = null;                       // 예: "C:/work/reports/20261125_101500_xxx/extensions.csv", 전체면 null
+static final boolean USE_ACTIVATED_EXTENSIONS = true;            // false면 EXTENSIONS_CSV와 상관없이 전체 extension 대상
+static final String EXTENSIONS_CSV = null;                       // extensions.csv 파일, 결과 폴더, 또는 extractor의 reports 폴더(최신 결과 자동 선택). 전체면 null
 static final String[] INCLUDE_EXTENSIONS = {};                   // EXTENSIONS_CSV 사용 시 추가로 포함할 extension. 예: {"myaddon", "mytest"}
 static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (기본값: false)
 static final String OUT_DIR = null;                              // 출력 폴더. null이면 작업 디렉터리
@@ -68,7 +69,7 @@ Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입�
 
 ### 2. 명령행 인자로 실행
 
-인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `EXTENSIONS_CSV`, `INCLUDE_EXTENSIONS`, `OUT_DIR` 설정은 **모두 무시**됩니다. 출력 폴더는 `--out-dir`로 지정하고, 생략하면 작업 디렉터리입니다. 파일명 규칙(`_all`/`_pruned`)은 인자 실행에서도 같습니다.
+인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `USE_ACTIVATED_EXTENSIONS`, `EXTENSIONS_CSV`, `INCLUDE_EXTENSIONS`, `OUT_DIR` 설정은 **모두 무시**됩니다. 출력 폴더는 `--out-dir`로 지정하고, 생략하면 작업 디렉터리입니다. 파일명 규칙(`_all`/`_pruned`)은 인자 실행에서도 같습니다.
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
@@ -86,18 +87,36 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 | `--max-depth <n>` | 트리 최대 깊이. 기본값은 20입니다. |
 | `--full` | 이미 전개한 서브트리도 다시 전개합니다. 기본은 `(expanded above)`로 접습니다. |
 | `--include-models` | model/data/form/dto 계열 클래스도 추적합니다. |
-| `--extensions-csv <csv>` | `activated-extension-extractor`의 `extensions.csv`. 활성 extension만 분석합니다(아래 참고). |
+| `--extensions-csv <csv\|폴더>` | `activated-extension-extractor`의 `extensions.csv`, 결과 폴더, 또는 `reports` 폴더(가장 최근 결과를 자동 선택). 활성 extension만 분석합니다(아래 참고). 생략하면 전체 분석입니다. |
 | `--include-ext <name>` | `--extensions-csv`와 함께 쓸 때, 이 extension도 분석 대상에 추가합니다. 여러 번 줄 수 있고 쉼표로 묶어도 됩니다(`--include-ext a,b --include-ext c`). |
 
 `PRUNE_ENABLED`와 `NAME_FILTER`는 옵션으로 바꿀 수 없습니다. 소스에서 직접 수정해야 합니다.
 
 ## 활성 extension만 분석 (`extensions.csv`)
 
-먼저 [`activated-extension-extractor`](../activated-extension-extractor/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그 결과 폴더의 `extensions.csv`를 `--extensions-csv`(또는 `EXTENSIONS_CSV`)로 지정합니다.
+먼저 [`activated-extension-extractor`](../activated-extension-extractor/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그다음 `--extensions-csv`(또는 `EXTENSIONS_CSV`)에 아래 셋 중 하나를 지정합니다.
+
+| 지정하는 값 | 사용하는 `extensions.csv` |
+|---|---|
+| `extensions.csv` 파일 | 그 파일 |
+| extractor 결과 폴더 하나 (예: `reports/20261125_101500_xxx`) | 그 폴더의 `extensions.csv` |
+| **extractor의 `reports` 폴더** | 그 아래 결과 폴더 중 **가장 최근 것**의 `extensions.csv`를 자동으로 고릅니다 |
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/tools/activated-extension-extractor/reports C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
+
+소스 안 설정으로는 `EXTENSIONS_CSV = "C:/tools/activated-extension-extractor/reports";`처럼 `reports` 폴더를 한 번 넣어 두면 됩니다. 그러면 extractor를 다시 실행할 때마다 staticAnalyzer가 자동으로 최신 결과를 씁니다.
+
+**가장 최근 결과 폴더를 고르는 방법**
+- `extensions.csv`가 들어 있는 하위 폴더만 후보로 봅니다.
+- extractor 결과 폴더 이름(`yyyyMMdd_HHmmss_고유값`)이 가장 늦은 것을 고릅니다. 그 형식의 이름이 하나도 없으면 `extensions.csv`의 수정 시각이 가장 늦은 것을 고릅니다.
+- 고른 폴더와 후보 수는 진행 로그에 `latest extractor report (of N): …`, `extensions.csv: …`로 출력됩니다.
+- 가장 최근 결과의 `summary.csv`가 `scan_complete=false`이면, 더 오래된 결과로 거슬러 가지 않고 **전체 분석**으로 돌아갑니다.
+
+**전체 extension 분석 (기존 방식)도 그대로 쓸 수 있습니다**
+- 명령행에서는 `--extensions-csv`를 주지 않으면 전체를 분석합니다.
+- 소스 안 설정에서는 `USE_ACTIVATED_EXTENSIONS = false`로 바꾸면 전체를 분석합니다. `EXTENSIONS_CSV` 경로는 남겨 둔 채로 켜고 끌 수 있습니다. `EXTENSIONS_CSV = null`이어도 전체를 분석합니다.
 
 **동작**
 - 루트를 전부 탐색한 다음, **활성 extension 폴더에 속한 파일만 남깁니다.** 대상은 `.java`, `extensioninfo.xml`, `*-spring.xml`, `*-servlet.xml`입니다.
@@ -137,6 +156,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 |---|---|
 | `extensions.csv`와 같은 폴더의 `summary.csv`가 `scan_complete=false` | 경고를 출력하고 **전체 extension을 대상**으로 분석합니다. extractor가 일부 `extensioninfo.xml`을 읽지 못해서 활성 목록에 빠진 것이 있을 수 있기 때문입니다. |
 | `extensions.csv`를 읽을 수 없음 | 경고 후 전체 분석 |
+| 지정한 폴더(또는 그 하위 결과 폴더)에 `extensions.csv`가 없음 | 경고 후 전체 분석 |
 | `extensions.csv`의 extension 폴더가 루트 아래에 하나도 없음 (`--base` 불일치 등) | 경고 후 전체 분석 |
 
 **경고만 출력하고 필터는 쓰는 경우**

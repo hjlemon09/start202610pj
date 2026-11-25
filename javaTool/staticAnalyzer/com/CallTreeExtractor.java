@@ -52,7 +52,8 @@ import java.util.stream.Collectors;
  *   --max-depth <n>           default 20
  *   --full                    do not collapse repeated subtrees
  *   --include-models          also trace model/data/form/dto classes
- *   --extensions-csv <csv>    activated-extension-extractor extensions.csv: analyze activated extensions only
+ *   --extensions-csv <csv|dir> activated-extension-extractor extensions.csv, or its reports folder (latest run is used):
+ *                             analyze activated extensions only. Omit it to analyze all extensions.
  *                             (ignored, i.e. all extensions, when the sibling summary.csv says scan_complete=false)
  *   --include-ext <name>      with --extensions-csv: also analyze this extension (repeatable, or comma-separated)
  */
@@ -67,7 +68,9 @@ public class CallTreeExtractor {
     static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
     static final String CONTROLLER_ROOT = null;                          // 컨트롤러 스캔 범위를 더 좁힐 때만 지정. null이면 분석 대상 extension 전체
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
-    static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로. 지정하면 활성 extension만 대상, 전체면 null
+    static final boolean USE_ACTIVATED_EXTENSIONS = true;                // true: 아래 EXTENSIONS_CSV로 활성 extension만 대상 / false: 전체 extension 대상
+    static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로, 또는 reports 폴더
+                                                                         //   (폴더면 가장 최근 결과 폴더의 extensions.csv를 자동 선택). null이면 전체 대상
     static final String[] INCLUDE_EXTENSIONS = {};                       // EXTENSIONS_CSV 사용 시 추가로 포함할 extension 이름. 예: {"myaddon", "mytest"}
     static final boolean PRUNE_ENABLED = false;                          // false: 가지치기 없이 모든 노드 출력 (true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력)
     static final String OUT_DIR = null;                                  // 출력 폴더. null이면 작업 디렉터리(프로젝트 루트)
@@ -208,7 +211,7 @@ public class CallTreeExtractor {
         localExt = LOCAL_EXTENSIONS;
         if (CONTROLLER_ROOT != null) controllerRoots.add(Paths.get(CONTROLLER_ROOT).toAbsolutePath().normalize());
         filterOpt = FILTER;
-        extensionsCsv = EXTENSIONS_CSV;
+        extensionsCsv = USE_ACTIVATED_EXTENSIONS ? EXTENSIONS_CSV : null;
         includeExts.addAll(Arrays.asList(INCLUDE_EXTENSIONS));
         outDir = OUT_DIR != null ? OUT_DIR : System.getProperty("user.dir");
         if (a.length > 0) { // program args, if any, replace the defaults
@@ -420,7 +423,12 @@ public class CallTreeExtractor {
     // extensions.csv에 있는 활성 extension 폴더의 파일만 남긴다. 어느 extension에도 속하지 않는 파일은 그대로 둔다.
     // 같은 폴더의 summary.csv가 scan_complete=false이면 필터를 쓰지 않고 전체를 대상으로 한다.
     static void applyActivatedFilter(List<Path> java, List<Path> extInfos, List<Path> spring) {
-        Path csv = Paths.get(extensionsCsv).toAbsolutePath().normalize();
+        Path csv = resolveExtensionsCsv(extensionsCsv);
+        if (csv == null) {
+            log("[warn] no extensions.csv found for " + extensionsCsv + "; analyzing all extensions");
+            return;
+        }
+        log("extensions.csv: " + csv);
         List<Map<String, String>> rows;
         try {
             rows = readCsv(csv);
@@ -493,6 +501,34 @@ public class CallTreeExtractor {
         spring.removeIf(p -> !keepActivated(p, extDirs, matched));
         activatedOrder.addAll(names);
         log("activated extensions: csv=" + active.size() + " matched=" + matched.size() + " of found=" + extDirs.size());
+    }
+
+    // 파일이면 그대로. 폴더면 (1) 바로 아래 extensions.csv, (2) 없으면 하위 결과 폴더 중 가장 최근 것의 extensions.csv.
+    // "가장 최근": extractor 결과 폴더명(yyyyMMdd_HHmmss_...)의 역순, 그 형식이 아니면 extensions.csv 수정 시각.
+    static final Pattern REPORT_DIR = Pattern.compile("^\\d{8}_\\d{6}_.*");
+
+    static Path resolveExtensionsCsv(String spec) {
+        Path p = Paths.get(spec).toAbsolutePath().normalize();
+        if (Files.isRegularFile(p)) return p;
+        if (!Files.isDirectory(p)) return null;
+        if (Files.isRegularFile(p.resolve("extensions.csv"))) return p.resolve("extensions.csv");
+        List<Path> cands = new ArrayList<>();
+        try (java.util.stream.Stream<Path> s = Files.list(p)) {
+            s.filter(d -> Files.isRegularFile(d.resolve("extensions.csv"))).forEach(cands::add);
+        } catch (IOException e) {
+            log("[warn] cannot list " + p + " (" + e.getMessage() + ")");
+            return null;
+        }
+        if (cands.isEmpty()) return null;
+        Comparator<Path> byName = Comparator.comparing(d -> d.getFileName().toString());
+        Comparator<Path> byTime = Comparator.comparing(d -> {
+            try { return Files.getLastModifiedTime(d.resolve("extensions.csv")).toMillis(); } catch (IOException e) { return 0L; }
+        });
+        List<Path> named = new ArrayList<>();
+        for (Path d : cands) if (REPORT_DIR.matcher(d.getFileName().toString()).matches()) named.add(d);
+        Path latest = !named.isEmpty() ? Collections.max(named, byName) : Collections.max(cands, byTime);
+        log("latest extractor report (of " + cands.size() + "): " + latest.getFileName());
+        return latest.resolve("extensions.csv");
     }
 
     static String extNameOf(Path extensionInfo) {
