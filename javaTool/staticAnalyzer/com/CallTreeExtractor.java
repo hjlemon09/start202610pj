@@ -48,6 +48,8 @@ import java.util.stream.Collectors;
  *   --max-depth <n>           default 20
  *   --full                    do not collapse repeated subtrees
  *   --include-models          also trace model/data/form/dto classes
+ *   --extensions-csv <csv>    activated-extension-extractor extensions.csv: analyze activated extensions only
+ *                             (ignored, i.e. all extensions, when the sibling summary.csv says scan_complete=false)
  */
 public class CallTreeExtractor {
 
@@ -60,6 +62,7 @@ public class CallTreeExtractor {
     static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
     static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom";   // 컨트롤러 스캔 범위, 전체면 null
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
+    static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로. 지정하면 활성 extension만 대상, 전체면 null
     static final boolean PRUNE_ENABLED = false;                          // false: 가지치기 없이 모든 노드 출력 (true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력)
     static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 프로젝트 루트(작업 디렉터리)에 생성. 가지치기 여부로 파일명 결정
     static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)"); // 클래스 단순명에 포함되어야 할 문자열
@@ -68,7 +71,8 @@ public class CallTreeExtractor {
     static List<Path> roots = new ArrayList<>();
     static List<Path> controllerRoots = new ArrayList<>();
     static Path base = Paths.get("").toAbsolutePath().normalize();
-    static String outFile, localExt, webExtOpt, filterOpt;
+    static String outFile, localExt, webExtOpt, filterOpt, extensionsCsv;
+    static final List<String> activatedOrder = new ArrayList<>(); // extensions.csv의 extension 이름 (순서 시드)
     static int maxDepth = 20;
     static boolean full = false, includeModels = false;
 
@@ -196,6 +200,7 @@ public class CallTreeExtractor {
         localExt = LOCAL_EXTENSIONS;
         if (CONTROLLER_ROOT != null) controllerRoots.add(Paths.get(CONTROLLER_ROOT).toAbsolutePath().normalize());
         filterOpt = FILTER;
+        extensionsCsv = EXTENSIONS_CSV;
         outFile = Paths.get(System.getProperty("user.dir"), OUT_NAME).toString();
         if (a.length > 0) { // program args, if any, replace the defaults
             roots.clear();
@@ -203,6 +208,7 @@ public class CallTreeExtractor {
             outFile = null;
             localExt = null;
             filterOpt = null;
+            extensionsCsv = null;
         }
         log("output: " + (outFile == null ? "stdout" : outFile));
         for (int i = 0; i < a.length; i++) {
@@ -216,6 +222,7 @@ public class CallTreeExtractor {
                 case "--max-depth": maxDepth = Integer.parseInt(a[++i]); break;
                 case "--full": full = true; break;
                 case "--include-models": includeModels = true; break;
+                case "--extensions-csv": extensionsCsv = a[++i]; break;
                 default: roots.add(Paths.get(a[i]).toAbsolutePath().normalize());
             }
         }
@@ -233,6 +240,11 @@ public class CallTreeExtractor {
         List<Path> javaFiles = new ArrayList<>(), extInfos = new ArrayList<>(), springFiles = new ArrayList<>();
         for (Path r : roots) walk(r, javaFiles, extInfos, springFiles);
         log("files: java=" + javaFiles.size() + " extensioninfo=" + extInfos.size() + " spring-xml=" + springFiles.size());
+        if (extensionsCsv != null) {
+            applyActivatedFilter(javaFiles, extInfos, springFiles);
+            log("files after activated filter: java=" + javaFiles.size() + " extensioninfo=" + extInfos.size()
+                    + " spring-xml=" + springFiles.size());
+        }
 
         // 2) java index (later roots win)
         List<String> fqns = javaFiles.parallelStream().map(CallTreeExtractor::fqnOf).collect(Collectors.toList());
@@ -269,6 +281,7 @@ public class CallTreeExtractor {
                 for (int i = 0; i < nl.getLength(); i++) visit(((Element) nl.item(i)).getAttribute("name"), done);
             }
         }
+        for (String n : activatedOrder) visit(n, done); // extensions.csv 사용 시: 활성 extension을 의존 대상 먼저 배치
         for (String n : new TreeSet<>(extByName.keySet())) visit(n, done);
         for (Path s : springFiles) {
             Ext best = null;
@@ -367,6 +380,110 @@ public class CallTreeExtractor {
             @Override
             public FileVisitResult visitFileFailed(Path f, IOException e) { return FileVisitResult.CONTINUE; }
         });
+    }
+
+    // ===================== activated extensions (activated-extension-extractor output) =====================
+    // extensions.csv에 있는 활성 extension 폴더의 파일만 남긴다. 어느 extension에도 속하지 않는 파일은 그대로 둔다.
+    // 같은 폴더의 summary.csv가 scan_complete=false이면 필터를 쓰지 않고 전체를 대상으로 한다.
+    static void applyActivatedFilter(List<Path> java, List<Path> extInfos, List<Path> spring) {
+        Path csv = Paths.get(extensionsCsv).toAbsolutePath().normalize();
+        List<Map<String, String>> rows;
+        try {
+            rows = readCsv(csv);
+        } catch (IOException e) {
+            log("[warn] cannot read " + csv + " (" + e.getMessage() + "); analyzing all extensions");
+            return;
+        }
+        Path summaryCsv = csv.resolveSibling("summary.csv");
+        if (Files.isRegularFile(summaryCsv)) {
+            Map<String, String> summary = new HashMap<>();
+            try {
+                for (Map<String, String> r : readCsv(summaryCsv)) summary.put(r.get("metric"), r.get("value"));
+            } catch (IOException e) {
+                log("[warn] cannot read " + summaryCsv + " (" + e.getMessage() + ")");
+            }
+            if ("false".equals(summary.get("scan_complete"))) {
+                log("[warn] summary.csv scan_complete=false; extensions.csv is ignored and all extensions are analyzed");
+                return;
+            }
+            if ("false".equals(summary.get("selection_complete")))
+                log("[warn] summary.csv selection_complete=false; activated list may be incomplete (see activation-issues.csv)");
+        } else {
+            log("[warn] summary.csv not found next to " + csv + "; scan completeness cannot be checked");
+        }
+        Set<Path> active = new HashSet<>();
+        List<String> names = new ArrayList<>();
+        for (Map<String, String> r : rows) {
+            String rel = r.getOrDefault("relative_dir", "");
+            String xmlPath = r.getOrDefault("xml_path", "");
+            Path dir;
+            if (!rel.isEmpty()) {
+                Path rp = Paths.get(rel);
+                dir = rp.isAbsolute() ? rp : base.resolve(rp);
+            } else if (!xmlPath.isEmpty()) {
+                dir = Paths.get(xmlPath).getParent();
+            } else continue;
+            active.add(dir.toAbsolutePath().normalize());
+            String name = r.get("extension");
+            if (name != null && !name.isEmpty()) names.add(name);
+        }
+        Set<Path> extDirs = new HashSet<>();
+        for (Path p : extInfos) extDirs.add(p.getParent().toAbsolutePath().normalize());
+        Set<Path> matched = new HashSet<>(active);
+        matched.retainAll(extDirs);
+        if (matched.isEmpty()) {
+            log("[warn] no extension in " + csv + " was found under the roots (check --base / HYBRIS_HOME); analyzing all extensions");
+            return;
+        }
+        if (matched.size() < active.size())
+            log("[warn] " + (active.size() - matched.size()) + " activated extension(s) in extensions.csv are not under the roots");
+        java.removeIf(p -> !keepActivated(p, extDirs, matched));
+        extInfos.removeIf(p -> !keepActivated(p, extDirs, matched));
+        spring.removeIf(p -> !keepActivated(p, extDirs, matched));
+        activatedOrder.addAll(names);
+        log("activated extensions: csv=" + active.size() + " matched=" + matched.size() + " of found=" + extDirs.size());
+    }
+
+    // 파일이 속한 가장 안쪽 extension 폴더가 활성이면 유지. extension에 속하지 않는 파일도 유지.
+    static boolean keepActivated(Path file, Set<Path> extDirs, Set<Path> matched) {
+        for (Path q = file.toAbsolutePath().normalize().getParent(); q != null; q = q.getParent())
+            if (extDirs.contains(q)) return matched.contains(q);
+        return true;
+    }
+
+    // UTF-8(BOM 허용), 큰따옴표 필드와 "" 이스케이프를 지원하는 CSV 읽기. 첫 행을 헤더로 쓴다.
+    static List<Map<String, String>> readCsv(Path p) throws IOException {
+        String s = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
+        if (s.startsWith("﻿")) s = s.substring(1);
+        List<List<String>> lines = new ArrayList<>();
+        List<String> cur = new ArrayList<>();
+        StringBuilder f = new StringBuilder();
+        boolean q = false, any = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (q) {
+                if (c == '"') {
+                    if (i + 1 < s.length() && s.charAt(i + 1) == '"') { f.append('"'); i++; }
+                    else q = false;
+                } else f.append(c);
+            } else if (c == '"') { q = true; any = true; }
+            else if (c == ',') { cur.add(f.toString()); f.setLength(0); any = true; }
+            else if (c == '\n' || c == '\r') {
+                if (c == '\r' && i + 1 < s.length() && s.charAt(i + 1) == '\n') i++;
+                if (any || f.length() > 0) { cur.add(f.toString()); lines.add(cur); }
+                cur = new ArrayList<>(); f.setLength(0); any = false;
+            } else { f.append(c); any = true; }
+        }
+        if (any || f.length() > 0) { cur.add(f.toString()); lines.add(cur); }
+        List<Map<String, String>> out = new ArrayList<>();
+        if (lines.isEmpty()) return out;
+        List<String> head = lines.get(0);
+        for (int r = 1; r < lines.size(); r++) {
+            Map<String, String> m = new LinkedHashMap<>();
+            for (int c = 0; c < head.size(); c++) m.put(head.get(c), c < lines.get(r).size() ? lines.get(r).get(c) : "");
+            out.add(m);
+        }
+        return out;
     }
 
     static String fqnOf(Path p) {

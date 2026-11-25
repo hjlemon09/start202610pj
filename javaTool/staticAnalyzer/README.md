@@ -6,6 +6,8 @@ Accelerator의 **CMS 컴포넌트 컨트롤러**(`AbstractAcceleratorCMSComponen
 
 Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-method`, `ListMergeDirective` 포함)를 해석하여, 인터페이스 호출이 실제로 어느 구현 bean으로 가는지까지 따라갑니다.
 
+[`activated-extension-extractor`](../activated-extension-extractor/README.md)의 결과 `extensions.csv`를 넘기면 **활성 extension만** 분석합니다. 자세한 내용은 아래 「활성 extension만 분석」을 참고하세요.
+
 ## 폴더 구성
 
 | 파일 | 클래스 | 내용 |
@@ -31,6 +33,7 @@ static final String[] ROOTS = { .../bin/platform, .../bin/modules, .../bin/custo
 static final String LOCAL_EXTENSIONS = HYBRIS_HOME + "/config/localextensions.xml"; // 없으면 null
 static final String CONTROLLER_ROOT = HYBRIS_HOME + "/bin/custom"; // 컨트롤러를 찾을 범위, 전체면 null
 static final String FILTER = null;                               // 예: "/mystorefront/"
+static final String EXTENSIONS_CSV = null;                       // 예: "C:/work/reports/20261125_101500_xxx/extensions.csv", 전체면 null
 static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (기본값: false)
 static final String OUT_NAME = PRUNE_ENABLED ? "calltree.txt" : "calltreeAll.txt"; // 작업 디렉터리에 생성
 static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
@@ -46,11 +49,12 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java
 |---|---|
 | `false` (기본값) | `calltreeAll.txt` (가지치기 없음) |
 | `true` | `calltree.txt` (가지치기 적용) |
- Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
+
+Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입니다.
 
 ### 2. 명령행 인자로 실행
 
-인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, 출력 파일 설정은 **모두 무시**됩니다. 출력 파일은 `--out`으로 직접 지정합니다. `PRUNE_ENABLED`에 따른 파일명 규칙은 적용되지 않습니다.
+인자를 하나라도 주면 소스 안의 `ROOTS`, `CONTROLLER_ROOT`, `LOCAL_EXTENSIONS`, `FILTER`, `EXTENSIONS_CSV`, 출력 파일 설정은 **모두 무시**됩니다. 출력 파일은 `--out`으로 직접 지정합니다. `PRUNE_ENABLED`에 따른 파일명 규칙은 적용되지 않습니다.
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
@@ -68,16 +72,59 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out call
 | `--max-depth <n>` | 트리 최대 깊이. 기본값은 20입니다. |
 | `--full` | 이미 전개한 서브트리도 다시 전개합니다. 기본은 `(expanded above)`로 접습니다. |
 | `--include-models` | model/data/form/dto 계열 클래스도 추적합니다. |
+| `--extensions-csv <csv>` | `activated-extension-extractor`의 `extensions.csv`. 활성 extension만 분석합니다(아래 참고). |
 
 `PRUNE_ENABLED`와 `NAME_FILTER`는 옵션으로 바꿀 수 없습니다. 소스에서 직접 수정해야 합니다.
+
+## 활성 extension만 분석 (`extensions.csv`)
+
+먼저 [`activated-extension-extractor`](../activated-extension-extractor/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그 결과 폴더의 `extensions.csv`를 `--extensions-csv`(또는 `EXTENSIONS_CSV`)로 지정합니다.
+
+```powershell
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out calltreeAll.txt --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --controller-root C:/hybris/bin/custom --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+```
+
+**동작**
+- 루트를 전부 탐색한 다음, **활성 extension 폴더에 속한 파일만 남깁니다.** 대상은 `.java`, `extensioninfo.xml`, `*-spring.xml`, `*-servlet.xml`입니다.
+  - 파일이 어느 extension에 속하는지는, 그 파일을 포함하는 **가장 안쪽** `extensioninfo.xml` 폴더로 정합니다.
+  - 어느 extension 폴더에도 속하지 않는 파일은 그대로 둡니다.
+- 활성 extension 폴더는 `extensions.csv`의 `relative_dir`을 `--base`(기본값 `HYBRIS_HOME`)에 붙여서 정합니다. `relative_dir`이 비어 있으면 `xml_path`의 폴더를 씁니다. 그래서 **`--base`는 extractor를 실행할 때 쓴 `HYBRIS_HOME`과 같은 구조여야 합니다.**
+- 같은 이름의 extension이 여러 개 있으면 extractor가 고른 폴더만 남습니다. 백업 복사본 같은 다른 폴더는 빠집니다.
+- extension 로드 순서는 `localextensions.xml` 순서, `extensions.csv`의 extension 순서, 알파벳 순서 순으로 시작점을 잡고, `requires-extension` 대상을 먼저 배치합니다. 필터를 쓰면 남은 extension이 모두 활성 extension이라서, 비활성 extension이 끼어들지 않습니다.
+
+**효과**
+- 비활성 extension의 bean이 registry에 들어가지 않습니다. 그래서 `[MULTI]`/`[UNRESOLVED]` 후보가 줄어듭니다.
+- 비활성 extension이 같은 bean id를 덮어써서 엉뚱한 구현으로 연결되는 일이 없어집니다.
+- 비활성 extension의 컨트롤러는 분석하지 않습니다.
+- 파싱하는 파일이 줄어서 시간과 메모리도 줄어듭니다.
+
+**전체 분석으로 되돌아가는 경우 (필터를 쓰지 않음)**
+
+| 조건 | 동작 |
+|---|---|
+| `extensions.csv`와 같은 폴더의 `summary.csv`가 `scan_complete=false` | 경고를 출력하고 **전체 extension을 대상**으로 분석합니다. extractor가 일부 `extensioninfo.xml`을 읽지 못해서 활성 목록에 빠진 것이 있을 수 있기 때문입니다. |
+| `extensions.csv`를 읽을 수 없음 | 경고 후 전체 분석 |
+| `extensions.csv`의 extension 폴더가 루트 아래에 하나도 없음 (`--base` 불일치 등) | 경고 후 전체 분석 |
+
+**경고만 출력하고 필터는 쓰는 경우**
+- `summary.csv`가 `selection_complete=false`일 때. 판정 문제가 있다는 뜻이므로 `activation-issues.csv`를 확인하세요.
+- `summary.csv`가 없을 때. 스캔이 완전했는지 확인할 수 없습니다.
+- `extensions.csv`의 일부 extension이 루트 아래에 없을 때. 해당 개수를 출력합니다.
+
+진행 로그에 `activated extensions: csv=… matched=… of found=…`와 필터 전후 파일 수가 출력됩니다.
+
+**한계**
+- extension 단위로만 좁힙니다. 활성 extension 안에 있는 `*-spring.xml`은 실제로 로드되지 않는 파일이라도 모두 읽습니다.
+- 활성 여부는 extractor가 정적으로 추정한 결과입니다.
 
 ## 처리 순서
 
 1. **파일 수집**: 각 루트에서 `.java`, `extensioninfo.xml`, `*-spring.xml`, `*-servlet.xml`를 모읍니다.
    - 건너뛰는 폴더: `.git`, `.svn`, `node_modules`, `classes`, `eclipsebin`, `testsrc`, `.settings`
    - 이름에 `-`가 들어간 `.java`(예: `package-info.java`)도 건너뜁니다.
+   - `--extensions-csv`를 지정하면 여기서 활성 extension 폴더의 파일만 남깁니다(위 「활성 extension만 분석」).
 2. **Java 인덱스**: 각 파일의 `package` 선언으로 FQN을 만들어 FQN과 경로, 단순명과 FQN 목록을 대응시킵니다.
-3. **extension 순서**: `extensioninfo.xml`의 `requires-extension`을 따라, `localextensions.xml`에 적힌 순서를 출발점으로 의존 extension을 먼저 배치합니다. 그 뒤에 남은 extension을 알파벳 순서로 붙입니다. Spring XML은 가장 깊은 extension 폴더에 속하는 것으로 봅니다.
+3. **extension 순서**: `extensioninfo.xml`의 `requires-extension`을 따라, `localextensions.xml`에 적힌 순서(`--extensions-csv`를 쓰면 그다음 `extensions.csv`의 순서)를 출발점으로 의존 extension을 먼저 배치합니다. 그 뒤에 남은 extension을 알파벳 순서로 붙입니다. Spring XML은 가장 깊은 extension 폴더에 속하는 것으로 봅니다.
    - 웹 XML: 경로에 `/web/webroot/`가 있거나, 파일명이 `-web-spring.xml` 또는 `-servlet.xml`로 끝나는 것
    - 그 밖의 XML은 core XML
 4. **core registry**: 모든 extension의 core XML을 위 순서대로 읽습니다. 같은 bean id는 나중 것이 덮어씁니다.

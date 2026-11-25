@@ -66,6 +66,8 @@ $env:EXTRACTOR_OPTS = '-Dextractor.output=C:\extractor-results -Dextractor.local
 | `activation-issues.csv` | 문제 하나당 한 행 | 설정 해석 문제입니다. 선언했는데 찾지 못한 이름, 경로 오류, 지원하지 않는 속성, 의존 대상 누락, 같은 경로 안의 중복 등이 여기에 나옵니다. |
 | `extension-duplicates.csv` | 사용하지 않은 중복 정의 하나당 한 행 | 같은 이름의 `extensioninfo.xml`이 여러 개일 때, 사용하지 않은 쪽과 그 이유입니다. |
 
+`extensions.csv`는 [`staticAnalyzer`](../staticAnalyzer/README.md)의 `--extensions-csv` 입력으로 쓸 수 있습니다. 이렇게 하면 호출 트리 분석을 활성 extension으로 좁힙니다. staticAnalyzer는 같은 폴더의 `summary.csv`도 함께 읽기 때문에 두 파일을 같은 폴더에 두세요.
+
 `extensions.csv`의 열은 다음과 같습니다.
 
 | 열 | 내용 |
