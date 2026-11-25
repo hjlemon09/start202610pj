@@ -54,6 +54,7 @@ static final String FILTER = null;                               // 예: "/mysto
 static final boolean USE_ACTIVATED_EXTENSIONS = true;            // false면 EXTENSIONS_CSV와 상관없이 전체 extension 대상
 static final String EXTENSIONS_CSV = null;                       // extensions.csv 파일, 결과 폴더, 또는 extractor의 reports 폴더(최신 결과 자동 선택). 전체면 null
 static final String[] INCLUDE_EXTENSIONS = {};                   // EXTENSIONS_CSV 사용 시 추가로 포함할 extension. 예: {"myaddon", "mytest"}
+static final String[] CLASS_PATHS = {};                        // 소스 없는 클래스의 타입을 읽을 .class 폴더/jar. 비우면 bootstrap/modelclasses(없으면 models.jar) 자동 사용
 static final boolean PRUNE_ENABLED = false;                      // 가지치기 사용 여부 (기본값: false)
 static final String OUT_DIR = null;                              // 출력 폴더. null이면 작업 디렉터리
 static final String OUT_SUFFIX = PRUNE_ENABLED ? "pruned" : "all"; // calltree_accelerator_<suffix>.txt, calltree_occ_<suffix>.txt
@@ -89,6 +90,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 | `--include-models` | model/data/form/dto 계열 클래스도 추적합니다. |
 | `--extensions-csv <csv\|폴더>` | `activated-extension-extractor`의 `extensions.csv`, 결과 폴더, 또는 `reports` 폴더(가장 최근 결과를 자동 선택). 활성 extension만 분석합니다(아래 참고). 생략하면 전체 분석입니다. |
 | `--include-ext <name>` | `--extensions-csv`와 함께 쓸 때, 이 extension도 분석 대상에 추가합니다. 여러 번 줄 수 있고 쉼표로 묶어도 됩니다(`--include-ext a,b --include-ext c`). |
+| `--class-path <폴더\|jar>` | 소스가 없는 클래스의 타입(메서드 반환 타입, 상수/enum 필드 타입, 상위 타입)을 읽을 `.class` 폴더나 jar입니다. 여러 번 줄 수 있습니다. 생략하면 `<base>/bin/platform/bootstrap/modelclasses`를 쓰고, 없으면 `bin/platform/bootstrap/bin/models.jar`를 씁니다. |
 
 `PRUNE_ENABLED`와 `NAME_FILTER`는 옵션으로 바꿀 수 없습니다. 소스에서 직접 수정해야 합니다.
 
@@ -208,7 +210,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
   - 리터럴 (`"…"`→String, `1`→int, `null` 등)
   - 파라미터, 지역 변수, 필드의 선언 타입
   - `new X()`, 캐스트
-  - 다른 메서드 호출의 반환 타입. 예: `component.getProductReferenceTypes()` → `List`
+  - 다른 메서드 호출의 반환 타입. 예: `component.getProductReferenceTypes()` → `List`. 수신 클래스의 소스가 없으면 `.class`에서 읽습니다.
   - `Type.CONSTANT` 형태의 상수와 enum 값
   - 문자열 연결(`+`)
 - 비교는 erasure 기준 단순 클래스명으로 합니다. 제네릭 인자는 비교하지 않습니다.
@@ -222,6 +224,15 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
   - `argument types matched none`: 추정한 타입이 어느 후보와도 맞지 않음
   - `argument types not checked`: 호출문 없이 붙인 노드(Converter → Populator)
 - 한 클래스의 후보가 모두 타입 불일치이면, 상위 클래스의 같은 이름 메서드를 이어서 찾습니다.
+
+**소스가 없는 클래스의 타입 (`.class` 읽기)**
+
+hybris의 model 클래스(`ProductReferencesComponentModel` 등)는 빌드할 때 생성됩니다. 환경에 따라 `.java` 소스(`bootstrap/gensrc`)가 남지 않고 컴파일된 `.class`만 있을 수 있습니다. 위치는 `bin/platform/bootstrap/modelclasses`와 그것을 묶은 `bootstrap/bin/models.jar`입니다.
+- 이런 클래스는 `.class` 파일에서 **타입 정보만** 읽어서 인자 타입 추정에 씁니다. 읽는 정보는 메서드 반환 타입, 상수/enum 필드 타입, 상위 클래스와 인터페이스입니다. 외부 라이브러리 없이 class 파일 구조를 직접 읽습니다.
+- 메서드 본문은 읽지 않습니다. 그래서 이 클래스들은 호출 트리에 노드로 펼쳐지지 않습니다.
+- 기본으로 `<base>/bin/platform/bootstrap/modelclasses`를 쓰고, 그 폴더가 없으면 `bin/platform/bootstrap/bin/models.jar`를 씁니다. 다른 폴더나 jar는 `--class-path`(또는 `CLASS_PATHS`)로 추가합니다.
+- 진행 로그에 `class index: N classes from [...]`가 출력됩니다.
+- 반환 타입이 제네릭 타입 변수(`T`)인 메서드는 판정하지 않습니다.
 
 **Converter → Populator**: 2인자 `populate(...)`를 호출하는 bean이면, 그 bean의 `populators` 목록(`parent`의 `merge="true"` 목록과 `ListMergeDirective`로 추가된 것 포함)에 있는 각 populator의 `populate`도 자식 노드로 붙입니다.
 
@@ -285,10 +296,10 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 
 - **XML에 정의된 bean만** registry에 들어갑니다. `component-scan`으로 등록되는 `@Component`/`@Service` bean은 인식하지 않습니다. 이런 bean은 `(no bean; declared class)`나 `NO-BEAN-FOUND`로 나옵니다.
 - 오버로드는 인자 타입을 **추정해서** 구분합니다. 아래 경우에는 판정하지 못해 `[OVERLOAD-AMBIGUOUS]`로 남습니다.
-  - 인자가 jar로만 제공되는 메서드의 반환값인 경우
+  - 인자가 `--class-path`에도 없는 jar 클래스 메서드의 반환값인 경우
   - 람다나 메서드 참조, 제네릭 타입 변수(`T`), 가변 인자인 경우
   - 후보마다 반환 타입이 다른 호출의 결과인 경우
-  - hybris model getter(`getXxx()`)의 반환 타입은 `gensrc`에 생성된 model 소스가 있어야 알 수 있습니다. `ant build`를 한 번 실행한 소스 트리를 분석하세요.
+  - hybris model(`XxxModel`)처럼 `.java` 소스가 없는 클래스는 `.class`(`bootstrap/modelclasses` 또는 `models.jar`)에서 타입을 읽습니다(위 「소스가 없는 클래스의 타입」). `.class`도 찾지 못하면 판정할 수 없습니다.
   - 제네릭 인자는 비교하지 않으므로 `List<A>`와 `List<B>` 오버로드는 구분하지 못합니다.
 - 메서드 참조(`Foo::bar`)는 따라가지 않습니다. 람다 안의 일반 메서드 호출은 따라갑니다.
 - jar로만 제공되는 클래스, AOP/인터셉터, 이벤트 리스너, 리플렉션, `${...}` 플레이스홀더로 지정한 class 속성은 추적하지 않습니다.

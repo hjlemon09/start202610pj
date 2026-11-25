@@ -57,6 +57,8 @@ import java.util.stream.Collectors;
  *                             analyze activated extensions only. Omit it to analyze all extensions.
  *                             (ignored, i.e. all extensions, when the sibling summary.csv says scan_complete=false)
  *   --include-ext <name>      with --extensions-csv: also analyze this extension (repeatable, or comma-separated)
+ *   --class-path <dir|jar>    .class folder/jar read for types only (overload resolution), repeatable.
+ *                             default: <base>/bin/platform/bootstrap/modelclasses, else bin/models.jar
  */
 public class CallTreeExtractor {
 
@@ -73,6 +75,8 @@ public class CallTreeExtractor {
     static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로, 또는 reports 폴더
                                                                          //   (폴더면 가장 최근 결과 폴더의 extensions.csv를 자동 선택). null이면 전체 대상
     static final String[] INCLUDE_EXTENSIONS = {};                       // EXTENSIONS_CSV 사용 시 추가로 포함할 extension 이름. 예: {"myaddon", "mytest"}
+    static final String[] CLASS_PATHS = {};                              // 소스(.java)가 없는 클래스(model 등)의 반환 타입을 읽을 .class 폴더나 jar. 비우면
+                                                                         //   HYBRIS_HOME/bin/platform/bootstrap/modelclasses (없으면 bin/models.jar)를 자동 사용
     static final boolean PRUNE_ENABLED = false;                          // false: 가지치기 없이 모든 노드 출력 (true: 최종 노드가 아래 이름 조건을 만족하는 가지만 출력)
     static final String OUT_DIR = null;                                  // 출력 폴더. null이면 작업 디렉터리(프로젝트 루트)
     static final String OUT_SUFFIX = PRUNE_ENABLED ? "pruned" : "all";   // calltree_accelerator_<suffix>.txt, calltree_occ_<suffix>.txt
@@ -85,6 +89,7 @@ public class CallTreeExtractor {
     static String outDir, localExt, webExtOpt, filterOpt, extensionsCsv;
     static final List<String> activatedOrder = new ArrayList<>(); // extensions.csv의 extension 이름 (순서 시드)
     static final List<String> includeExts = new ArrayList<>();    // 수동으로 추가 포함할 extension 이름
+    static final List<Path> classPaths = new ArrayList<>();       // .class 폴더 / jar (타입 추정용)
     static int maxDepth = 20;
     static boolean full = false, includeModels = false;
 
@@ -216,6 +221,7 @@ public class CallTreeExtractor {
         filterOpt = FILTER;
         extensionsCsv = USE_ACTIVATED_EXTENSIONS ? EXTENSIONS_CSV : null;
         includeExts.addAll(Arrays.asList(INCLUDE_EXTENSIONS));
+        for (String c : CLASS_PATHS) classPaths.add(Paths.get(c).toAbsolutePath().normalize());
         outDir = OUT_DIR != null ? OUT_DIR : System.getProperty("user.dir");
         if (a.length > 0) { // program args, if any, replace the defaults
             roots.clear();
@@ -225,6 +231,7 @@ public class CallTreeExtractor {
             filterOpt = null;
             extensionsCsv = null;
             includeExts.clear();
+            classPaths.clear();
         }
         for (int i = 0; i < a.length; i++) {
             switch (a[i]) {
@@ -241,6 +248,7 @@ public class CallTreeExtractor {
                 case "--full": full = true; break;
                 case "--include-models": includeModels = true; break;
                 case "--extensions-csv": extensionsCsv = a[++i]; break;
+                case "--class-path": classPaths.add(Paths.get(a[++i]).toAbsolutePath().normalize()); break;
                 case "--include-ext": // 반복 지정 또는 쉼표 구분 가능
                     for (String x : a[++i].split(",")) if (!x.trim().isEmpty()) includeExts.add(x.trim());
                     break;
@@ -276,6 +284,15 @@ public class CallTreeExtractor {
             String s = f.substring(f.lastIndexOf('.') + 1);
             simpleToFqn.computeIfAbsent(s, k -> new ArrayList<>()).add(f);
         }
+
+        // 2b) .class index (소스가 없는 model 등의 반환/필드 타입 추정용. 호출 트리로 전개하지는 않음)
+        if (classPaths.isEmpty()) {
+            Path mc = base.resolve("bin/platform/bootstrap/modelclasses"), mj = base.resolve("bin/platform/bootstrap/bin/models.jar");
+            if (Files.isDirectory(mc)) classPaths.add(mc);
+            else if (Files.isRegularFile(mj)) classPaths.add(mj);
+        }
+        for (Path cp : classPaths) indexClassPath(cp);
+        if (!classPaths.isEmpty()) log("class index: " + classLoc.size() + " classes from " + classPaths);
 
         // 3) extensions + order
         for (Path p : extInfos) {
@@ -944,7 +961,7 @@ public class CallTreeExtractor {
 
     static String resolveType(CI ctx, String n) {
         if (n == null || n.isEmpty()) return null;
-        if (n.indexOf('.') >= 0) return fqnToPath.containsKey(n) ? n : null;
+        if (n.indexOf('.') >= 0) return known(n) ? n : null;
         for (ImportDeclaration im : ctx.cu.getImports()) {
             if (im.isStatic() || im.isAsterisk()) continue;
             String nm = im.getNameAsString();
@@ -953,11 +970,11 @@ public class CallTreeExtractor {
         int dot = ctx.fqn.lastIndexOf('.');
         String pk = dot < 0 ? "" : ctx.fqn.substring(0, dot);
         String same = pk.isEmpty() ? n : pk + "." + n;
-        if (fqnToPath.containsKey(same)) return same;
+        if (known(same)) return same;
         for (ImportDeclaration im : ctx.cu.getImports()) {
             if (!im.isAsterisk() || im.isStatic()) continue;
             String c = im.getNameAsString() + "." + n;
-            if (fqnToPath.containsKey(c)) return c;
+            if (known(c)) return c;
         }
         List<String> l = simpleToFqn.get(n);
         if (l != null && l.size() == 1) return l.get(0);
@@ -1352,6 +1369,217 @@ public class CallTreeExtractor {
         return ok;
     }
 
+    // ===================== .class reader (types only, for classes without .java source) =====================
+    static final Map<String, Object> classLoc = new HashMap<>();      // fqn -> Path(.class) 또는 String[]{jarPath, entry}
+    static final Map<String, java.util.zip.ZipFile> jars = new HashMap<>();
+    static final Map<String, ClassInfo> classInfos = new HashMap<>();
+    static final Set<String> classBad = new HashSet<>();
+
+    static class MInfo { String name; List<TRef> params = new ArrayList<>(); TRef ret; }
+
+    static class ClassInfo {
+        String fqn, superFqn;
+        List<String> interfaces = new ArrayList<>();
+        List<MInfo> methods = new ArrayList<>();
+        Map<String, TRef> fields = new HashMap<>();
+    }
+
+    static boolean known(String fqn) { return fqnToPath.containsKey(fqn) || classLoc.containsKey(fqn); }
+
+    static void indexClassPath(Path cp) {
+        try {
+            if (Files.isDirectory(cp)) {
+                try (java.util.stream.Stream<Path> s = Files.walk(cp)) {
+                    s.filter(p -> p.toString().endsWith(".class")).forEach(p -> {
+                        String rel = cp.relativize(p).toString().replace('\\', '/');
+                        classLoc.putIfAbsent(rel.substring(0, rel.length() - 6).replace('/', '.').replace('$', '.'), p);
+                    });
+                }
+            } else if (Files.isRegularFile(cp)) {
+                java.util.zip.ZipFile z = new java.util.zip.ZipFile(cp.toFile());
+                jars.put(cp.toString(), z);
+                for (Enumeration<? extends java.util.zip.ZipEntry> en = z.entries(); en.hasMoreElements(); ) {
+                    String n = en.nextElement().getName();
+                    if (n.endsWith(".class") && !n.startsWith("META-INF/"))
+                        classLoc.putIfAbsent(n.substring(0, n.length() - 6).replace('/', '.').replace('$', '.'), new String[]{cp.toString(), n});
+                }
+            } else log("[warn] class path not found: " + cp);
+        } catch (IOException e) {
+            log("[warn] cannot index class path " + cp + " (" + e.getMessage() + ")");
+        }
+    }
+
+    static ClassInfo classInfo(String fqn) {
+        if (fqn == null || classBad.contains(fqn)) return null;
+        ClassInfo ci = classInfos.get(fqn);
+        if (ci != null) return ci;
+        Object loc = classLoc.get(fqn);
+        if (loc == null) return null;
+        try {
+            byte[] b;
+            if (loc instanceof Path) b = Files.readAllBytes((Path) loc);
+            else {
+                String[] j = (String[]) loc;
+                java.util.zip.ZipFile z = jars.get(j[0]);
+                try (InputStream in = z.getInputStream(z.getEntry(j[1]))) { b = in.readAllBytes(); }
+            }
+            ci = parseClass(b);
+            classInfos.put(fqn, ci);
+            return ci;
+        } catch (Exception e) {
+            classBad.add(fqn);
+            return null;
+        }
+    }
+
+    // JVM class file: constant pool, super/interfaces, fields, methods(+Signature attribute)만 읽는다.
+    static ClassInfo parseClass(byte[] b) throws IOException {
+        DataInputStream in = new DataInputStream(new ByteArrayInputStream(b));
+        if (in.readInt() != 0xCAFEBABE) throw new IOException("not a class file");
+        in.readUnsignedShort(); in.readUnsignedShort();
+        int n = in.readUnsignedShort();
+        String[] utf = new String[n];
+        int[] classIdx = new int[n];
+        for (int i = 1; i < n; i++) {
+            int tag = in.readUnsignedByte();
+            switch (tag) {
+                case 1: utf[i] = in.readUTF(); break;
+                case 7: classIdx[i] = in.readUnsignedShort(); break;
+                case 3: case 4: in.readInt(); break;
+                case 5: case 6: in.readLong(); i++; break;
+                case 8: case 16: case 19: case 20: in.readUnsignedShort(); break;
+                case 9: case 10: case 11: case 12: case 17: case 18: in.readInt(); break;
+                case 15: in.readUnsignedByte(); in.readUnsignedShort(); break;
+                default: throw new IOException("bad constant pool tag " + tag);
+            }
+        }
+        ClassInfo ci = new ClassInfo();
+        in.readUnsignedShort();
+        ci.fqn = internal(utf[classIdx[in.readUnsignedShort()]]);
+        int sup = in.readUnsignedShort();
+        ci.superFqn = sup == 0 ? null : internal(utf[classIdx[sup]]);
+        int ic = in.readUnsignedShort();
+        for (int i = 0; i < ic; i++) ci.interfaces.add(internal(utf[classIdx[in.readUnsignedShort()]]));
+        int fc = in.readUnsignedShort();
+        for (int i = 0; i < fc; i++) {
+            in.readUnsignedShort();
+            String name = utf[in.readUnsignedShort()], desc = utf[in.readUnsignedShort()];
+            skipAttrs(in);
+            ci.fields.put(name, descType(desc, new int[]{0}));
+        }
+        int mc = in.readUnsignedShort();
+        for (int i = 0; i < mc; i++) {
+            in.readUnsignedShort();
+            MInfo mi = new MInfo();
+            mi.name = utf[in.readUnsignedShort()];
+            String desc = utf[in.readUnsignedShort()], sig = null;
+            int ac = in.readUnsignedShort();
+            for (int a = 0; a < ac; a++) {
+                String an = utf[in.readUnsignedShort()];
+                int len = in.readInt();
+                if (an.equals("Signature") && len == 2) sig = utf[in.readUnsignedShort()];
+                else in.skipBytes(len);
+            }
+            int[] pos = {1};
+            while (desc.charAt(pos[0]) != ')') mi.params.add(descType(desc, pos));
+            pos[0]++;
+            mi.ret = desc.charAt(pos[0]) == 'V' ? null : descType(desc, pos);
+            if (sig != null) { // 반환 타입이 제네릭 타입 변수(T...)면 판정하지 않음
+                int r = sig.lastIndexOf(')');
+                if (r >= 0 && r + 1 < sig.length() && sig.charAt(r + 1) == 'T') mi.ret = null;
+            }
+            ci.methods.add(mi);
+        }
+        return ci;
+    }
+
+    static void skipAttrs(DataInputStream in) throws IOException {
+        int ac = in.readUnsignedShort();
+        for (int a = 0; a < ac; a++) { in.readUnsignedShort(); in.skipBytes(in.readInt()); }
+    }
+
+    static String internal(String s) { return s.replace('/', '.').replace('$', '.'); }
+
+    static TRef descType(String d, int[] pos) {
+        char c = d.charAt(pos[0]++);
+        switch (c) {
+            case 'B': return new TRef("byte", null);
+            case 'C': return new TRef("char", null);
+            case 'D': return new TRef("double", null);
+            case 'F': return new TRef("float", null);
+            case 'I': return new TRef("int", null);
+            case 'J': return new TRef("long", null);
+            case 'S': return new TRef("short", null);
+            case 'Z': return new TRef("boolean", null);
+            case '[': { TRef t = descType(d, pos); return new TRef(t.name + "[]", null); }
+            case 'L': {
+                int e = d.indexOf(';', pos[0]);
+                String f = internal(d.substring(pos[0], e));
+                pos[0] = e + 1;
+                return new TRef(simple(f), f);
+            }
+            default: return null;
+        }
+    }
+
+    // 소스가 없는 클래스에서 메서드 반환 타입 찾기 (상위 클래스/인터페이스 포함). 후보끼리 반환 타입이 다르면 null.
+    static TRef classMethodReturn(String fqn, String name, int argc) {
+        Deque<String> q = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        q.add(fqn);
+        while (!q.isEmpty() && seen.size() < 40) {
+            String x = q.poll();
+            if (!seen.add(x)) continue;
+            ClassInfo c = classInfo(x);
+            if (c == null) continue;
+            TRef found = null;
+            boolean any = false;
+            for (MInfo m : c.methods) {
+                if (!m.name.equals(name) || m.params.size() != argc) continue;
+                if (m.ret == null) return null;
+                if (any && !found.name.equals(m.ret.name)) return null;
+                found = m.ret; any = true;
+            }
+            if (any) return found;
+            if (c.superFqn != null) q.add(c.superFqn);
+            q.addAll(c.interfaces);
+        }
+        return null;
+    }
+
+    // 소스 또는 .class로 알 수 있는 상위 타입 단순명 집합. complete[0]=false면 끝까지 알 수 없었음
+    static Set<String> superNames(String fqn, boolean[] complete) {
+        Set<String> names = new HashSet<>(), seen = new HashSet<>();
+        Deque<String> q = new ArrayDeque<>();
+        q.add(fqn);
+        while (!q.isEmpty() && seen.size() < 60) {
+            String x = q.poll();
+            if (!seen.add(x)) continue;
+            names.add(simple(x));
+            if (x.equals("java.lang.Object") || x.equals("java.io.Serializable") || x.equals("java.lang.Cloneable")) continue;
+            CI c = ci(x);
+            if (c != null) {
+                for (ClassOrInterfaceType st : superTypeNodes(c)) {
+                    String r = resolveTypeNode(c, st);
+                    if (r != null) q.add(r);
+                    else if (JDK_SUPERS.containsKey(st.getNameAsString())) { names.add(st.getNameAsString()); names.addAll(JDK_SUPERS.get(st.getNameAsString())); }
+                    else complete[0] = false;
+                }
+                continue;
+            }
+            ClassInfo k = classInfo(x);
+            if (k != null) {
+                if (k.superFqn != null) q.add(k.superFqn);
+                q.addAll(k.interfaces);
+                continue;
+            }
+            String sn = simple(x);
+            if (x.startsWith("java.") && JDK_SUPERS.containsKey(sn)) names.addAll(JDK_SUPERS.get(sn));
+            else complete[0] = false;
+        }
+        return names;
+    }
+
     // ===================== argument static types (overload resolution) =====================
     static final int MATCH = 1, UNKNOWN = 0, NO = -1;
 
@@ -1468,19 +1696,42 @@ public class CallTreeExtractor {
                     if (inj != null) return typeRef(inj.ctx, inj.type, null);
                     if (tc.td instanceof EnumDeclaration) return new TRef(tn, tf);
                 }
+                ClassInfo k = classInfo(tf); // 소스 없는 클래스의 상수/enum 값: .class의 필드 타입
+                if (k != null && k.fields.containsKey(fn)) return k.fields.get(fn);
                 if (fn.equals(fn.toUpperCase())) return new TRef(tn, tf); // 소스 없는 enum/상수 클래스: Type.VALUE -> Type으로 추정
             }
             return null;
         }
         if (e.isMethodCallExpr()) {
+            MethodCallExpr mc = e.asMethodCallExpr();
             String ret = null; TRef first = null;
-            for (Callee c : resolveCall(e.asMethodCallExpr(), f)) {
+            for (Callee c : resolveCall(mc, f)) {
                 TRef r = typeRef(c.decl, c.m.getType(), c.m);
                 if (r == null) return null;
                 if (first == null) { first = r; ret = r.name; }
                 else if (!ret.equals(r.name)) return null; // 후보마다 반환 타입이 다르면 판정 불가
             }
-            return first;
+            if (first != null) return first;
+            // 소스가 없는 수신 타입: .class에서 반환 타입을 읽는다 (예: models.jar의 XxxModel.getYyy())
+            if (mc.getScope().isPresent() && !classLoc.isEmpty()) {
+                TRef recv = receiverType(mc.getScope().get(), f, depth);
+                if (recv != null && recv.fqn != null) return classMethodReturn(recv.fqn, mc.getNameAsString(), mc.getArguments().size());
+            }
+            return null;
+        }
+        return null;
+    }
+
+    // 메서드 호출의 수신 타입. 변수/필드/식이면 그 타입, 대문자 이름이면 static 호출의 클래스.
+    static TRef receiverType(Expression sc, Frame f, int depth) {
+        TRef t = exprType(sc, f, depth + 1);
+        if (t != null) return t;
+        if (sc.isNameExpr()) {
+            String n = sc.asNameExpr().getNameAsString();
+            if (Character.isUpperCase(n.charAt(0)) && localType(f, n) == null) {
+                String fq = resolveType(f.decl, n);
+                if (fq != null) return new TRef(n, fq);
+            }
         }
         return null;
     }
@@ -1521,21 +1772,11 @@ public class CallTreeExtractor {
         if (a.name.endsWith("[]") || p.name.endsWith("[]")) return NO;
         if (JDK_SUPERS.containsKey(a.name) && (a.fqn == null || a.fqn.startsWith("java."))) // 알려진 JDK 타입
             return JDK_SUPERS.get(a.name).contains(p.name) ? MATCH : NO;
-        if (a.fqn != null && ci(a.fqn) != null) { // 소스가 있는 타입: 상위 타입을 끝까지 알 수 있으면 확정
-            boolean complete = true;
-            for (String s : closure(a.fqn)) {
-                if (simple(s).equals(p.name)) return MATCH;
-                CI sc = ci(s);
-                if (sc == null) complete = false;
-                else for (ClassOrInterfaceType st : superTypeNodes(sc))
-                    if (resolveTypeNode(sc, st) == null) {
-                        String sn = st.getNameAsString();
-                        if (sn.equals(p.name)) return MATCH;
-                        if (!JDK_SUPERS.containsKey(sn)) complete = false; // 소스 없는 상위 타입이 있음
-                        else if (JDK_SUPERS.get(sn).contains(p.name)) return MATCH;
-                    }
-            }
-            return complete ? NO : UNKNOWN;
+        if (a.fqn != null && (ci(a.fqn) != null || classInfo(a.fqn) != null)) { // 소스 또는 .class가 있는 타입: 상위 타입을 끝까지 알면 확정
+            boolean[] complete = {true};
+            Set<String> sup = superNames(a.fqn, complete);
+            if (sup.contains(p.name)) return MATCH;
+            return complete[0] ? NO : UNKNOWN;
         }
         return UNKNOWN;
     }
