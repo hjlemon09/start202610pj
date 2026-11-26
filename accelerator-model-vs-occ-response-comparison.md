@@ -116,7 +116,7 @@ A와 B가 맞으면 **후보**, C까지 맞으면 **대체 가능**으로 판정
 | Data → WsDTO 이름이 다른 매핑 | Orika `fieldMapper`·커스텀 converter 빈 | 속성 이름 대응표 |
 | JSP가 쓰는 속성 | 컴포넌트 JSP의 EL (`${product.price.formattedValue}`) | "필요한 속성" 집합 |
 
-Spring XML은 `modifyPopulatorList`, alias, 빈 오버라이드로 extension마다 덮어쓴다. 정적으로 정확히 해석하려면 [sap-commerce-spring-context-analyzer.md](sap-commerce-spring-context-analyzer.md)에서 정리한 수준의 로드 순서 해석이 필요하다. 이 부분이 정적 방식에서 가장 비용이 크다.
+Spring XML은 `modifyPopulatorList`, alias, 빈 오버라이드로 extension마다 덮어쓴다. 정적으로 정확히 해석하려면 [sap-commerce-spring-context-analyzer](sap-commerce-spring-context-analyzer/) 절차서(특히 [7장 extension 사이의 로드 순서](sap-commerce-spring-context-analyzer/07-extension-사이의-로드-순서-확인.md))에서 정리한 수준의 로드 순서 해석이 필요하다. 이 부분이 정적 방식에서 가장 비용이 크다.
 
 ### 3.5 정적 방식만으로의 판단
 

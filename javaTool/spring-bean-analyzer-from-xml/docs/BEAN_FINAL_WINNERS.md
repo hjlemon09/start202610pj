@@ -6,8 +6,10 @@
 SAP Commerce의 커스터마이즈는 대부분 "같은 id로 다시 정의" 또는 "같은 alias를 다른 빈에 다시 연결"하는 방식이라,
 이 결정 없이는 어떤 클래스가 실제로 쓰이는지 알 수 없다.
 
-판정 규칙은 저장소 루트의 [sap-commerce-spring-context-analyzer.md](../../../sap-commerce-spring-context-analyzer.md)
-2.1절(덮어쓰기 판단), 7장(extension 로드 순서), 9.5~9.6절(import 처리 순서)을 따른다.
+판정 규칙은 저장소 루트의 [sap-commerce-spring-context-analyzer](../../../sap-commerce-spring-context-analyzer/) 절차서의
+[2.1절](../../../sap-commerce-spring-context-analyzer/02-배포에-포함된-extension-집합-확인.md)(덮어쓰기 판단),
+[7장](../../../sap-commerce-spring-context-analyzer/07-extension-사이의-로드-순서-확인.md)(extension 로드 순서),
+[9.5~9.6절](../../../sap-commerce-spring-context-analyzer/09-XML-내부-profile과-import-처리-흐름-확인.md)(import 처리 순서)을 따른다.
 
 ## 1. 등록 순서 재생
 
