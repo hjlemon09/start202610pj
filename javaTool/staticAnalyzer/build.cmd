@@ -8,7 +8,7 @@ if not exist "%JAVAPARSER_JAR%" (
     exit /b 1
 )
 if not exist bin mkdir bin
-javac --release 21 -encoding UTF-8 -cp "%JAVAPARSER_JAR%" -d bin com\CallTreeExtractor.java execute\Execute.java
+javac --release 21 -encoding UTF-8 -cp "%JAVAPARSER_JAR%" -d bin com\CallTreeExtractor.java com\SpringBeanReport.java execute\Execute.java
 set "BUILD_RESULT=%ERRORLEVEL%"
 popd
 exit /b %BUILD_RESULT%

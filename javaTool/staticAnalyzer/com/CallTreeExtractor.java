@@ -31,13 +31,8 @@ import java.util.stream.Collectors;
 /**
  * SAP Commerce (Hybris) static call-tree extractor.
  *
- * Run (Java 11+, JavaParser 3.26.0+ for JAVA_21):
- *   java -Xmx6g -cp javaparser-core-3.27.1.jar CallTreeExtractor.java \
- *        --out-dir . --base /path/to/hybris \
- *        --localextensions /path/to/hybris/config/localextensions.xml \
- *        --extensions-csv /path/to/reports/xxx/extensions.csv \
- *        /path/to/hybris/bin/platform /path/to/hybris/bin/modules /path/to/hybris/bin/custom
- *
+ * Run with execute.Execute (JDK 21+, JavaParser 3.26.0+).
+
  * Positional args = source roots. Later roots override earlier ones when the same FQN exists. List custom last.
  * Target controllers: @Controller/@RestController classes that (indirectly) extend
  *   AbstractController (accelerator storefront, not org.springframework.*) -> calltree_accelerator_{all|pruned}.txt
@@ -57,6 +52,8 @@ import java.util.stream.Collectors;
  *                             analyze activated extensions only. Omit it to analyze all extensions.
  *                             (ignored, i.e. all extensions, when the sibling summary.csv says scan_complete=false)
  *   --include-ext <name>      with --extensions-csv: also analyze this extension (repeatable, or comma-separated)
+ *   --spring-report <csv|dir> XML analyzer winner report, run directory, or reports directory (latest run).
+ *   --spring-context <name>   report context override, e.g. SERVLET:shop:dispatcher.
  *   --class-path <dir|jar>    .class folder/jar read for types only (overload resolution), repeatable.
  *                             default: <base>/bin/platform/bootstrap/modelclasses, else bin/models.jar
  */
@@ -74,6 +71,8 @@ public class CallTreeExtractor {
     static final boolean USE_ACTIVATED_EXTENSIONS = true;                // true: 아래 EXTENSIONS_CSV로 활성 extension만 대상 / false: 전체 extension 대상
     static final String EXTENSIONS_CSV = null;                           // extension-analyzer의 extensions.csv 경로, 또는 reports 폴더
                                                                          //   (폴더면 가장 최근 결과 폴더의 extensions.csv를 자동 선택). null이면 전체 대상
+    static final String SPRING_REPORT = null;                             // XML 분석 결과 폴더 또는 reports 폴더
+    static final String SPRING_CONTEXT = null;                            // 예: SERVLET:mystorefront:DispatcherServlet
     static final String[] INCLUDE_EXTENSIONS = {};                       // EXTENSIONS_CSV 사용 시 추가로 포함할 extension 이름. 예: {"myaddon", "mytest"}
     static final String[] CLASS_PATHS = {};                              // 소스(.java)가 없는 클래스(model 등)의 반환 타입을 읽을 .class 폴더나 jar. 비우면
                                                                          //   HYBRIS_HOME/bin/platform/bootstrap/modelclasses (없으면 bin/models.jar)를 자동 사용
@@ -86,7 +85,7 @@ public class CallTreeExtractor {
     static List<Path> roots = new ArrayList<>();
     static List<Path> controllerRoots = new ArrayList<>();
     static Path base = Paths.get("").toAbsolutePath().normalize();
-    static String outDir, localExt, webExtOpt, filterOpt, extensionsCsv;
+    static String outDir, localExt, webExtOpt, filterOpt, extensionsCsv, springReportPath, springContextOpt;
     static final List<String> activatedOrder = new ArrayList<>(); // extensions.csv의 extension 이름 (순서 시드)
     static final List<String> includeExts = new ArrayList<>();    // 수동으로 추가 포함할 extension 이름
     static final List<Path> classPaths = new ArrayList<>();       // .class 폴더 / jar (타입 추정용)
@@ -124,21 +123,40 @@ public class CallTreeExtractor {
         Map<String, String> lookups = new HashMap<>();
         Map<Integer, String> ctor = new HashMap<>();
         ListVal selfList; // util:list
+        Registry reportOwner;
+        String reportKey, reportSource, reportStatus, reportTypeIssue;
+        Set<String> propertyNames = new HashSet<>();
+        Map<String, String> namedCtor = new HashMap<>();
+        int ctorCount;
     }
 
     static class Parsed {
+        boolean report;
         List<BeanDef> beans = new ArrayList<>();
         Map<String, String> alias = new LinkedHashMap<>();
     }
 
     static class Registry {
         Registry parent;
+        String context;
+        Map<String, BeanDef> reportAliases = new HashMap<>();
+        Map<String, BeanDef> innerBeans = new HashMap<>();
         Map<String, BeanDef> beans = new LinkedHashMap<>();
         Map<String, String> alias = new HashMap<>();
         Map<String, List<String>> directives = new HashMap<>();
         Map<String, List<BeanDef>> typeIdx;
 
         BeanDef get(String id) {
+            if (context != null) {
+                if (id.startsWith(PARENT_REF)) return parent == null ? null : parent.get(id.substring(PARENT_REF.length()));
+                for (Registry r = this; r != null; r = r.parent) {
+                    BeanDef b = r.innerBeans.get(id);
+                    if (b == null) b = r.reportAliases.get(id);
+                    if (b == null) b = r.beans.get(id);
+                    if (b != null) return b;
+                }
+                return null;
+            }
             String k = id;
             for (int g = 0; g < 10 && k != null; g++) {
                 for (Registry r = this; r != null; r = r.parent) {
@@ -153,6 +171,7 @@ public class CallTreeExtractor {
         }
     }
 
+    static final String PARENT_REF = "\0parent:";
     static Registry core = new Registry();
     static final Map<String, Registry> webCache = new HashMap<>();
     static final Map<Path, Parsed> parsedCache = new HashMap<>();
@@ -181,6 +200,7 @@ public class CallTreeExtractor {
         String cls;
         BeanDef bean;
         String note;
+        boolean reportFailure;
 
         Target(String c, BeanDef b, String n) {
             cls = c;
@@ -203,6 +223,7 @@ public class CallTreeExtractor {
         Target recv;
         List<Integer> callLines = new ArrayList<>(); // 호출하는 쪽(부모 노드) 소스에서 이 메서드를 호출한 행 번호
         String overload; // 인자 타입으로 오버로드를 하나로 좁히지 못했을 때의 표시
+        String unresolvedCall;
     }
 
     static class Inj {
@@ -212,11 +233,13 @@ public class CallTreeExtractor {
     }
 
     // ===================== main =====================
-    public static void main(String[] a) throws Exception {
+    public static void run(String[] a) throws Exception {
         // embedded defaults (project root = working directory; Eclipse default is the project root)
         base = Paths.get(HYBRIS_HOME).toAbsolutePath().normalize();
         for (String r : ROOTS) roots.add(Paths.get(r).toAbsolutePath().normalize());
         localExt = LOCAL_EXTENSIONS;
+        springReportPath = SPRING_REPORT;
+        springContextOpt = SPRING_CONTEXT;
         if (CONTROLLER_ROOT != null) controllerRoots.add(Paths.get(CONTROLLER_ROOT).toAbsolutePath().normalize());
         filterOpt = FILTER;
         extensionsCsv = USE_ACTIVATED_EXTENSIONS ? EXTENSIONS_CSV : null;
@@ -230,6 +253,8 @@ public class CallTreeExtractor {
             localExt = null;
             filterOpt = null;
             extensionsCsv = null;
+            springReportPath = null;
+            springContextOpt = null;
             includeExts.clear();
             classPaths.clear();
         }
@@ -248,6 +273,17 @@ public class CallTreeExtractor {
                 case "--full": full = true; break;
                 case "--include-models": includeModels = true; break;
                 case "--extensions-csv": extensionsCsv = a[++i]; break;
+                case "--spring-report":
+                case "--spring-report-dir":
+                    if (i + 1 >= a.length || a[i + 1].startsWith("--"))
+                        throw new IllegalArgumentException(a[i] + " needs a CSV or directory");
+                    springReportPath = a[++i];
+                    break;
+                case "--spring-context":
+                    if (i + 1 >= a.length || a[i + 1].startsWith("--"))
+                        throw new IllegalArgumentException("--spring-context needs a report context name");
+                    springContextOpt = a[++i];
+                    break;
                 case "--class-path": classPaths.add(Paths.get(a[++i]).toAbsolutePath().normalize()); break;
                 case "--include-ext": // 반복 지정 또는 쉼표 구분 가능
                     for (String x : a[++i].split(",")) if (!x.trim().isEmpty()) includeExts.add(x.trim());
@@ -256,9 +292,14 @@ public class CallTreeExtractor {
             }
         }
         if (roots.isEmpty()) {
-            System.err.println("usage: java -cp javaparser-core.jar CallTreeExtractor.java [options] <root>...");
+            System.err.println("usage: run.cmd [options] <root>...");
             return;
         }
+        if (springContextOpt != null && springReportPath == null)
+            throw new IllegalArgumentException("--spring-context requires --spring-report");
+        SpringBeanReport springReport = springReportPath == null ? null : SpringBeanReport.load(springReportPath);
+        Registry explicitContext = springReport == null || springContextOpt == null ? null : springReport.context(springContextOpt);
+
         ParserConfiguration cfg = new ParserConfiguration();
         cfg.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
         cfg.setAttributeComments(false);
@@ -267,7 +308,7 @@ public class CallTreeExtractor {
 
         // 1) walk
         List<Path> javaFiles = new ArrayList<>(), extInfos = new ArrayList<>(), springFiles = new ArrayList<>();
-        for (Path r : roots) walk(r, javaFiles, extInfos, springFiles);
+        for (Path r : roots) walk(r, javaFiles, extInfos, springReport == null ? springFiles : null);
         log("files: java=" + javaFiles.size() + " extensioninfo=" + extInfos.size() + " spring-xml=" + springFiles.size());
         if (extensionsCsv != null) {
             applyActivatedFilter(javaFiles, extInfos, springFiles);
@@ -313,31 +354,7 @@ public class CallTreeExtractor {
             for (int i = 0; i < rq.getLength(); i++) e.requires.add(((Element) rq.item(i)).getAttribute("name"));
             extByName.put(e.name, e);
         }
-        Set<String> done = new HashSet<>();
-        if (localExt != null) {
-            Document d = xml(Paths.get(localExt));
-            if (d != null) {
-                NodeList nl = d.getElementsByTagName("extension");
-                for (int i = 0; i < nl.getLength(); i++) visit(((Element) nl.item(i)).getAttribute("name"), done);
-            }
-        }
-        for (String n : activatedOrder) visit(n, done); // extensions.csv 사용 시: 활성 extension을 의존 대상 먼저 배치
-        for (String n : new TreeSet<>(extByName.keySet())) visit(n, done);
-        for (Path s : springFiles) {
-            Ext best = null;
-            for (Ext e : extByName.values())
-                if (s.startsWith(e.dir) && (best == null || e.dir.getNameCount() > best.dir.getNameCount())) best = e;
-            if (best != null) (isWeb(s) ? best.web : best.core).add(s);
-        }
-        for (Ext e : order) {
-            Collections.sort(e.core);
-            Collections.sort(e.web);
-        }
-        log("extensions=" + order.size());
-
-        // 4) core registry
-        for (Ext e : order) for (Path f : e.core) load(core, f, false);
-        log("core beans=" + core.beans.size());
+        if (springReport == null) loadLegacySpring(springFiles);
 
         // 5) controllers
         List<Path> scan = controllerRoots.isEmpty() ? javaFiles
@@ -373,7 +390,8 @@ public class CallTreeExtractor {
             PrintWriter out = outs.get(kind);
             Ext ext = extOf(cc.path);
             String webName = webExtOpt != null ? webExtOpt : (ext == null ? null : ext.name);
-            Registry reg = webName == null ? new Registry() {{ parent = core; }} : webReg(webName);
+            Registry reg = springReport == null ? (webName == null ? core : webReg(webName))
+                    : explicitContext != null ? explicitContext : springReport.controllerContext(webName);
             BeanDef cb = beanByClass(reg, cfqn);
             String cm = mapping(cc.td);
             boolean cmsComp = isCmsComponentController(cc);
@@ -414,6 +432,34 @@ public class CallTreeExtractor {
         }
     }
 
+    static void loadLegacySpring(List<Path> springFiles) {
+        Set<String> done = new HashSet<>();
+        if (localExt != null) {
+            Document d = xml(Paths.get(localExt));
+            if (d != null) {
+                NodeList nl = d.getElementsByTagName("extension");
+                for (int i = 0; i < nl.getLength(); i++) visit(((Element) nl.item(i)).getAttribute("name"), done);
+            }
+        }
+        for (String n : activatedOrder) visit(n, done); // extensions.csv 사용 시: 활성 extension을 의존 대상 먼저 배치
+        for (String n : new TreeSet<>(extByName.keySet())) visit(n, done);
+        for (Path s : springFiles) {
+            Ext best = null;
+            for (Ext e : extByName.values())
+                if (s.startsWith(e.dir) && (best == null || e.dir.getNameCount() > best.dir.getNameCount())) best = e;
+            if (best != null) (isWeb(s) ? best.web : best.core).add(s);
+        }
+        for (Ext e : order) {
+            Collections.sort(e.core);
+            Collections.sort(e.web);
+        }
+        log("extensions=" + order.size());
+
+        // 4) core registry
+        for (Ext e : order) for (Path f : e.core) load(core, f, false);
+        log("core beans=" + core.beans.size());
+    }
+
     static void log(String s) { System.err.println("[info] " + s); }
 
     // ===================== walk / index =====================
@@ -430,7 +476,7 @@ public class CallTreeExtractor {
                 String n = f.getFileName().toString();
                 if (n.endsWith(".java")) { if (!n.contains("-")) java.add(f); }
                 else if (n.equals("extensioninfo.xml")) extInfos.add(f);
-                else if (n.endsWith("-spring.xml") || n.endsWith("-servlet.xml")) spring.add(f);
+                else if (spring != null && (n.endsWith("-spring.xml") || n.endsWith("-servlet.xml"))) spring.add(f);
                 return FileVisitResult.CONTINUE;
             }
 
@@ -528,13 +574,17 @@ public class CallTreeExtractor {
     static final Pattern REPORT_DIR = Pattern.compile("^\\d{8}_\\d{6}_.*");
 
     static Path resolveExtensionsCsv(String spec) {
+        return resolveReportCsv(spec, "extensions.csv");
+    }
+
+    static Path resolveReportCsv(String spec, String filename) {
         Path p = Paths.get(spec).toAbsolutePath().normalize();
         if (Files.isRegularFile(p)) return p;
         if (!Files.isDirectory(p)) return null;
-        if (Files.isRegularFile(p.resolve("extensions.csv"))) return p.resolve("extensions.csv");
+        if (Files.isRegularFile(p.resolve(filename))) return p.resolve(filename);
         List<Path> cands = new ArrayList<>();
         try (java.util.stream.Stream<Path> s = Files.list(p)) {
-            s.filter(d -> Files.isRegularFile(d.resolve("extensions.csv"))).forEach(cands::add);
+            s.filter(d -> Files.isRegularFile(d.resolve(filename))).forEach(cands::add);
         } catch (IOException e) {
             log("[warn] cannot list " + p + " (" + e.getMessage() + ")");
             return null;
@@ -542,13 +592,13 @@ public class CallTreeExtractor {
         if (cands.isEmpty()) return null;
         Comparator<Path> byName = Comparator.comparing(d -> d.getFileName().toString());
         Comparator<Path> byTime = Comparator.comparing(d -> {
-            try { return Files.getLastModifiedTime(d.resolve("extensions.csv")).toMillis(); } catch (IOException e) { return 0L; }
+            try { return Files.getLastModifiedTime(d.resolve(filename)).toMillis(); } catch (IOException e) { return 0L; }
         });
         List<Path> named = new ArrayList<>();
         for (Path d : cands) if (REPORT_DIR.matcher(d.getFileName().toString()).matches()) named.add(d);
         Path latest = !named.isEmpty() ? Collections.max(named, byName) : Collections.max(cands, byTime);
         log("latest extractor report (of " + cands.size() + "): " + latest.getFileName());
-        return latest.resolve("extensions.csv");
+        return latest.resolve(filename);
     }
 
     static String extNameOf(Path extensionInfo) {
@@ -570,7 +620,7 @@ public class CallTreeExtractor {
     }
 
     // UTF-8(BOM 허용), 큰따옴표 필드와 "" 이스케이프를 지원하는 CSV 읽기. 첫 행을 헤더로 쓴다.
-    static List<Map<String, String>> readCsv(Path p) throws IOException {
+    static List<Map<String, String>> readCsv(Path p, String... requiredColumns) throws IOException {
         String s = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
         if (s.startsWith("﻿")) s = s.substring(1);
         List<List<String>> lines = new ArrayList<>();
@@ -588,15 +638,23 @@ public class CallTreeExtractor {
             else if (c == ',') { cur.add(f.toString()); f.setLength(0); any = true; }
             else if (c == '\n' || c == '\r') {
                 if (c == '\r' && i + 1 < s.length() && s.charAt(i + 1) == '\n') i++;
-                if (any || f.length() > 0) { cur.add(f.toString()); lines.add(cur); }
+                if (q && requiredColumns.length > 0) throw new IOException("Unclosed CSV field: " + p);
+        if (any || f.length() > 0) { cur.add(f.toString()); lines.add(cur); }
                 cur = new ArrayList<>(); f.setLength(0); any = false;
             } else { f.append(c); any = true; }
         }
+        if (q && requiredColumns.length > 0) throw new IOException("Unclosed CSV field: " + p);
         if (any || f.length() > 0) { cur.add(f.toString()); lines.add(cur); }
         List<Map<String, String>> out = new ArrayList<>();
-        if (lines.isEmpty()) return out;
+        if (lines.isEmpty()) {
+            if (requiredColumns.length > 0) throw new IOException("Missing CSV header: " + p);
+            return out;
+        }
         List<String> head = lines.get(0);
+        if (!head.containsAll(Arrays.asList(requiredColumns))) throw new IOException("Unexpected CSV columns: " + p);
         for (int r = 1; r < lines.size(); r++) {
+            if (requiredColumns.length > 0 && lines.get(r).size() != head.size())
+                throw new IOException("Unexpected CSV field count in row " + (r + 1) + ": " + p);
             Map<String, String> m = new LinkedHashMap<>();
             for (int c = 0; c < head.size(); c++) m.put(head.get(c), c < lines.get(r).size() ? lines.get(r).get(c) : "");
             out.add(m);
@@ -714,10 +772,18 @@ public class CallTreeExtractor {
             id = t[0];
             for (int i = 1; i < t.length; i++) out.alias.put(t[i], id);
         }
-        if (id.isEmpty()) id = "#inner" + (anon++);
+        if (id.isEmpty() || out.report) id = "#inner" + (anon++);
         b.id = id;
         String c = e.getAttribute("class").trim();
         b.cls = (c.isEmpty() || c.contains("${")) ? null : c;
+        if (out.report && e.hasAttribute("factory-method")) {
+            b.cls = null;
+            b.reportTypeIssue = "FACTORY_METHOD";
+        }
+        if (out.report && c.contains("#{")) {
+            b.cls = null;
+            b.reportTypeIssue = "DYNAMIC_CLASS_NOT_EVALUATED";
+        }
         String p = e.getAttribute("parent");
         b.parent = p.isEmpty() ? null : p;
         b.isAbstract = "true".equals(e.getAttribute("abstract"));
@@ -727,13 +793,34 @@ public class CallTreeExtractor {
         org.w3c.dom.NamedNodeMap at = e.getAttributes();
         for (int i = 0; i < at.getLength(); i++) {
             String an = at.item(i).getNodeName();
-            if (an.startsWith("p:") && an.endsWith("-ref")) b.props.put(an.substring(2, an.length() - 4), at.item(i).getNodeValue());
+            org.w3c.dom.Node attribute = at.item(i);
+            if (out.report && "http://www.springframework.org/schema/p".equals(attribute.getNamespaceURI())) {
+                String member = attribute.getLocalName();
+                boolean reference = member.endsWith("-ref");
+                if (reference) member = member.substring(0, member.length() - 4);
+                b.propertyNames.add(member);
+                if (reference) b.props.put(member, attribute.getNodeValue());
+            } else if (out.report && "http://www.springframework.org/schema/c".equals(attribute.getNamespaceURI())) {
+                String member = attribute.getLocalName();
+                if (member.endsWith("-ref")) {
+                    member = member.substring(0, member.length() - 4);
+                    if (member.matches("_\\d+")) b.ctor.put(Integer.parseInt(member.substring(1)), attribute.getNodeValue());
+                    else b.namedCtor.put(member, attribute.getNodeValue());
+                }
+            } else if (an.startsWith("p:") && an.endsWith("-ref")) {
+                b.props.put(an.substring(2, an.length() - 4), attribute.getNodeValue());
+            }
         }
         int ci = 0;
         for (Element ch : kids(e)) {
             String t = local(ch);
             if (t.equals("property")) {
                 String pn = ch.getAttribute("name"), r = ch.getAttribute("ref");
+                if (out.report) {
+                    b.propertyNames.add(pn);
+                    b.props.remove(pn);
+                    b.lists.remove(pn);
+                }
                 if (!r.isEmpty()) { b.props.put(pn, r); continue; }
                 for (Element v : kids(ch)) {
                     String vt = local(v);
@@ -747,9 +834,14 @@ public class CallTreeExtractor {
                 try { if (!ch.getAttribute("index").isEmpty()) idx = Integer.parseInt(ch.getAttribute("index")); } catch (Exception ignore) { }
                 ci++;
                 String r = refOf(ch, file, out);
-                if (r != null) b.ctor.put(idx, r);
+                if (r != null) {
+                    String argumentName = ch.getAttribute("name");
+                    if (out.report && !argumentName.isEmpty()) b.namedCtor.put(argumentName, r);
+                    else b.ctor.put(idx, r);
+                }
             } else if (t.equals("lookup-method")) b.lookups.put(ch.getAttribute("name"), ch.getAttribute("bean"));
         }
+        b.ctorCount = ci;
         out.beans.add(b);
         return b;
     }
@@ -759,6 +851,8 @@ public class CallTreeExtractor {
         if (t.equals("ref")) {
             String b = el.getAttribute("bean");
             if (!b.isEmpty()) return b;
+            String parent = el.getAttribute("parent");
+            if (out.report && !parent.isEmpty()) return PARENT_REF + parent;
             String l = el.getAttribute("local");
             return l.isEmpty() ? null : l;
         }
@@ -795,16 +889,19 @@ public class CallTreeExtractor {
         }
         for (BeanDef b : p.beans) {
             reg.beans.put(b.id, b);
-            if (b.dependsOn != null && isDirective(b)) {
-                List<String> l = reg.directives.computeIfAbsent(b.dependsOn, k -> new ArrayList<>());
-                String r = b.props.get("add");
-                if (r != null) l.add(r);
-                ListVal lv = b.lists.get("add");
-                if (lv != null) l.addAll(lv.refs);
-            }
+            registerDirectives(reg, b);
         }
         reg.alias.putAll(p.alias);
         reg.typeIdx = null;
+    }
+
+    static void registerDirectives(Registry reg, BeanDef bean) {
+        if (bean.dependsOn == null || bean.isAbstract || !isDirective(bean)) return;
+        List<String> refs = reg.directives.computeIfAbsent(bean.dependsOn, key -> new ArrayList<>());
+        String ref = bean.props.get("add");
+        if (ref != null) refs.add(ref);
+        ListVal list = bean.lists.get("add");
+        if (list != null) refs.addAll(list.refs);
     }
 
     static boolean isDirective(BeanDef d) {
@@ -828,22 +925,33 @@ public class CallTreeExtractor {
         List<BeanDef> l = new ArrayList<>();
         BeanDef x = b;
         int g = 0;
-        while (x != null && g++ < 20) {
+        while (x != null && g++ < 20 && !l.contains(x)) {
             l.add(x);
-            x = (x.parent == null || x.parent.equals(x.id)) ? null : reg.get(x.parent);
+            x = x.reportOwner != null ? SpringBeanReport.parentOf(x)
+                    : x.parent == null || x.parent.equals(x.id) ? null : reg.get(x.parent);
         }
         return l;
     }
 
     static String effClass(BeanDef b, Registry reg) {
-        for (BeanDef x : beanChain(b, reg)) if (x.cls != null) return x.cls;
+        if (b.reportOwner != null) {
+            if (!"CONFIRMED".equals(b.reportStatus) || b.reportTypeIssue != null || !SpringBeanReport.hasConfirmedParents(b))
+                return null;
+            // Named winners carry the report's effective class. Inner beans have only their own XML metadata.
+            if (b.reportKey != null) return b.cls;
+        }
+        for (BeanDef x : beanChain(b, reg)) if (x.cls != null && x.reportTypeIssue == null) return x.cls;
         return null;
     }
 
     static Map<String, String> mergedProps(BeanDef b, Registry reg) {
         List<BeanDef> ch = beanChain(b, reg);
         Map<String, String> m = new HashMap<>();
-        for (int i = ch.size() - 1; i >= 0; i--) m.putAll(ch.get(i).props);
+        for (int i = ch.size() - 1; i >= 0; i--) {
+            BeanDef entry = ch.get(i);
+            for (String property : entry.propertyNames) m.remove(property);
+            m.putAll(entry.props);
+        }
         return m;
     }
 
@@ -858,7 +966,9 @@ public class CallTreeExtractor {
         List<BeanDef> ch = beanChain(b, reg);
         Map<String, ListVal> res = new HashMap<>();
         for (int i = ch.size() - 1; i >= 0; i--) {
-            for (Map.Entry<String, ListVal> en : ch.get(i).lists.entrySet()) {
+            BeanDef entry = ch.get(i);
+            for (String property : entry.propertyNames) if (!entry.lists.containsKey(property)) res.remove(property);
+            for (Map.Entry<String, ListVal> en : entry.lists.entrySet()) {
                 ListVal prev = res.get(en.getKey()), lv = en.getValue();
                 if (lv.merge && prev != null) {
                     ListVal n = new ListVal();
@@ -883,22 +993,32 @@ public class CallTreeExtractor {
         return out;
     }
 
-    static List<String> listRefs(BeanDef b, String prop, Registry reg) {
-        List<String> out = new ArrayList<>();
+    record ListReference(String name, Registry context) {}
+
+    static List<ListReference> listRefs(BeanDef b, String prop, Registry reg) {
+        List<ListReference> out = new ArrayList<>();
         ListVal lv = mergedLists(b, reg).get(prop);
-        if (lv != null) { out.addAll(lv.refs); return out; }
+        if (lv != null) {
+            for (String ref : lv.refs) out.add(new ListReference(ref, reg));
+            return out;
+        }
         String ref = mergedProps(b, reg).get(prop);
         if (ref != null) {
             BeanDef l = reg.get(ref);
             if (l != null && l.selfList != null) {
-                out.addAll(l.selfList.refs);
-                out.addAll(directivesFor(reg, l.id));
-            } else if (l != null) out.add(ref);
+                Registry listContext = l.reportOwner == null ? reg : l.reportOwner;
+                for (String item : l.selfList.refs) out.add(new ListReference(item, listContext));
+                for (String item : directivesFor(reg, l.id)) out.add(new ListReference(item, reg));
+            } else if (l != null || reg.context != null) out.add(new ListReference(ref, reg));
         }
         return out;
     }
 
     static BeanDef beanByClass(Registry reg, String fqn) {
+        if (reg.context != null) {
+            List<BeanDef> matches = candidates(reg, fqn).stream().filter(b -> fqn.equals(effClass(b, reg))).toList();
+            return matches.size() == 1 ? matches.get(0) : null;
+        }
         for (Registry r = reg; r != null; r = r.parent)
             for (BeanDef b : r.beans.values()) if (fqn.equals(b.cls)) return b;
         return null;
@@ -911,8 +1031,9 @@ public class CallTreeExtractor {
         for (BeanDef b : r.beans.values()) {
             if (b.isAbstract || b.selfList != null) continue;
             String c = effClass(b, r);
-            if (c == null || !fqnToPath.containsKey(c)) continue;
-            for (String s : closure(c)) idx.computeIfAbsent(s, k -> new ArrayList<>()).add(b);
+            if (c == null || (!fqnToPath.containsKey(c) && (r.context == null || !classLoc.containsKey(c)))) continue;
+            Set<String> types = closure(c);
+            for (String s : types) idx.computeIfAbsent(s, k -> new ArrayList<>()).add(b);
             if (++n % 2000 == 0) log("type index: " + n + " beans...");
         }
         r.typeIdx = idx;
@@ -1042,8 +1163,14 @@ public class CallTreeExtractor {
             String x = q.poll();
             if (!s.add(x)) continue;
             CI c = ci(x);
-            if (c == null) continue;
-            q.addAll(directSupers(c));
+            if (c != null) {
+                q.addAll(directSupers(c));
+            } else {
+                ClassInfo binary = classInfo(x);
+                if (binary == null) continue;
+                if (binary.superFqn != null) q.add(binary.superFqn);
+                q.addAll(binary.interfaces);
+            }
         }
         CLOSURE.put(fqn, s);
         return s;
@@ -1151,18 +1278,45 @@ public class CallTreeExtractor {
     // ===================== injection / expression resolution =====================
     static void addBean(List<Target> out, BeanDef b, String note, Registry reg) {
         String c = effClass(b, reg);
-        if (c == null) return;
-        out.add(new Target(c, b, note + " -> bean[" + b.id + "] " + rel(b.file)));
+        if (b.reportOwner == null) {
+            if (c != null) out.add(new Target(c, b, note + " -> bean[" + b.id + "] " + rel(b.file)));
+            return;
+        }
+        String evidence = note + " -> bean[" + b.id + "] " + b.reportOwner.context;
+        if (b.reportSource != null && !b.reportSource.isEmpty()) evidence += " " + b.reportSource;
+        if (c != null && !b.isAbstract) {
+            out.add(new Target(c, b, evidence));
+        } else {
+            String reason = b.isAbstract ? "ABSTRACT_BEAN" : !"CONFIRMED".equals(b.reportStatus) ? b.reportStatus
+                    : b.reportTypeIssue != null ? b.reportTypeIssue : "IMPLEMENTATION_UNDETERMINED";
+            addUnresolved(out, evidence, reason);
+        }
+    }
+
+    static void addNamedBean(List<Target> out, String name, String note, Registry reg, boolean explicit) {
+        BeanDef bean = reg.get(name);
+        if (bean != null) addBean(out, bean, note, reg);
+        else if (explicit && reg.context != null) {
+            String display = name.startsWith(PARENT_REF) ? "parent:" + name.substring(PARENT_REF.length()) : name;
+            addUnresolved(out, note + " -> bean[" + display + "] " + reg.context, "NOT_FOUND");
+        }
+    }
+
+    static void addUnresolved(List<Target> out, String note, String reason) {
+        Target target = new Target(null, null, note + " [SPRING-UNRESOLVED: " + reason + "]");
+        target.reportFailure = true;
+        out.add(target);
     }
 
     static List<Target> byType(String tfqn, Registry reg, String fieldName, String how, int limit) {
         List<Target> out = new ArrayList<>();
         if (tfqn == null) return out;
         CI tc = ci(tfqn);
-        if (tc == null) return out; // external (jar) type
+        if (tc == null && (reg.context == null || !classLoc.containsKey(tfqn))) return out; // unknown external type
+        if (reg.context != null) how = "spring-report candidate (" + how + ")";
         List<BeanDef> cands = candidates(reg, tfqn);
         if (cands.isEmpty()) {
-            boolean concrete = !isInterface(tc) && !isAbstractClass(tc);
+            boolean concrete = tc != null && !isInterface(tc) && !isAbstractClass(tc);
             out.add(new Target(tfqn, null, concrete ? how + " (no bean; declared class)" : "[NO-BEAN-FOUND for " + simple(tfqn) + "]"));
             return out;
         }
@@ -1208,19 +1362,26 @@ public class CallTreeExtractor {
         if (f.bean != null) {
             String ref = mergedProps(f.bean, f.reg).get(name);
             if (ref != null) {
-                BeanDef b = f.reg.get(ref);
-                if (b != null) { addBean(out, b, "xml property '" + name + "'", f.reg); if (!out.isEmpty()) return out; }
+                addNamedBean(out, ref, "xml property '" + name + "'", f.reg, true);
+                if (!out.isEmpty()) return out;
+            }
+            for (BeanDef definition : beanChain(f.bean, f.reg)) {
+                String namedRef = definition.namedCtor.get(name);
+                if (namedRef == null) continue;
+                addNamedBean(out, namedRef, "xml constructor-arg '" + name + "'", f.reg, true);
+                if (!out.isEmpty()) return out;
             }
             Map<Integer, String> ctor = f.bean.ctor;
             if (!ctor.isEmpty()) {
                 CI rc = ci(f.runtime);
                 if (rc != null)
                     for (ConstructorDeclaration k : rc.td.getConstructors())
-                        if (k.getParameters().size() == ctor.size())
+                        if (f.bean.reportOwner == null ? k.getParameters().size() == ctor.size()
+                                : f.bean.ctorCount == 0 || k.getParameters().size() == f.bean.ctorCount)
                             for (int i = 0; i < k.getParameters().size(); i++)
                                 if (k.getParameter(i).getNameAsString().equals(name) && ctor.get(i) != null) {
-                                    BeanDef b = f.reg.get(ctor.get(i));
-                                    if (b != null) { addBean(out, b, "xml constructor-arg '" + name + "'", f.reg); if (!out.isEmpty()) return out; }
+                                    addNamedBean(out, ctor.get(i), "xml constructor-arg '" + name + "'", f.reg, true);
+                                    if (!out.isEmpty()) return out;
                                 }
             }
         }
@@ -1231,14 +1392,15 @@ public class CallTreeExtractor {
         Optional<AnnotationExpr> q = inj.holder.getAnnotationByName("Qualifier");
         if (res.isPresent()) {
             String bn = annVal(res.get(), "name");
-            if (bn == null) bn = name;
-            BeanDef b = f.reg.get(bn);
-            if (b != null) { addBean(out, b, "@Resource(\"" + bn + "\")", f.reg); if (!out.isEmpty()) return out; }
+            boolean explicit = bn != null;
+            if (!explicit) bn = name;
+            addNamedBean(out, bn, "@Resource(\"" + bn + "\")", f.reg, explicit);
+            if (!out.isEmpty()) return out;
         }
         if (q.isPresent()) {
             String bn = annVal(q.get(), "value");
-            BeanDef b = bn == null ? null : f.reg.get(bn);
-            if (b != null) { addBean(out, b, "@Qualifier(\"" + bn + "\")", f.reg); if (!out.isEmpty()) return out; }
+            if (bn != null) addNamedBean(out, bn, "@Qualifier(\"" + bn + "\")", f.reg, true);
+            if (!out.isEmpty()) return out;
         }
         return byType(tfqn, f.reg, name, res.isPresent() ? "@Resource(type fallback)" : "type-based", 8);
     }
@@ -1282,23 +1444,24 @@ public class CallTreeExtractor {
             return out;
         }
         if (e.isFieldAccessExpr() && e.asFieldAccessExpr().getScope().isThisExpr())
-            return memberTargets(f, e.asFieldAccessExpr().getNameAsString());
+            return injected(f, e.asFieldAccessExpr().getNameAsString());
         if (e.isNameExpr()) return memberTargets(f, e.asNameExpr().getNameAsString());
         if (e.isMethodCallExpr()) {
             MethodCallExpr mc = e.asMethodCallExpr();
             boolean noScope = !mc.getScope().isPresent() || mc.getScope().get().isThisExpr();
             String mn = mc.getNameAsString();
+            if (noScope && mc.getArguments().isEmpty() && f.bean != null) {
+                String bean = mergedLookups(f.bean, f.reg).get(mn);
+                if (bean != null && !bean.isEmpty()) addNamedBean(out, bean, "lookup-method " + mn, f.reg, true);
+                if (!out.isEmpty()) return out;
+            }
             if (noScope && mc.getArguments().isEmpty() && mn.startsWith("get") && mn.length() > 3) {
-                if (f.bean != null) {
-                    String lb = mergedLookups(f.bean, f.reg).get(mn);
-                    BeanDef b = lb == null ? null : f.reg.get(lb);
-                    if (b != null) { addBean(out, b, "lookup-method " + mn, f.reg); if (!out.isEmpty()) return out; }
-                }
                 String field = Character.toLowerCase(mn.charAt(3)) + mn.substring(4);
                 List<Target> t = injected(f, field);
                 if (!t.isEmpty()) return t;
             }
             for (Callee c : resolveCall(mc, f)) {
+                if (c.m == null) continue;
                 String tf = resolveTypeNode(c.decl, c.m.getType());
                 out.addAll(byType(tf, f.reg, null, "return type of " + mn + "()", 3));
                 break;
@@ -1706,6 +1869,7 @@ public class CallTreeExtractor {
             MethodCallExpr mc = e.asMethodCallExpr();
             String ret = null; TRef first = null;
             for (Callee c : resolveCall(mc, f)) {
+                if (c.m == null) return null;
                 TRef r = typeRef(c.decl, c.m.getType(), c.m);
                 if (r == null) return null;
                 if (first == null) { first = r; ret = r.name; }
@@ -1803,10 +1967,20 @@ public class CallTreeExtractor {
             recvs = Collections.singletonList(new Target(f.runtime, f.bean, null));
         } else recvs = exprTargets(c.getScope().get(), f);
         for (Target t : recvs) {
-            if (t.cls == null || ci(t.cls) == null) continue;
-            out.addAll(findMethods(t.cls, name, argc, sup ? f.decl.fqn : null, t, c, f));
+            List<Callee> found = t.cls == null || ci(t.cls) == null ? List.of()
+                    : findMethods(t.cls, name, argc, sup ? f.decl.fqn : null, t, c, f);
+            if (found.isEmpty() && (t.reportFailure || t.bean != null && t.bean.reportOwner != null))
+                out.add(unresolvedCallee(t, name + "/" + argc));
+            else out.addAll(found);
         }
         return out;
+    }
+
+    static Callee unresolvedCallee(Target target, String call) {
+        Callee unresolved = new Callee();
+        unresolved.recv = target;
+        unresolved.unresolvedCall = call;
+        return unresolved;
     }
 
     // ===================== tree =====================
@@ -1823,7 +1997,9 @@ public class CallTreeExtractor {
     }
 
     static String key(Callee x) {
-        return x.recv.cls + "|" + (x.recv.bean == null ? "" : x.recv.bean.id) + "|" + x.decl.fqn + "#" + sig(x.m);
+        BeanDef bean = x.recv.bean;
+        String beanKey = bean == null ? "" : bean.reportOwner == null ? bean.id : bean.reportOwner.context + ":" + bean.id;
+        return x.recv.cls + "|" + beanKey + "|" + (x.m == null ? x.unresolvedCall + x.recv.note : x.decl.fqn + "#" + sig(x.m));
     }
 
     static boolean skip(CI d) {
@@ -1852,10 +2028,17 @@ public class CallTreeExtractor {
         StringBuilder sb = new StringBuilder();
         if (!ce.callLines.isEmpty()) // 호출 위치: 부모 노드 파일의 행 번호
             sb.append("[L").append(ce.callLines.stream().map(String::valueOf).collect(Collectors.joining(",L"))).append("] ");
+        if (ce.m == null) {
+            sb.append(ce.unresolvedCall);
+            if (ce.recv.cls != null) sb.append("  {impl=").append(ce.recv.cls).append('}');
+            if (ce.recv.note != null) sb.append("  <= ").append(ce.recv.note);
+            if (!ce.recv.reportFailure) sb.append("  [NO-IMPL-SOURCE]");
+            return sb.toString();
+        }
         sb.append(simple(ce.decl.fqn)).append('#').append(sig(ce.m))
                 .append("  [").append(rel(ce.decl.path)).append(':')
                 .append(ce.m.getBegin().map(p -> p.line).orElse(0)).append(']');
-        if (ce.recv.cls != null && !ce.recv.cls.equals(ce.decl.fqn)) sb.append("  {impl=").append(ce.recv.cls).append('}');
+        if (ce.recv.cls != null && (!ce.recv.cls.equals(ce.decl.fqn) || ce.recv.bean != null && ce.recv.bean.reportOwner != null)) sb.append("  {impl=").append(ce.recv.cls).append('}');
         if (ce.recv.note != null) sb.append("  <= ").append(ce.recv.note);
         if (!ce.m.getBody().isPresent()) sb.append("  [NO-IMPL/ABSTRACT]");
         if (ce.overload != null) sb.append("  ").append(ce.overload);
@@ -1873,8 +2056,8 @@ public class CallTreeExtractor {
             int line = c.getBegin().map(p -> p.line).orElse(0);
             Set<String> thisCall = new HashSet<>(); // 한 호출문이 같은 대상으로 중복 해석되는 경우만 제거
             for (Callee x : resolveCall(c, nf)) {
-                if (skip(x.decl) || trivial(x.m)) continue;
-                if (selfGetter && !x.m.getBody().isPresent()) continue;
+                if (x.m != null && (skip(x.decl) || trivial(x.m))) continue;
+                if (selfGetter && x.m != null && !x.m.getBody().isPresent()) continue;
                 if (!thisCall.add(key(x))) continue;
                 if (line > 0) x.callLines.add(line);
                 seen.add(key(x));
@@ -1883,13 +2066,15 @@ public class CallTreeExtractor {
         }
         // converter -> populators (spring list, incl. ListMergeDirective)
         if (ce.recv.bean != null && ce.m.getNameAsString().equals("populate") && ce.m.getParameters().size() == 2) {
-            for (String r : listRefs(ce.recv.bean, "populators", nf.reg)) {
-                BeanDef pb = nf.reg.get(r);
-                if (pb == null) continue;
-                String pc = effClass(pb, nf.reg);
-                if (pc == null) continue;
-                Target t = new Target(pc, pb, "populators[" + r + "] -> bean[" + pb.id + "] " + rel(pb.file));
-                for (Callee x : findMethods(pc, "populate", 2, null, t)) if (seen.add(key(x))) res.add(x);
+            for (ListReference reference : listRefs(ce.recv.bean, "populators", nf.reg)) {
+                List<Target> targets = new ArrayList<>();
+                addNamedBean(targets, reference.name(), "populators", reference.context(), true);
+                for (Target target : targets) {
+                    List<Callee> found = target.cls == null ? List.of() : findMethods(target.cls, "populate", 2, null, target);
+                    if (found.isEmpty() && (target.reportFailure || target.bean != null && target.bean.reportOwner != null))
+                        found = List.of(unresolvedCallee(target, "populate/2"));
+                    for (Callee child : found) if (seen.add(key(child))) res.add(child);
+                }
             }
         }
         return res;
@@ -1903,7 +2088,7 @@ public class CallTreeExtractor {
     }
 
     static boolean matches(Callee ce) {
-        if (NAME_FILTER.matcher(simple(ce.decl.fqn)).find()) return true;
+        if (ce.decl != null && NAME_FILTER.matcher(simple(ce.decl.fqn)).find()) return true;
         return ce.recv.cls != null && NAME_FILTER.matcher(simple(ce.recv.cls)).find();
     }
 
@@ -1911,7 +2096,7 @@ public class CallTreeExtractor {
         TNode n = new TNode();
         n.line = label(ce);
         n.selfMatch = matches(ce);
-        if (!ce.m.getBody().isPresent()) return n;
+        if (ce.m == null || !ce.m.getBody().isPresent()) return n;
         String k = key(ce);
         if (stack.contains(k)) { n.line += "  (recursion)"; return n; }
         if (!full && expanded.containsKey(k)) { n.line += "  (expanded above)"; n.ref = expanded.get(k); return n; }
@@ -1920,7 +2105,8 @@ public class CallTreeExtractor {
         stack.add(k);
         Frame nf = new Frame();
         nf.decl = ce.decl; nf.m = ce.m; nf.bean = ce.recv.bean; nf.runtime = ce.recv.cls;
-        nf.reg = (ce.recv.bean != null && !ce.recv.bean.web) ? core : caller.reg;
+        nf.reg = ce.recv.bean == null ? caller.reg : ce.recv.bean.reportOwner != null ? ce.recv.bean.reportOwner
+                : ce.recv.bean.web ? caller.reg : core;
         for (Callee c : childrenOf(nf, ce)) n.kids.add(build(c, nf, depth + 1, stack, expanded));
         stack.remove(k);
         return n;

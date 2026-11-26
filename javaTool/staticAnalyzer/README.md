@@ -1,9 +1,9 @@
 # staticAnalyzer — CallTreeExtractor
 
-SAP Commerce(Hybris) 소스를 정적으로 분석해서 **Controller 엔드포인트별 호출 트리**를 텍스트 파일로 출력하는 단일 파일 Java 도구입니다.
+SAP Commerce(Hybris) 소스를 정적으로 분석해서 **Controller 엔드포인트별 호출 트리**를 텍스트 파일로 출력하는 Java 도구입니다.
 분석 대상 extension 안의 컨트롤러 중 **accelerator 계열(`AbstractController` 상속)**과 **OCC 계열(`BaseController` 상속)**을 각각 다른 파일로 출력합니다(아래 「대상 컨트롤러와 출력 파일」).
 Accelerator의 **CMS 컴포넌트 컨트롤러**(`AbstractAcceleratorCMSComponentController` 상속)는 매핑 어노테이션이 없는 `fillModel` 같은 메서드도 분석합니다.
-대상 시스템을 기동하지 않습니다. `.java` 소스는 JavaParser로, Spring XML과 `extensioninfo.xml`은 DOM으로 읽습니다.
+대상 시스템을 기동하지 않습니다. JavaParser로 Java 소스를 분석합니다.
 
 Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-method`, `ListMergeDirective` 포함)를 해석하여, 인터페이스 호출이 실제로 어느 구현 bean으로 가는지까지 따라갑니다.
 
@@ -34,7 +34,7 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 ## 준비물
 
-- JDK 11 이상. 분석 대상 소스는 **Java 21 문법**(`LanguageLevel.JAVA_21`)으로 파싱합니다. Java 17 이하 소스도 그대로 파싱됩니다.
+- JDK 21 이상. 분석 대상 소스는 **Java 21 문법**(`LanguageLevel.JAVA_21`)으로 파싱합니다. Java 17 이하 소스도 그대로 파싱됩니다.
 - JavaParser core jar **3.26.0 이상**. `JAVA_21`은 3.26.0부터 있어서 3.25.x jar로는 컴파일되지 않습니다. 동작을 확인한 버전은 `javaparser-core-3.27.1.jar`입니다. 이 폴더에는 jar가 들어 있지 않으니 따로 받아야 합니다.
 - 메모리: 플랫폼 전체를 분석하므로 `-Xmx6g` 정도를 권장합니다.
 - 분석 대상: `hybris/bin/platform`, `bin/modules`, `bin/custom` 같은 **소스(`.java`)가 있는 폴더**. jar 안의 클래스는 분석하지 않습니다.
@@ -43,7 +43,7 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 ### 실행 클래스 `execute.Execute`
 
-이 저장소의 모든 프로그램은 실행 클래스를 `execute.Execute`로 통일했습니다. staticAnalyzer에서는 `execute/Execute.java`가 `CallTreeExtractor`를 그대로 호출하며, 인자도 같습니다.
+이 저장소의 모든 프로그램은 실행 클래스를 `execute.Execute`로 통일했습니다. 실행 진입점은 `execute/Execute.java`입니다.
 컴파일해서 실행할 때는 `run.cmd`를 씁니다. `build.cmd`로 `bin`에 컴파일한 뒤 `execute.Execute`를 실행합니다.
 
 ```powershell
@@ -52,7 +52,6 @@ $env:JAVAPARSER_JAR = 'C:\tools\javaparser-core-3.27.1.jar'; .\run.cmd --out-dir
 
 - `JAVAPARSER_JAR`을 지정하지 않으면 이 폴더의 `javaparser-core-3.27.1.jar`를 찾습니다.
 - Eclipse에서는 이 폴더를 소스 폴더로, JavaParser jar를 Build Path에 넣고 `execute.Execute`를 Java Application으로 실행합니다.
-- 아래의 단일 파일 실행(`java ... com/CallTreeExtractor.java`)도 그대로 쓸 수 있습니다. Java 21의 단일 파일 실행은 다른 파일의 클래스를 함께 컴파일하지 않으므로, 이 방식에서는 `Execute`를 거치지 않고 `CallTreeExtractor`를 직접 실행합니다.
 
 ### 1. 소스 안의 설정값으로 실행 (인자 없음)
 
@@ -75,7 +74,7 @@ static final Pattern NAME_FILTER = Pattern.compile("(?i)(facade|service|dao)");
 ```
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java
+.\run.cmd
 ```
 
 결과 두 파일은 `OUT_DIR`(기본값은 **작업 디렉터리** `user.dir`)에 UTF-8로 저장됩니다. 파일명은 위 「대상 컨트롤러와 출력 파일」과 같습니다.
@@ -87,7 +86,7 @@ Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입�
 위치 인자(옵션이 아닌 값)는 소스 루트입니다. 같은 FQN이 여러 루트에 있으면 **나중에 적은 루트가 우선**하므로 custom을 마지막에 적습니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+.\run.cmd --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/work/reports/20261125_101500_xxx/extensions.csv C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 | 옵션 | 설명 |
@@ -107,6 +106,23 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 
 `PRUNE_ENABLED`와 `NAME_FILTER`는 옵션으로 바꿀 수 없습니다. 소스에서 직접 수정해야 합니다.
 
+## XML 분석 보고서로 빈 구현체 좁히기
+
+[spring-bean-analyzer-from-xml](../spring-bean-analyzer-from-xml/README.md)을 같은 SAP Commerce 설치본에서 실행한 뒤, 그 결과 폴더를 staticAnalyzer에 전달합니다.
+
+~~~powershell
+.\run.cmd --spring-report C:/work/xml/reports/20261126_100000_sample --base C:/hybris --out-dir C:/work/calltree C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+~~~
+
+- **--spring-report <csv|dir>**(또는 **--spring-report-dir**)에는 spring-bean-winners.csv, 해당 실행의 결과 폴더, 또는 reports 상위 폴더를 지정합니다. 상위 폴더를 주면 최신 실행 결과를 사용합니다. 같은 결과 폴더에 spring-alias-winners.csv가 있어야 합니다.
+- **--spring-context <name>**으로 GLOBAL, CORE, WEB:extension 또는 SERVLET:extension:servlet 컨텍스트를 지정할 수 있습니다. 기본값은 컨트롤러 extension의 유일한 서블릿 컨텍스트, 그런 컨텍스트가 없거나 여러 개면 WEB입니다. extension을 모를 때는 CORE를 사용합니다. 기존 **--web-ext**로 컨트롤러의 웹 extension을 지정할 수도 있습니다.
+- 인자 없이 실행할 때는 CallTreeExtractor.java의 **SPRING_REPORT**와 **SPRING_CONTEXT**를 설정합니다. 보고서 경로가 비어 있으면 기존 XML 탐색 모드로 실행합니다.
+- **--extensions-csv**는 Java 소스 범위를 제한하는 별도 옵션입니다. 활성 extension만 분석하려면 XML 보고서를 만들 때 사용한 extension-analyzer 결과를 함께 전달합니다.
+
+보고서의 확정된 빈과 별칭만 구현체 후보에 넣습니다. XML 파일 이름이나 extension 정렬로 등록 순서를 다시 추정하는 작업은 기존 모드에서만 수행합니다. 보고서가 가리키는 정확한 XML 선언에서 속성, 생성자 인자, lookup-method, 리스트 등 호출 분석에 필요한 정보를 읽습니다. XML이 JAR 안에 있거나 import로 읽힌 경우도 해당 위치를 그대로 사용합니다. 원본 XML 위치나 선언이 바뀌면 XML 분석기를 다시 실행하세요.
+
+트리의 **{impl=FQN}**은 구현 클래스이고, 오른쪽에 빈 이름, 등록 컨텍스트, 원본 XML이 붙습니다. 명시적으로 참조한 빈이 profile, 등록 순서, 리소스 선택 등의 이유로 미확정이면 **[SPRING-UNRESOLVED: …]**로 표시합니다. 클래스는 확인됐으나 Java 메서드 본문을 찾을 수 없으면 구현 클래스와 **[NO-IMPL-SOURCE]**를 표시합니다. 타입으로 찾은 후보는 **spring-report candidate**로 표시합니다. 보고서는 XML 정적 분석 범위이므로 런타임의 동적 빈 등록과 profile 활성화는 반영되지 않습니다.
+
 ## 활성 extension만 분석 (`extensions.csv`)
 
 먼저 [`extension-analyzer`](../extension-analyzer/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그다음 `--extensions-csv`(또는 `EXTENSIONS_CSV`)에 아래 셋 중 하나를 지정합니다.
@@ -118,7 +134,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 | **extractor의 `reports` 폴더** | 그 아래 결과 폴더 중 **가장 최근 것**의 `extensions.csv`를 자동으로 고릅니다 |
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/tools/extension-analyzer/reports C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+.\run.cmd --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/tools/extension-analyzer/reports C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 소스 안 설정으로는 `EXTENSIONS_CSV = "C:/tools/extension-analyzer/reports";`처럼 `reports` 폴더를 한 번 넣어 두면 됩니다. 그러면 extension-analyzer를 다시 실행할 때마다 staticAnalyzer가 자동으로 최신 결과를 씁니다.
@@ -146,7 +162,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 `extensions.csv`에 없는 extension도 이름을 지정하면 분석 대상에 넣습니다. 여러 개를 지정할 수 있습니다.
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --extensions-csv C:/work/reports/xxx/extensions.csv --include-ext myaddon,mytest --include-ext myextra C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+.\run.cmd ... --extensions-csv C:/work/reports/xxx/extensions.csv --include-ext myaddon,mytest --include-ext myextra C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
 소스 안 설정에서는 `INCLUDE_EXTENSIONS = {"myaddon", "mytest", "myextra"};`처럼 씁니다.
@@ -185,7 +201,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java ... --exte
 - extension 단위로만 좁힙니다. 활성 extension 안에 있는 `*-spring.xml`은 실제로 로드되지 않는 파일이라도 모두 읽습니다.
 - 활성 여부는 extractor가 정적으로 추정한 결과입니다.
 
-## 처리 순서
+## 처리 순서 (기존 XML 탐색 모드)
 
 1. **파일 수집**: 각 루트에서 `.java`, `extensioninfo.xml`, `*-spring.xml`, `*-servlet.xml`를 모읍니다.
    - 건너뛰는 폴더: `.git`, `.svn`, `node_modules`, `classes`, `eclipsebin`, `testsrc`, `.settings`
