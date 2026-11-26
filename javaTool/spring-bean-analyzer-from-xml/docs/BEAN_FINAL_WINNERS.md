@@ -57,10 +57,12 @@ extension 부분 순서는 extension-analyzer가 계산해 `extension-load-order
 | --- | --- |
 | `CONFIRMED` | 최대 원소가 모두 같은 정의(같은 declaration key, alias는 같은 대상) |
 | `UNDETERMINED_ORDER` | 최대 원소가 서로 다른 정의. 승자 열은 비우고 후보 열에 모두 적는다 |
-| `PROFILE_DEPENDENT` | 승자가 `<beans profile>` 안의 정의. profile이 꺼져 있을 때의 승자를 `profile_fallback_declaration_key`에 적는다 |
+| `PROFILE_DEPENDENT` | 승자가 `<beans profile>` 안의 정의이거나, `<beans profile>` 안의 `<import>`로 읽힌 문서의 정의. profile이 꺼져 있을 때의 승자를 `profile_fallback_declaration_key`에 적는다 |
 | `RESOURCE_CHOICE_UNCERTAIN` | 승자가 `AMBIGUOUS_CLASSPATH`(같은 이름의 `classpath:` 후보가 여럿) 경로로 등록됨 |
 
 활성 profile은 평가하지 않는다.
+
+profile 조건은 import를 따라 전달한다. `<beans profile="prod"><import resource="prod-only.xml"/></beans>`이면 `prod-only.xml`의 정의는 모두 `prod` 조건을 가진다. 그 안에 다시 `<beans profile="eu">`가 있으면 바깥 조건부터 `prod -> eu`로 이어 적는다(`spring-bean-registrations.csv`의 `profiles` 열). 같은 파일이 profile 없이 다른 곳에서도 import되면, 그 등록은 profile 조건 없이 따로 기록된다.
 
 ## 4. 최종 참조 연결과 부모 컨텍스트
 
@@ -100,6 +102,6 @@ Spring 버전에 따라 등록 시점에 alias를 지우는 동작이 있어 결
 `test/com/sapcommerce/analyzer/SpringBeanWinnerResolverTest.java`
 - 순서표에 있는 쌍과 없는 쌍(미확정)의 구분. 순서 계산 자체는 extension-analyzer의 `ExtensionAnalyzerTest`
 - import 위치에 따른 덮어쓰기, `classpath*:` 후보 사이의 미확정
-- profile 승자와 fallback, alias 재연결, parent 상속 클래스
+- profile 승자와 fallback, `<beans profile>` 안의 import로 읽힌 정의의 profile 전달(중첩 조건 포함), alias 재연결, parent 상속 클래스
 - addon(`additionalWebSpringConfigs`)이 web.xml 정의를 덮어쓰는 경우
 - web 컨텍스트에서 CORE로의 부모 조회, 덮어써진 정의의 참조 표시

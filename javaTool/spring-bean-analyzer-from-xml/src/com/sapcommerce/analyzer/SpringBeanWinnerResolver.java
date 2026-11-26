@@ -130,7 +130,7 @@ public final class SpringBeanWinnerResolver {
             for (int i = 0; i < usable.size(); i++) {
                 var match = usable.get(i);
                 List<Frame> path = List.of(new Frame(entry.declaration().id(), i, multi));
-                walk(context, entry, match.targetLocation(), analysisContext(match), path, ambiguous, new ArrayDeque<>());
+                walk(context, entry, match.targetLocation(), analysisContext(match), path, ambiguous, new ArrayDeque<>(), "");
             }
         }
 
@@ -171,8 +171,9 @@ public final class SpringBeanWinnerResolver {
 
     // ---------------------------------------------------------------- registration replay
 
+    /** inherited: profile conditions of the <beans profile> blocks around the <import> chain leading to xml. */
     private void walk(String context, Entry entry, String xml, String analysisContext, List<Frame> path,
-            boolean uncertain, Deque<String> stack) {
+            boolean uncertain, Deque<String> stack, String inherited) {
         if (limitReached) return;
         if (stack.contains(xml)) {
             issue(context, "IMPORT_CYCLE", xml, String.join(" -> ", stack) + " -> " + xml
@@ -193,10 +194,11 @@ public final class SpringBeanWinnerResolver {
                 break;
             }
             switch (site.kind()) {
-                case "BEAN" -> registerBean(context, entry, site, path, uncertain);
+                case "BEAN" -> registerBean(context, entry, site, path, uncertain, chain(inherited, site.profiles()));
                 case "ALIAS" -> {
                     if (!site.alias().isBlank() && !site.target().isBlank()) {
-                        add(context, site.alias(), "ALIAS", "", site.target(), site.xml(), entry, path, site.profiles(), uncertain);
+                        add(context, site.alias(), "ALIAS", "", site.target(), site.xml(), entry, path,
+                                chain(inherited, site.profiles()), uncertain);
                     }
                 }
                 case "IMPORT" -> {
@@ -217,7 +219,7 @@ public final class SpringBeanWinnerResolver {
                         List<Frame> next = new ArrayList<>(path);
                         next.add(new Frame(siteId, i, multi));
                         walk(context, entry, row.targetLocation(), analysisContext(row), List.copyOf(next),
-                                uncertain || ambiguous, stack);
+                                uncertain || ambiguous, stack, chain(inherited, site.profiles()));
                     }
                 }
                 default -> { }
@@ -226,7 +228,8 @@ public final class SpringBeanWinnerResolver {
         stack.removeLast();
     }
 
-    private void registerBean(String context, Entry entry, SpringBeanAnalyzer.Site site, List<Frame> path, boolean uncertain) {
+    private void registerBean(String context, Entry entry, SpringBeanAnalyzer.Site site, List<Frame> path, boolean uncertain,
+            String profiles) {
         var bean = beansByKey.get(site.beanKey());
         if (bean == null) return;
         List<String> names = new ArrayList<>();
@@ -237,12 +240,13 @@ public final class SpringBeanWinnerResolver {
             issue(context, "DYNAMIC_BEAN_NAME", bean.xml(), bean.key() + " " + name + " (not evaluated)");
             return;
         }
-        add(context, name, "BEAN", bean.key(), "", bean.xml(), entry, path, site.profiles(), uncertain);
+        add(context, name, "BEAN", bean.key(), "", bean.xml(), entry, path, profiles, uncertain);
         for (String alias : names) {
-            if (!alias.equals(name)) add(context, alias, "ALIAS", "", name, bean.xml(), entry, path, site.profiles(), uncertain);
+            if (!alias.equals(name)) add(context, alias, "ALIAS", "", name, bean.xml(), entry, path, profiles, uncertain);
         }
     }
 
+/** Joins profile conditions of nested blocks (outer first), as SpringBeanAnalyzer records them. */    private static String chain(String outer, String inner) {        if (outer.isBlank()) return inner;        if (inner.isBlank()) return outer;        return outer + " -> " + inner;    }
     private void add(String context, String name, String kind, String key, String target, String xml, Entry entry,
             List<Frame> path, String profiles, boolean uncertain) {
         registrations.add(new Registration(context, name, kind, key, target, xml, entry.declaration().id(),

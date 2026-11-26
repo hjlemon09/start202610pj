@@ -37,7 +37,8 @@ public final class SpringBeanWinnerResolverTest {
                 "<bean id='productService' class='DefaultProductService'><property name='facade' ref='productFacade'/></bean>"
                 + "<bean id='defaultProductFacade' class='DefaultProductFacade'/>"
                 + "<alias name='defaultProductFacade' alias='productFacade'/>"
-                + "<bean id='consumer' class='Consumer'><property name='facade' ref='productFacade'/></bean>"));
+                + "<bean id='consumer' class='Consumer'><property name='facade' ref='productFacade'/></bean>"
+                + "<bean id='paymentService' class='CorePayment'/>"));
 
         put("bin/custom/shop/project.properties", "shop.application-context=shop-spring.xml\n"
                 + "Shop.additionalWebSpringConfigs.addon=classpath:addon-web.xml\n");
@@ -50,7 +51,12 @@ public final class SpringBeanWinnerResolverTest {
                 + "<bean id='afterImport' class='AfterImport'/>"
                 + "<import resource='classpath*:multi/*.xml'/>"
                 + "<bean id='dupBean' class='ShopDup'/>"
-                + "<beans profile='dev'><bean id='productService' class='DevProductService'/></beans>"));
+                + "<beans profile='dev'><bean id='productService' class='DevProductService'/></beans>"
+                + "<beans profile='prod'><import resource='prod-only.xml'/></beans>"));
+        // Imported only under profile 'prod': its definitions inherit that condition (and their own nested ones).
+        put("bin/custom/shop/resources/prod-only.xml", beans(
+                "<bean id='paymentService' class='ProdPayment'/>"
+                + "<beans profile='eu'><bean id='taxService' class='EuTax'/></beans>"));
         put("bin/custom/shop/resources/shop-extra.xml", beans(
                 "<bean id='inFile' class='FromImport'/><bean id='afterImport' class='ImportedFirst'/>"));
         put("bin/custom/shop/resources/multi/one.xml", beans("<bean id='multiBean' class='One'/>"));
@@ -101,6 +107,13 @@ public final class SpringBeanWinnerResolverTest {
                 "unrelated extensions must not be ordered");
         var lp = winner(result, "CORE", "lpBean");
         check(lp.status().equals("CONFIRMED") && declaredClass(result, lp.winner()).equals("OtherLp"), "load-prior-to winner");
+        var payment = winner(result, "CORE", "paymentService");
+        check(payment.status().equals("PROFILE_DEPENDENT") && declaredClass(result, payment.winner()).equals("ProdPayment"),
+                "import inside <beans profile> passes the profile to imported definitions: " + payment.status());
+        check(payment.winner().profiles().equals("prod") && declaredClass(result, payment.fallback()).equals("CorePayment"),
+                "fallback when the import's profile is off");
+        var tax = winner(result, "CORE", "taxService");
+        check(tax.winner().profiles().equals("prod -> eu"), "nested profile conditions are chained: " + tax.winner().profiles());
         var multi = winner(result, "CORE", "multiBean");
         check(multi.status().equals("UNDETERMINED_ORDER"), "classpath* candidates have no guaranteed order");
 

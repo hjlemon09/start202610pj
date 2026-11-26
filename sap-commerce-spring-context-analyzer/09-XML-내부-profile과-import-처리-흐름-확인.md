@@ -120,7 +120,7 @@ Spring의 `DefaultBeanDefinitionDocumentReader` 처리 순서(문서 순서, imp
 |9장의 절|프로그램에서 하는가|내용|
 |---|---|---|
 |9.1 대상 Spring XML 로더와 환경|**하지 않음**|Spring JAR 버전, 실제 문서 리더(커스텀 리더 여부), Spring Environment가 설정되는 곳은 확인하지 않는다. 기본 문서 리더의 동작을 전제로 한다.|
-|9.2 profile 활성 여부를 먼저 판정한다|**일부**|`<beans profile>` 조건을 기록하지만 **활성 profile은 평가하지 않는다.** 최종 승자가 profile 블록 안의 정의면 `PROFILE_DEPENDENT`로 두고, profile이 꺼졌을 때의 승자를 따로 적는다. profile 블록 안의 `<import>`도 조건과 관계없이 따라가며, **부모의 profile 조건이 import된 문서의 정의에는 전달되지 않는다**(한계).|
+|9.2 profile 활성 여부를 먼저 판정한다|**일부**|`<beans profile>` 조건을 기록하지만 **활성 profile은 평가하지 않는다.** 최종 승자가 profile 블록 안의 정의면 `PROFILE_DEPENDENT`로 두고, profile이 꺼졌을 때의 승자를 따로 적는다. profile 블록 안의 `<import>`도 따라가되, **그 profile 조건을 import된 문서의 정의에 전달한다.** 예를 들어 `<beans profile="prod"><import resource="prod-only.xml"/></beans>`이면 `prod-only.xml`의 빈은 `prod` 조건을 가진다. import된 문서 안에 다시 profile 블록이 있으면 바깥 조건부터 `prod -> eu`처럼 이어서 기록한다.|
 |9.3 import의 원문과 치환 결과를 기록한다|**함**|부모 파일, 줄 번호, `resource` 원문, 치환 결과와 근거를 기록한다. 치환 값은 Spring Environment가 아니라 프로퍼티 파일(`local.properties`, 선택된 extension의 `project.properties`, `bin/platform/project.properties`)에서 구한다. `#{…}`는 계산하지 않는다.|
 |9.4 상대 경로·절대 경로·패턴의 대상을 판정한다|**일부**|상대 경로는 현재 XML 기준(JAR 안이면 같은 JAR 기준)으로, `classpath:`는 분석 범위에서 찾는다. `classpath*:`와 와일드카드는 일치하는 후보를 모두 찾지만 **반환 순서는 미확정**으로 둔다. `file:`, URL, 커스텀 프로토콜은 찾지 않는다(`UNSUPPORTED_LOCATION`). 네임스페이스 핸들러가 따로 찾는 리소스는 다루지 않는다.|
 |9.5 중첩 처리와 반복 참조를 기록한다|**함**|import 대상 문서를 다시 같은 방식으로 처리하고 부모 문서로 돌아간다. 현재 처리 중인 파일로 다시 들어가면 `IMPORT_CYCLE`로 기록하고 따라가지 않는다. 이미 끝난 파일을 다시 import하면 다시 처리한다(나중 위치가 된다). 깊이 64를 넘으면 멈춘다(`IMPORT_DEPTH_LIMIT`).|
