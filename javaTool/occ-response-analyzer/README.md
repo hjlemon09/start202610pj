@@ -34,6 +34,32 @@ spring-bean-analyzer-from-xml ──(spring-bean-winners.csv)──┬───�
 3. staticAnalyzer를 `--extensions-csv`, `--spring-report`와 함께 실행합니다. `--out-dir`에 `controller-endpoints.csv`, `controller-call-edges.csv`가 만들어집니다.
 4. 이 도구를 실행합니다.
 
+### 1. 소스 안의 설정값으로 실행 (인자 없음, 이클립스 기본)
+
+`src/execute/Execute.java` 앞부분의 `EDIT HERE` 블록을 고친 다음 인자 없이 실행합니다. 이클립스에서는 이 폴더를 프로젝트로 가져와(`.project` 포함) `execute.Execute`를 Java Application으로 실행하면 됩니다. JRE System Library는 **JDK 21**이어야 합니다.
+
+```java
+static final String HYBRIS_HOME = "C:/hybris";                                   // hybris 폴더 (bin, config 상위)
+static final String CALLTREE = "../staticAnalyzer";                             // staticAnalyzer의 출력 폴더(OUT_DIR / --out-dir)
+static final boolean USE_ACTIVATED_EXTENSIONS = true;                           // false: 활성 extension 필터 없음
+static final String EXTENSIONS_CSV = "../extension-analyzer/reports";           // 최신 결과 자동 선택
+static final String BASE = null;                                                // null이면 extension-analyzer summary.csv의 hybris_home
+static final String SPRING_REPORT = "../spring-bean-analyzer-from-xml/reports"; // null이면 field set 매핑을 읽지 않음
+static final String[] SOURCE_ROOTS = { HYBRIS_HOME + "/bin/platform", .../bin/modules, .../bin/custom };
+static final String OUT_DIR = "reports";                                        // 결과 상위 폴더
+```
+
+- 상대 경로는 작업 디렉터리 기준입니다. 이클립스의 기본 작업 디렉터리는 프로젝트 폴더이므로, 기본값은 같은 `javaTool` 아래 형제 프로젝트의 기본 출력 위치를 가리킵니다. extension-analyzer와 spring-bean-analyzer-from-xml은 기본으로 각자의 `reports`에 결과를 만들고, staticAnalyzer는 `OUT_DIR = null`이면 자기 프로젝트 폴더에 CSV를 만듭니다. 모두 이클립스에서 기본 설정으로 실행했다면 고칠 것은 `HYBRIS_HOME`뿐입니다.
+- 실행하면 사용한 설정이 `[info]` 로그로 출력됩니다.
+
+```powershell
+.\run.cmd
+```
+
+### 2. 명령행 인자로 실행
+
+인자를 하나라도 주면 `EDIT HERE` 설정은 **모두 무시**됩니다.
+
 ```powershell
 .\run.cmd --calltree C:/work/calltree --extensions-csv C:/tools/extension-analyzer/reports --spring-report C:/tools/spring-bean-analyzer-from-xml/reports C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```

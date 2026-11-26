@@ -32,6 +32,28 @@ spring-bean-analyzer-from-xml ──(빈 승자 보고서)───────�
 1. staticAnalyzer를 실행합니다. `--out-dir`에 텍스트 호출 트리와 함께 `controller-endpoints.csv`, `controller-call-edges.csv`가 만들어집니다.
 2. 이 도구를 실행합니다.
 
+### 1. 소스 안의 설정값으로 실행 (인자 없음, 이클립스 기본)
+
+`src/execute/Execute.java` 앞부분의 `EDIT HERE` 블록을 고친 다음 인자 없이 실행합니다. 이클립스에서는 이 폴더를 프로젝트로 가져와(`.project` 포함) `execute.Execute`를 Java Application으로 실행하면 됩니다. JRE System Library는 **JDK 21**이어야 합니다.
+
+```java
+static final String HYBRIS_HOME = "C:/hybris";                // hybris 폴더 (bin, config 상위)
+static final String CALLTREE = "../staticAnalyzer";          // staticAnalyzer의 출력 폴더(OUT_DIR / --out-dir)
+static final String[] SOURCE_ROOTS = { HYBRIS_HOME + "/bin/platform", .../bin/modules, .../bin/custom };
+static final String OUT_DIR = "reports";                     // 결과 상위 폴더
+```
+
+- 상대 경로는 작업 디렉터리 기준입니다. 이클립스의 기본 작업 디렉터리는 프로젝트 폴더이므로, `../staticAnalyzer`는 같은 `javaTool` 아래의 staticAnalyzer 프로젝트입니다. staticAnalyzer를 `OUT_DIR = null`로 이클립스에서 실행하면 CSV가 그 프로젝트 폴더에 만들어지므로 기본값 그대로 이어집니다.
+- 실행하면 사용한 설정이 `[info]` 로그로 출력됩니다.
+
+```powershell
+.\run.cmd
+```
+
+### 2. 명령행 인자로 실행
+
+인자를 하나라도 주면 `EDIT HERE` 설정은 **모두 무시**됩니다.
+
 ```powershell
 .\run.cmd --calltree C:/work/calltree C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
