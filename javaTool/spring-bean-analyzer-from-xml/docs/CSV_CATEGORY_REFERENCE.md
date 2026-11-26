@@ -195,7 +195,8 @@ import로 도달한 JAR 안의 XML입니다.
 | --- | --- |
 | `INCOMPLETE_SELECTION` | extension 선택이 불완전해서 확실히 선택된 extension만 조사함 |
 | `PROPERTY_FILE_ERROR` | 프로퍼티 파일을 읽지 못함 |
-| `UNRESOLVED_LOADING_PROPERTY` | 로딩 프로퍼티(`*.application-context` 등)의 `${…}`를 해석하지 못함 |
+| `UNRESOLVED_LOADING_PROPERTY` | 로딩 프로퍼티(`*.application-context` 등)의 `${…}`를 해석하지 못했거나, 여러 extension이 서로 다른 값을 정의함 |
+| `EMPTY_LOADING_PROPERTY` | 로딩 프로퍼티(`*.application-context`, `*.global-context`)가 정의되어 있지만 값이 비어 있음(빈 문자열 또는 구분자만). 진입 XML을 만들지 않으며, 키가 있으므로 기본 파일명 규칙도 적용하지 않음 |
 | `EMPTY_CONTEXT_CONFIG` | `contextConfigLocation`이 비어 있음 |
 | `REGISTRATION_NOT_ESTABLISHED` | `resources/<extension>-spring.xml`은 있지만, `<extension>.application-context` 프로퍼티도 `<extension>-application-context.xml`도 없어 그 파일을 등록하는 근거를 찾지 못함 |
 | `WEB_XML_WITHOUT_WEBMODULE` | `web/webroot/WEB-INF/web.xml`은 있지만 `extensioninfo.xml`에 `<webmodule>`이 없음. 웹 애플리케이션으로 배포되지 않으므로 웹 컨텍스트, `web/webroot`의 XML·JAR를 분석하지 않음 |

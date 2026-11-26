@@ -26,6 +26,8 @@ public final class SpringLoadingAnalyzerTest {
         put(root.resolve("a/resources/core-child.xml"), beans("<import resource='a-spring.xml'/>"));
         put(root.resolve("a/resources/global.xml"), beans(""));
         put(root.resolve("b/resources/b-application-context.xml"), beans(""));
+        put(root.resolve("b/project.properties"), "b.global-context=\n");
+        put(root.resolve("orphan/project.properties"), "orphan.global-context= , ;\n");
         put(root.resolve("orphan/resources/orphan-spring.xml"), beans(""));
         put(root.resolve("off/resources/off.xml"), beans(""));
         Path web = root.resolve("a/web/webroot/WEB-INF/web.xml");
@@ -66,6 +68,14 @@ public final class SpringLoadingAnalyzerTest {
         check(loading.reachability().stream().noneMatch(reach -> reach.location().endsWith("orphan-spring.xml")), "Unregistered file promoted");
         check(loading.problems().stream().anyMatch(problem -> problem.status().equals("REGISTRATION_NOT_ESTABLISHED")), "Unregistered candidate issue");
         check(loading.problems().stream().anyMatch(problem -> problem.status().equals("LOADER_IMPLEMENTATION_UNVERIFIED")), "Custom loader caution");
+        check(loading.problems().stream().anyMatch(problem -> problem.status().equals("EMPTY_LOADING_PROPERTY")
+                && problem.source().equals("b.global-context")), "Empty loading property is recorded");
+        check(loading.problems().stream().anyMatch(problem -> problem.status().equals("EMPTY_LOADING_PROPERTY")
+                && problem.source().equals("orphan.global-context")), "Separator-only value is recorded as empty");
+        check(loading.problems().stream().noneMatch(problem -> problem.status().equals("UNRESOLVED_LOADING_PROPERTY")
+                && problem.source().endsWith(".global-context")), "Empty values are not reported as substitution failures");
+        check(loading.entries().stream().noneMatch(entry -> entry.declaration().context().equals("GLOBAL")
+                && entry.declaration().extension().equals("b")), "Empty property registers no entry");
         check(spring.jarXmlFiles().size() == 2, "Root-only JAR seeds must be parsed and terminate on cycle");
         check(loading.reachability().stream().anyMatch(reach -> reach.location().contains("!/META-INF/child.xml")
                 && reach.context().equals("WEB:a")), "Entry-only JAR reachability");

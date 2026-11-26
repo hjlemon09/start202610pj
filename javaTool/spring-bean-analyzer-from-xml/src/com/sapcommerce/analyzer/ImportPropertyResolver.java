@@ -29,6 +29,9 @@ public final class ImportPropertyResolver {
 
     private ImportPropertyResolver(boolean selectionComplete) { this.selectionComplete = selectionComplete; }
 
+    /** Detail of a resolution whose result is the empty string. */
+    public static final String EMPTY_RESULT = "Resolved import path is empty";
+
     public static ImportPropertyResolver load(Path root, Map<String, ExtensionInfo> extensions,
             ExtensionActivation.Result activation) {
         ImportPropertyResolver resolver = new ImportPropertyResolver(activation.complete());
@@ -84,7 +87,7 @@ public final class ImportPropertyResolver {
                 throw new IllegalArgumentException("Properties input is incomplete; see PROPERTY_FILE_ERROR diagnostics");
             }
             String resolved = expand(expression, new LinkedHashSet<>(), evidence, modes, 0);
-            if (resolved.isEmpty()) { throw new IllegalArgumentException("Resolved import path is empty"); }
+            if (resolved.isEmpty()) { throw new IllegalArgumentException(EMPTY_RESULT); }
             String status = modes.contains("PROPERTY") && modes.contains("DEFAULT") ? "PROPERTY_AND_DEFAULT"
                     : modes.contains("DEFAULT") ? "DEFAULT" : "PROPERTY";
             return new Resolution(resolved, status, String.join("; ", evidence), "Static configuration inference; runtime not inspected");

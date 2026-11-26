@@ -131,13 +131,13 @@ https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8b8e13c9
 |4.1 실제 키와 조회 메서드를 식별한다|**일부**|키는 `<ext>.application-context`, `<ext>.global-context`로 **고정**해 조회한다. SAP 코드에서 키를 어떻게 조합하는지, 어떤 메서드(`getParameter`, `getString` 등)로 읽는지, fallback 인수가 있는지는 확인하지 않는다.|
 |4.2 프로퍼티의 후보와 최종값을 구한다|**일부**|위 세 파일을 위 우선순위로 합쳐 최종값을 구하고, 출처를 남긴다. `tenant_<ID>.properties`, `local_tenant_<ID>.properties`, 환경별 설정, 배포 시 생성·치환되는 설정, 환경 변수, JVM 시스템 프로퍼티는 **읽지 않는다.** 실제 SAP의 설정 합성 순서와 일치하는지도 확인하지 않았다.|
 |4.3 코어, 전역, 웹의 설정 키를 식별한다|**함**|`<ext>.application-context`는 `CORE`, `<ext>.global-context`는 `GLOBAL`, `web.xml`의 `contextConfigLocation`과 서블릿 설정은 `WEB`/`SERVLET` 컨텍스트로 분류한다. 파일명이 아니라 어느 키·설정에서 왔는지로 분류한다. 웹은 `<webmodule>`이 선언된 extension만 대상이다. (본문의 `<extension>.global-application-context`와 프로그램의 `<ext>.global-context` 중 어느 쪽이 맞는지는 확인하지 않았다.)|
-|4.4 결과별 판정을 기록한다|**일부**|값이 있으면 쉼표·세미콜론·공백으로 나눈 토큰마다 진입 후보를 만든다(`DECLARED_PROPERTY`). 키가 없으면 5장의 기본 파일명 규칙으로 넘어간다. 치환 실패나 extension 간 값 충돌은 `UNRESOLVED_LOADING_PROPERTY`로 기록한다. 값이 빈 문자열이면 진입 후보를 만들지 않으며 **별도로 기록하지도 않는다.** 일부 파일이 빠져 최종값을 고를 수 없는 경우를 따로 구분하지 않는다.|
+|4.4 결과별 판정을 기록한다|**일부**|값이 있으면 쉼표·세미콜론·공백으로 나눈 토큰마다 진입 후보를 만든다(`DECLARED_PROPERTY`). 키가 없으면 5장의 기본 파일명 규칙으로 넘어간다. 치환 실패나 extension 간 값 충돌은 `UNRESOLVED_LOADING_PROPERTY`로 기록한다. 값이 빈 문자열이거나 구분자만 있으면 진입 후보를 만들지 않고 `EMPTY_LOADING_PROPERTY`로 기록한다(키가 있으므로 기본 파일명 규칙도 적용하지 않는다). 일부 파일이 빠져 최종값을 고를 수 없는 경우는 따로 구분하지 않는다.|
 
 ### 결과물
 
 |파일|내용|
 |---|---|
 |`spring-loading-entrypoints.csv`|진입 XML 후보. `configuration`(설정 원문), `target_xml`(진입 XML), `property_evidence`(값의 출처: 어느 파일의 어느 키), `modeled_context`(컨텍스트)|
-|`spring-loading-issues.csv`|`UNRESOLVED_LOADING_PROPERTY`(치환 실패·충돌), `PROPERTY_FILE_ERROR`(파일을 읽지 못함), `INCOMPLETE_SELECTION` 등|
+|`spring-loading-issues.csv`|`UNRESOLVED_LOADING_PROPERTY`(치환 실패·충돌), `EMPTY_LOADING_PROPERTY`(값이 비어 있음), `PROPERTY_FILE_ERROR`(파일을 읽지 못함), `INCOMPLETE_SELECTION` 등|
 
 ## 5장에서 사용할 내용

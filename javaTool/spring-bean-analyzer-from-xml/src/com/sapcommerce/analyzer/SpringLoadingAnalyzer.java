@@ -78,6 +78,16 @@ public final class SpringLoadingAnalyzer {
     private void propertyRoot(String extension, String key, String context, String kind, Path base) {
         if (!properties.hasDefinition(key)) { return; }
         var resolution = properties.resolve("${" + key + "}");
+        // Defined but blank (empty, or only separators): no entry, and the default file name convention is not
+        // applied because the key exists. Recorded separately from substitution failures so it is recognizable.
+        boolean empty = resolution.complete() ? split(resolution.value()).isEmpty()
+                : resolution.detail().equals(ImportPropertyResolver.EMPTY_RESULT);
+        if (empty) {
+            problems.add(new Problem(key, "EMPTY_LOADING_PROPERTY",
+                    "Property is defined but its value is empty; no entry XML is registered and the default file name convention is not applied. "
+                    + "Source: " + resolution.evidence()));
+            return;
+        }
         if (!resolution.complete()) {
             problems.add(new Problem(key, "UNRESOLVED_LOADING_PROPERTY", resolution.detail()));
             return;
