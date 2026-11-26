@@ -31,6 +31,7 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 - 둘 중 어디에도 해당하지 않는 컨트롤러는 출력하지 않고 건너뜁니다. 건너뛴 수는 진행 로그에 나옵니다.
 - **중간 상위 클래스의 소스를 찾지 못하면** 더 올라갈 수 없어서 건너뜁니다. 예를 들어 `acceleratorstorefrontcommons`가 분석 대상에 없는 경우입니다. 이때는 그 상위 클래스 이름과 컨트롤러 수를 `[warn]` 로그로 출력합니다. 대상에 넣어야 하는 컨트롤러라면 해당 extension을 `--include-ext`로 추가하거나 루트에 포함하세요.
 - 두 파일은 항상 함께 만들어집니다. 해당하는 컨트롤러가 없으면 빈 파일이 됩니다.
+- 같은 폴더에 호출 그래프 CSV 두 개도 만들어집니다(아래 「호출 그래프 CSV」).
 
 ## 준비물
 
@@ -105,6 +106,45 @@ Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입�
 | `--class-path <폴더\|jar>` | 소스가 없는 클래스의 타입(메서드 반환 타입, 상수/enum 필드 타입, 상위 타입)을 읽을 `.class` 폴더나 jar입니다. 여러 번 줄 수 있습니다. 생략하면 `<base>/bin/platform/bootstrap/modelclasses`를 쓰고, 없으면 `bin/platform/bootstrap/bin/models.jar`를 씁니다. |
 
 `PRUNE_ENABLED`와 `NAME_FILTER`는 옵션으로 바꿀 수 없습니다. 소스에서 직접 수정해야 합니다.
+
+## 호출 그래프 CSV (`controller-endpoints.csv`, `controller-call-edges.csv`)
+
+텍스트 호출 트리와 같은 폴더(`--out-dir`)에 CSV 두 개를 항상 함께 만듭니다. [controller-model-analyzer](../controller-model-analyzer/README.md)가 이 CSV를 입력으로 씁니다.
+UTF-8 BOM, CRLF, 모든 값을 따옴표로 감쌉니다. 텍스트 출력의 내용과 형식은 바뀌지 않습니다.
+
+- 가지치기(`PRUNE_ENABLED`)와 관계없이 전개한 모든 노드를 기록합니다. 생략 규칙(model/data/form 계열, 단순 getter/setter)은 텍스트와 같습니다.
+- `(expanded above)`로 접힌 노드는 같은 노드 id로 기록됩니다. 그 노드의 하위 간선은 처음 전개한 곳에 한 번만 있습니다.
+
+**controller-endpoints.csv**: 시작 메서드 한 개당 한 행
+
+| 열 | 내용 |
+|---|---|
+| `endpoint_id` | `E1`, `E2` … (이번 실행 안에서만 유일) |
+| `endpoint_kind` | 아래 표 |
+| `controller_family` | `accelerator` / `occ` (BeforeViewHandler는 빈 값) |
+| `context` | `--spring-report`를 쓰면 보고서의 컨텍스트 이름(`WEB:shop` 등), 아니면 `WEB:<extension>` 또는 `CORE` |
+| `controller_class`, `controller_bean`, `controller_file` | 컨트롤러(또는 BeforeViewHandler) 클래스, 빈 id, 파일 |
+| `class_mapping`, `mapping` | 클래스 레벨 매핑, 메서드 매핑(텍스트의 `@` 줄과 같음). `MODEL_ATTRIBUTE_METHOD`는 어노테이션의 이름, `BEFORE_VIEW_HANDLER`는 목록 위치 |
+| `method`, `declaring_class`, `method_file`, `method_line` | 실행되는 메서드 본문의 시그니처, 선언 클래스, 파일(절대 경로), 시작 행 |
+| `root_node` | 시작 노드 id (항상 `N1`) |
+
+| `endpoint_kind` | 텍스트에도 있음 | 내용 |
+|---|---|---|
+| `REQUEST_MAPPING` | 예 | 컨트롤러 클래스에 선언된 매핑 메서드 |
+| `CMS_COMPONENT` | 예 | CMS 컴포넌트 컨트롤러의 private가 아닌 메서드 |
+| `INHERITED_MAPPING` | 아니요 | 상위 클래스의 매핑 메서드(하위 클래스가 재정의하면 그 본문). 실행 시 객체는 하위 컨트롤러이므로 `this` 호출은 하위 클래스부터 찾습니다. |
+| `MODEL_ATTRIBUTE_METHOD` | 아니요 | 컨트롤러와 상위 클래스의 `@ModelAttribute` 메서드(재정의되면 가장 아래 것) |
+| `BEFORE_VIEW_HANDLER` | 아니요 | 웹 컨텍스트에서 이름이 `beforeViewHandlers`인 속성(리스트, `util:list` 참조, `ListMergeDirective` 포함)에 들어 있는 빈의 `beforeView` 메서드. accelerator 컨트롤러가 있는 컨텍스트마다 한 번 기록합니다. |
+
+**controller-call-edges.csv**: 호출 한 건당 한 행
+
+| 열 | 내용 |
+|---|---|
+| `endpoint_id`, `caller_node`, `callee_node` | 어느 시작 메서드의 그래프에서, 어느 노드가 어느 노드를 호출하는지. 노드 id는 시작 메서드 안에서만 유일합니다. |
+| `call_line`, `call_name`, `arg_count`, `call_args` | 호출문의 행, 메서드 이름, 인자 수, 인자 식(탭으로 구분, 공백은 하나로 줄임). Converter → Populator처럼 호출문 없이 붙인 노드는 비어 있습니다. |
+| `callee_class`, `callee_method`, `callee_file`, `callee_line` | 호출되는 메서드가 선언된 클래스, 시그니처, 파일(절대 경로), 시작 행 |
+| `impl_class`, `bean`, `resolution` | 텍스트의 `{impl=…}`, 빈 id, `<= …` 근거 |
+| `status` | `EXPANDED`(하위 전개함), `EXPANDED_ABOVE`, `RECURSION`, `MAX_DEPTH`, `NO_BODY`(추상·인터페이스), `UNRESOLVED`(대상 미확정) |
 
 ## XML 분석 보고서로 빈 구현체 좁히기
 

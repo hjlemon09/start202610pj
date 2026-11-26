@@ -39,7 +39,8 @@ import java.util.stream.Collectors;
  *   BaseController (OCC web services)                                   -> calltree_occ_{all|pruned}.txt
  * Other controllers are skipped.
  * Options:
- *   --out-dir <dir>           output directory for the two files (default: working directory)
+ *   --out-dir <dir>           output directory for the two files and the call graph CSVs
+ *                             controller-endpoints.csv / controller-call-edges.csv (default: working directory)
  *   --base <dir>              paths in output are relative to this dir (default: cwd)
  *   --localextensions <xml>   extension load order seed (default: alphabetical + requires-extension)
  *   --controller-root <dir>   only scan controllers under this dir (repeatable; default: all roots)
@@ -224,6 +225,8 @@ public class CallTreeExtractor {
         List<Integer> callLines = new ArrayList<>(); // 호출하는 쪽(부모 노드) 소스에서 이 메서드를 호출한 행 번호
         String overload; // 인자 타입으로 오버로드를 하나로 좁히지 못했을 때의 표시
         String unresolvedCall;
+        String callName; // 호출문의 메서드 이름 (populator처럼 호출문 없이 붙인 노드는 null)
+        List<String> args = List.of(); // 호출문의 인자 식 (CSV 출력용)
     }
 
     static class Inj {
@@ -380,6 +383,9 @@ public class CallTreeExtractor {
             counts.put(kind, 0);
             log("output (" + kind + "): " + p);
         }
+        CallGraphCsv graph = new CallGraphCsv(od);
+        log("output (csv): " + od.resolve(CallGraphCsv.ENDPOINTS) + ", " + od.resolve(CallGraphCsv.EDGES));
+        Set<String> handlerContexts = new HashSet<>();
         int n = 0, skipped = 0;
         for (String cfqn : cfqns) {
             CI cc = ci(cfqn);
@@ -395,17 +401,19 @@ public class CallTreeExtractor {
             BeanDef cb = beanByClass(reg, cfqn);
             String cm = mapping(cc.td);
             boolean cmsComp = isCmsComponentController(cc);
+            String context = reg.context != null ? reg.context : webName == null ? "CORE" : "WEB:" + webName;
+            String beanId = cb == null ? "" : cb.id;
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
+            Set<String> mappedSigs = new HashSet<>();
             for (MethodDeclaration m : cc.td.getMethods()) {
                 String mp = mapping(m);
-                if (mp == null && cmsComp && !m.isPrivate()) mp = "[CMS-COMPONENT] " + access(m) + " " + sig(m); // 매핑이 없어도 private 외 메서드는 대상
+                boolean cmsRoot = mp == null && cmsComp && !m.isPrivate();
+                if (cmsRoot) mp = "[CMS-COMPONENT] " + access(m) + " " + sig(m); // 매핑이 없어도 private 외 메서드는 대상
                 if (mp == null) continue;
-                Frame fr = new Frame();
-                fr.decl = cc; fr.m = m; fr.bean = cb; fr.runtime = cfqn; fr.reg = reg;
-                Callee root = new Callee();
-                root.decl = cc; root.m = m; root.recv = new Target(cfqn, cb, null);
-                TNode tn = build(root, fr, 0, new HashSet<>(), new HashMap<>());
+                if (!cmsRoot) mappedSigs.add(sig(m));
+                TNode tn = buildRoot(cc, m, cfqn, cb, reg);
+                graph.write(cmsRoot ? "CMS_COMPONENT" : "REQUEST_MAPPING", kind, context, cfqn, beanId, cc.path, cm, mp, tn);
                 if (PRUNE_ENABLED) {
                     prune(tn);
                     if (tn.kids.isEmpty()) continue; // 조건을 만족하는 최종 노드가 없으면 이 엔드포인트는 출력 안 함
@@ -413,6 +421,8 @@ public class CallTreeExtractor {
                 pw.println("  @ " + mp);
                 print(tn, "  ", true, true, pw);
             }
+            writeCsvOnlyRoots(graph, cc, cfqn, cb, reg, kind, context, cm, mappedSigs);
+            if (KIND_ACCELERATOR.equals(kind) && handlerContexts.add(context)) writeBeforeViewHandlers(graph, reg, context);
             pw.flush();
             if (sw.getBuffer().length() > 0) {
                 out.println("[CONTROLLER] " + rel(cc.path) + (cm == null ? "" : "  " + cm) + (cb != null ? "  (bean " + cb.id + ")" : "")
@@ -424,12 +434,100 @@ public class CallTreeExtractor {
             if (++n % 20 == 0) { out.flush(); log("controllers done=" + n); }
         }
         for (PrintWriter w : outs.values()) w.close();
+        graph.close();
         log("done. controllers analyzed=" + n + " (accelerator written=" + counts.get(KIND_ACCELERATOR)
                 + ", occ written=" + counts.get(KIND_OCC) + "), skipped (not AbstractController/BaseController)=" + skipped);
         if (!unresolvedSupers.isEmpty()) {
             log("[warn] skipped controllers whose superclass source was not found (add its extension/root if it should be a target):");
             for (Map.Entry<String, Integer> e : unresolvedSupers.entrySet()) log("  " + e.getKey() + " : " + e.getValue() + " controller(s)");
         }
+    }
+
+    // ===================== CSV-only start methods (controller-model-analyzer) =====================
+    static TNode buildRoot(CI decl, MethodDeclaration m, String runtime, BeanDef bean, Registry reg) {
+        Frame fr = new Frame();
+        fr.decl = decl; fr.m = m; fr.bean = bean; fr.runtime = runtime; fr.reg = reg;
+        Callee root = new Callee();
+        root.decl = decl; root.m = m; root.recv = new Target(runtime, bean, null);
+        return build(root, fr, 0, new HashSet<>(), new HashMap<>());
+    }
+
+    static AnnotationExpr annotation(NodeWithAnnotations<?> n, String simpleName) {
+        for (AnnotationExpr a : n.getAnnotations()) {
+            String an = a.getNameAsString();
+            if (an.substring(an.lastIndexOf('.') + 1).equals(simpleName)) return a;
+        }
+        return null;
+    }
+
+    /**
+     * Start methods that are not printed in the text tree but are needed to list model attributes:
+     * request mappings inherited from superclasses (run with the most-derived body), and @ModelAttribute methods
+     * of the class chain (run before every request mapping of the controller).
+     */
+    static void writeCsvOnlyRoots(CallGraphCsv graph, CI cc, String cfqn, BeanDef cb, Registry reg, String kind,
+            String context, String classMapping, Set<String> mappedSigs) {
+        List<CI> chain = classChain(cc);
+        String beanId = cb == null ? "" : cb.id;
+        for (int i = 1; i < chain.size(); i++) {
+            for (MethodDeclaration m : chain.get(i).td.getMethods()) {
+                String mp = mapping(m);
+                if (mp == null || m.isPrivate() || !mappedSigs.add(sig(m))) continue;
+                CI declCi = chain.get(i);
+                MethodDeclaration body = m;
+                for (int j = 0; j < i && body == m; j++) // 하위 클래스가 재정의했으면 그 본문이 실행된다
+                    for (MethodDeclaration o : chain.get(j).td.getMethodsByName(m.getNameAsString()))
+                        if (sig(o).equals(sig(m))) { declCi = chain.get(j); body = o; break; }
+                graph.write("INHERITED_MAPPING", kind, context, cfqn, beanId, cc.path, classMapping, mp,
+                        buildRoot(declCi, body, cfqn, cb, reg));
+            }
+        }
+        Set<String> seen = new HashSet<>();
+        for (CI c : chain) {
+            for (MethodDeclaration m : c.td.getMethods()) {
+                AnnotationExpr a = annotation(m, "ModelAttribute");
+                if (a == null || !seen.add(sig(m))) continue;
+                String name = annVal(a, "value");
+                if (name == null) name = annVal(a, "name");
+                graph.write("MODEL_ATTRIBUTE_METHOD", kind, context, cfqn, beanId, cc.path, classMapping,
+                        name == null ? "" : name, buildRoot(c, m, cfqn, cb, reg));
+            }
+        }
+    }
+
+    /**
+     * BeforeViewHandler beans listed in the "beforeViewHandlers" property of the context (the accelerator's
+     * BeforeViewHandlerInterceptor). They add model entries to every rendered view of that context.
+     */
+    static void writeBeforeViewHandlers(CallGraphCsv graph, Registry reg, String context) {
+        int found = 0;
+        Set<BeanDef> owners = new LinkedHashSet<>();
+        for (Registry r = reg; r != null; r = r.parent)
+            for (BeanDef b : r.beans.values())
+                if (!b.isAbstract && reg.get(b.id) == b
+                        && (mergedLists(b, reg).containsKey("beforeViewHandlers") || mergedProps(b, reg).containsKey("beforeViewHandlers")))
+                    owners.add(b);
+        for (BeanDef owner : owners) {
+            List<ListReference> refs = listRefs(owner, "beforeViewHandlers", reg);
+            for (int i = 0; i < refs.size(); i++) {
+                ListReference ref = refs.get(i);
+                List<Target> targets = new ArrayList<>();
+                addNamedBean(targets, ref.name(), "beforeViewHandlers[" + i + "] of bean " + owner.id, ref.context(), true);
+                for (Target t : targets) {
+                    if (t.cls == null) continue;
+                    for (Callee ce : findMethods(t.cls, "beforeView", 3, null, t)) {
+                        if (ce.m == null || !ce.m.getBody().isPresent()) continue;
+                        Frame fr = new Frame();
+                        fr.decl = ce.decl; fr.m = ce.m; fr.bean = t.bean; fr.runtime = t.cls; fr.reg = ref.context();
+                        TNode tn = build(ce, fr, 0, new HashSet<>(), new HashMap<>());
+                        graph.write("BEFORE_VIEW_HANDLER", "", context, t.cls, t.bean == null ? "" : t.bean.id,
+                                ce.decl.path, "", "beforeViewHandlers[" + i + "] of bean " + owner.id, tn);
+                        found++;
+                    }
+                }
+            }
+        }
+        log("before-view handlers (" + context + "): " + found);
     }
 
     static void loadLegacySpring(List<Path> springFiles) {
@@ -2060,6 +2158,8 @@ public class CallTreeExtractor {
                 if (selfGetter && x.m != null && !x.m.getBody().isPresent()) continue;
                 if (!thisCall.add(key(x))) continue;
                 if (line > 0) x.callLines.add(line);
+                x.callName = c.getNameAsString();
+                x.args = CallGraphCsv.args(c);
                 seen.add(key(x));
                 res.add(x);
             }
@@ -2082,6 +2182,8 @@ public class CallTreeExtractor {
 
     static class TNode {
         String line;
+        Callee ce;
+        String status = "EXPANDED"; // CSV용: EXPANDED / EXPANDED_ABOVE / RECURSION / MAX_DEPTH / NO_BODY / UNRESOLVED
         List<TNode> kids = new ArrayList<>();
         boolean selfMatch, kept;
         TNode ref; // "expanded above" 노드가 가리키는 최초 전개 노드
@@ -2096,11 +2198,13 @@ public class CallTreeExtractor {
         TNode n = new TNode();
         n.line = label(ce);
         n.selfMatch = matches(ce);
-        if (ce.m == null || !ce.m.getBody().isPresent()) return n;
+        n.ce = ce;
+        if (ce.m == null) { n.status = "UNRESOLVED"; return n; }
+        if (!ce.m.getBody().isPresent()) { n.status = "NO_BODY"; return n; }
         String k = key(ce);
-        if (stack.contains(k)) { n.line += "  (recursion)"; return n; }
-        if (!full && expanded.containsKey(k)) { n.line += "  (expanded above)"; n.ref = expanded.get(k); return n; }
-        if (depth >= maxDepth) { n.line += "  (max-depth)"; return n; }
+        if (stack.contains(k)) { n.line += "  (recursion)"; n.status = "RECURSION"; return n; }
+        if (!full && expanded.containsKey(k)) { n.line += "  (expanded above)"; n.ref = expanded.get(k); n.status = "EXPANDED_ABOVE"; return n; }
+        if (depth >= maxDepth) { n.line += "  (max-depth)"; n.status = "MAX_DEPTH"; return n; }
         expanded.put(k, n);
         stack.add(k);
         Frame nf = new Frame();
