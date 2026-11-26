@@ -21,7 +21,7 @@ public final class RootlessXmlTest {
         Files.writeString(resources.resolve("valid.xml"), "<beans/>");
         Files.writeString(resources.resolve("utf16.xml"), "<?xml version='1.0' encoding='UTF-16'?>\n<!-- comment -->",
                 java.nio.charset.StandardCharsets.UTF_16);
-        var definitions = Map.of("app", new ExtensionInfo("app", root.resolve("app/extensioninfo.xml"), List.of()));
+        var definitions = Map.of("app", new ExtensionInfo("app", root.resolve("app/extensioninfo.xml")));
         var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
                 Map.of("app", new ExtensionActivation.Selection("EXPLICIT", "fixture", "")), List.of());
         var result = SpringXmlAnalyzer.analyze(root, definitions, activation);

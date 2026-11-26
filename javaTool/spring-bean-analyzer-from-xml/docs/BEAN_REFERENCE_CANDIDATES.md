@@ -85,7 +85,7 @@ Java Config, 미지원 namespace 처리기, BeanFactoryPostProcessor, factory �
 ## 개발환경 확인
 
 추가 소스: SpringBeanReferenceResolver.java.
-수정 소스: SpringBeanAnalyzer.java, SpringBeanReportWriter.java, DependencyReportWriter.java.
+수정 소스: SpringBeanAnalyzer.java, SpringBeanReportWriter.java, DependencyReportWriter.java(현재 AnalysisReportWriter.java).
 기존대로 ExtensionScanner 실행 후 CSV 21개와 콘솔의 새 후보 집계를 확인한다.
 spring-bean-references.csv에서 SINGLE/MULTIPLE/NO_SAME_CONTEXT 및 alias 후보 경로를 볼 수 있다.
 부모 문맥 미확정이나 후보 없음이 있다고 SAP 설정을 바로 고치지 않는다.

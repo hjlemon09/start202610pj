@@ -1,4 +1,4 @@
-package com.sapcommerce.extractor;
+package com.sapcommerce.extension;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -9,19 +9,24 @@ public final class ExtensionInfo {
     private final String name;
     private final Path xmlPath;
     private final List<String> dependencies;
+    private final List<String> loadPriorTo;
     private final boolean coreModule;
     private final boolean webModule;
     private final String webRoot;
 
     public ExtensionInfo(String name, Path xmlPath, List<String> dependencies) {
-        this(name, xmlPath, dependencies, false, false, "");
+        this(name, xmlPath, dependencies, List.of(), false, false, "");
     }
 
-    public ExtensionInfo(String name, Path xmlPath, List<String> dependencies, boolean coreModule,
-            boolean webModule, String webRoot) {
+    /**
+     * loadPriorTo: names from {@code <meta key="load-prior-to" value="..."/>}; this extension loads before them.
+     */
+    public ExtensionInfo(String name, Path xmlPath, List<String> dependencies, List<String> loadPriorTo,
+            boolean coreModule, boolean webModule, String webRoot) {
         this.name = Objects.requireNonNull(name);
         this.xmlPath = Objects.requireNonNull(xmlPath);
         this.dependencies = List.copyOf(dependencies);
+        this.loadPriorTo = List.copyOf(loadPriorTo);
         this.coreModule = coreModule;
         this.webModule = webModule;
         this.webRoot = webRoot == null ? "" : webRoot;
@@ -43,6 +48,11 @@ public final class ExtensionInfo {
     /** Direct requires-extension names in declaration order. */
     public List<String> getDependencies() {
         return dependencies;
+    }
+
+    /** Extensions this one is declared to load before ({@code load-prior-to} meta). */
+    public List<String> getLoadPriorTo() {
+        return loadPriorTo;
     }
 
     /** {@code <coremodule>} is declared. */

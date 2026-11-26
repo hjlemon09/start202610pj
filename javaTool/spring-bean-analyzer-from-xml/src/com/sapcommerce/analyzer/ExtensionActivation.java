@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Extension selection data produced by activated-extension-extractor and read through {@link ExtractorReport}.
+ * Extension selection data produced by extension-analyzer and read through {@link ExtensionReport}.
  * This analyzer no longer infers selection itself; it only carries the extractor's result.
  */
 public final class ExtensionActivation {

@@ -1,26 +1,24 @@
 # spring-bean-analyzer-from-xml
 
 SAP Commerce의 Spring XML을 기반으로 Spring 빈과 그 **최종 승자**(같은 이름이 여러 번 정의될 때 실제로 남는 정의)를 추정하는 독립 Java 분석 도구입니다.
-예전 이름은 `sap-commerce-analyzer`입니다. 활성 extension 판정은 [activated-extension-extractor](../activated-extension-extractor/README.md)로 분리했습니다.
-첨부 문서의 STEP 10-2에서 전체 Extension 의존관계 분석 및 CSV 출력까지 확장한 도구에서 출발했습니다.
+예전 이름은 `sap-commerce-analyzer`입니다.
+extension에 관한 분석(활성 판정, `requires-extension` 의존관계, 로드 순서)은 모두 [extension-analyzer](../extension-analyzer/README.md)가 하고,
+이 도구는 그 결과를 읽어 **Spring XML만** 분석합니다.
 Java 21 표준 API만 사용하며 Maven, Gradle, Spring Boot 및 외부 라이브러리는 필요하지 않습니다.
 SAP Commerce의 소스와 설정은 읽기만 합니다.
 
 ## 구현 범위
 
-- [activated-extension-extractor](../activated-extension-extractor/README.md)의 **가장 최근 결과**를 읽어
-  extension 정의(사용하는 정의 하나씩)와 선택 상태(명시 지정·자동 로딩·플랫폼 기본 포함·간접 의존)를 사용
-  (이 도구 안에서는 더 이상 `extensioninfo.xml` 전체 검색과 `localextensions.xml` 선택 판정을 하지 않습니다)
-- 결과에 적힌 `extensioninfo.xml`을 다시 읽어 직접 `requires-extension` 목록 파싱
-- 특정 Extension에서 시작하는 직접·간접 의존관계 트리 출력
-- 전체 Extension의 직접·역방향 의존관계, 누락 참조, 순환 그룹 분석 및 CSV 저장
+- [extension-analyzer](../extension-analyzer/README.md)의 **가장 최근 결과**를 읽어 다음을 사용
+  - extension 정의(이름당 사용하는 정의 하나)와 `extensioninfo.xml` 위치
+  - 선택 상태(명시 지정·자동 로딩·플랫폼 기본 포함·간접 의존)
+  - extension 사이의 **보장된 로드 순서**(`extension-load-order.csv`)
+  - 이 도구는 `extensioninfo.xml`을 다시 파싱하지 않고, 의존관계도 다시 계산하지 않습니다.
 - 선택된 Extension의 Spring XML 및 import 정방향·역방향 관계 분석
-- 순환 참조와 이미 방문한 공유 의존관계 구분
+- Spring 로딩 진입점과 XML Bean 선언·명시적 참조의 정적 목록
+- 컨텍스트별 빈 이름·alias의 **최종 승자 결정**과 참조의 최종 연결 (「빈 최종 승자 결정」 참고)
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
 
-- 컨텍스트별 빈 이름·alias의 **최종 승자 결정**과 참조의 최종 연결 (「빈 최종 승자 결정」 참고)
-
-Spring 로딩 진입점과 XML Bean 선언·명시적 참조의 정적 목록을 포함합니다.
 시각화, 애너테이션 기반 빈(소스 분석) 및 실행 중 메서드 CallTrace는 이 도구의 범위 밖입니다.
 
 ## Eclipse에서 가져오기
@@ -38,75 +36,69 @@ Spring 로딩 진입점과 XML Bean 선언·명시적 참조의 정적 목록을
 
 ## 실행 순서
 
-1. 먼저 [activated-extension-extractor](../activated-extension-extractor/README.md)를 실행합니다.
-   결과는 `activated-extension-extractor/reports/yyyyMMdd_HHmmss_고유값/`에 저장됩니다.
-2. 이 도구를 실행합니다. 기본으로 `../activated-extension-extractor/reports`에서 **가장 최근 결과 폴더**를 골라 사용합니다.
+1. 먼저 [extension-analyzer](../extension-analyzer/README.md)를 실행합니다.
+   결과는 `extension-analyzer/reports/yyyyMMdd_HHmmss_고유값/`에 저장됩니다.
+2. 이 도구를 실행합니다. 기본으로 `../extension-analyzer/reports`에서 **가장 최근 결과 폴더**를 골라 사용합니다.
    - 고르는 기준: 폴더 이름(`yyyyMMdd_HHmmss_`)이 가장 늦은 것. 이 형식의 폴더가 없으면 `extension-activation.csv`의 수정 시각이 가장 늦은 것.
-   - 사용한 결과 폴더는 콘솔 `Extractor result:`와 `summary.csv`의 `extractor_report`에 남습니다.
+   - 사용한 결과 폴더는 콘솔 `Extension result:`와 `summary.csv`의 `extension_report`에 남습니다.
 
-extractor 결과가 없으면 분석하지 않고 종료 코드 1로 끝납니다. extractor 결과에서 다음 파일을 읽습니다.
+extension-analyzer 결과가 없으면 분석하지 않고 종료 코드 1로 끝납니다. 결과에서 다음 파일을 읽습니다.
 
 | 파일 | 사용 내용 |
 | --- | --- |
 | `summary.csv` | `hybris_home`(분석 루트), `localextensions_file`, 찾은/파싱한 XML 수, `scan_complete` |
 | `extension-activation.csv` | 발견한 extension(이름당 사용하는 정의 하나)과 선택 상태·사유·근거, `extensioninfo.xml` 경로 |
 | `activation-issues.csv` | 선택 판정 문제 (`selection_complete`) |
+| `extensions.csv` | 선택된 extension의 `load_order_cycle`(requires/load-prior-to 순환 여부) |
+| `extension-load-order.csv` | 선택된 extension 사이의 보장된 순서 쌍. 없는 쌍은 순서 미확정 |
 | `extension-duplicates.csv`, `activation-notes.csv`, `scan-failures.csv` | 중복 정의, 참고 기록, 스캔 실패 (없으면 0건으로 처리) |
+
+예전 activated-extension-extractor의 결과에는 `extension-load-order.csv`가 없으므로 **오류로 종료**합니다.
+extension-analyzer를 다시 실행하세요.
 
 ## 실행 인자
 
-전체 분석은 **Program arguments를 비운 상태로 실행**하면 됩니다. 분석 루트는 extractor 결과의 `hybris_home`입니다.
+전체 분석은 **Program arguments를 비운 상태로 실행**하면 됩니다. 분석 루트는 extension-analyzer 결과의 `hybris_home`입니다.
 
 **Run → Run Configurations → Java Application → ExtensionScanner → Arguments → Program arguments**:
 
 ```text
---extractor "C:\work\activated-extension-extractor\reports" "C:\hybris" mmmcore
+--extensions "C:\work\extension-analyzer\reports" "C:\hybris"
 ```
 
-`mmmcore`는 익명화된 예시입니다. 실제 `extensioninfo.xml`의 `extension name`으로 바꾸세요.
 경로에 공백이 있으면 큰따옴표로 감쌉니다.
 
-- 인자 없음: 기본 위치의 최신 extractor 결과로 의존관계·Spring 분석 및 CSV 저장
-- `--extractor <폴더>`: extractor의 `reports` 폴더(최신 결과 자동 선택) 또는 결과 폴더 하나.
-  VM arguments의 `-Danalyzer.extractor=<폴더>`로도 지정할 수 있습니다. 기본값은 `../activated-extension-extractor/reports`(작업 디렉터리 기준)
-- 첫 번째 인자: 선택 사항. SAP Commerce 루트. extractor 결과의 `hybris_home`과 다르면 **오류로 종료**합니다
+- 인자 없음: 기본 위치의 최신 extension-analyzer 결과로 Spring 분석 및 CSV 저장
+- `--extensions <폴더>`: extension-analyzer의 `reports` 폴더(최신 결과 자동 선택) 또는 결과 폴더 하나.
+  VM arguments의 `-Danalyzer.extensions=<폴더>`로도 지정할 수 있습니다. 기본값은 `../extension-analyzer/reports`(작업 디렉터리 기준)
+- 인자 하나: 선택 사항. SAP Commerce 루트. extension-analyzer 결과의 `hybris_home`과 다르면 **오류로 종료**합니다
   (다른 설치의 선택 결과를 섞지 않기 위해서입니다)
-- 두 번째 인자: 선택 사항. 지정한 Extension의 트리를 추가 출력 (대소문자 구분)
 - `--help`: 사용법 출력
 
-예전의 `-Danalyzer.localextensions`는 없어졌습니다. 다른 `localextensions.xml`로 판정하려면
-extractor를 `-Dextractor.localextensions=<파일>`로 실행한 뒤 그 결과를 사용하세요.
+예전의 `--extractor`, `-Danalyzer.extractor`는 `--extensions`, `-Danalyzer.extensions`로 바뀌었습니다.
+특정 extension의 의존 트리 출력(예전의 두 번째 인자)은 extension-analyzer로 옮겼습니다.
+다른 `localextensions.xml`로 판정하려면 extension-analyzer를 `-Dextractor.localextensions=<파일>`로 실행한 뒤 그 결과를 사용하세요.
 
 예상 출력 형태:
 
 ```text
-=== SAP Commerce Extension Analyzer ===
-Extractor result: C:\...\activated-extension-extractor\reports\20261126_101500_...
+=== Spring Bean Analyzer (from XML) ===
+Extension result: C:\...\extension-analyzer\reports\20261126_101500_...
 Hybris root     : C:\hybris
 
-=== Analysis Summary (from activated-extension-extractor) ===
-Found XML files : ...
-Parsed          : ...
-Failed          : 0
-Unique names    : ...
-Unused duplicates: 0
-Access failures : 0
+=== Extensions (from extension-analyzer) ===
+Definitions     : ...
+Selected        : ...
+Selection complete: true
+Scan complete   : true
+Load order cycles: 0
 
-=== Full Dependency Analysis ===
-Dependency edges: ...
-Missing edges   : ...
-Cycle groups    : ...
+=== Spring XML Import Analysis (SOURCE AND REACHABLE JAR XML) ===
+...
+=== Spring Bean Final Winners (STATIC REGISTRATION ORDER) ===
+...
 CSV reports: ...
-
-=== Extension Dependency Analysis ===
-=== Dependency Tree ===
-mmmcore
-  -> acceleratorcms
-    -> ...
 ```
-
-위 트리는 두 번째 인자를 입력했을 때만 추가 출력됩니다.
-기본 실행에는 `Analysis Summary` 다음에 `Full Dependency Analysis`와 CSV 저장 경로가 출력됩니다.
 
 ## 전체 분석 결과 파일
 
@@ -114,18 +106,14 @@ mmmcore
 Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실행 완료 시 출력되는 절대 경로를 확인하세요.
 매 실행마다 새 폴더를 만들어 이전 결과를 덮어쓰지 않습니다. `reports/`는 Git에서 제외합니다.
 
+CSV는 모두 **19개**입니다. extension에 관한 CSV(`extensions.csv`, `dependencies.csv`, `reverse-dependencies.csv`,
+`missing-dependencies.csv`, `cycles.csv`, `extension-activation.csv`, `activation-issues.csv`, `extension-duplicates.csv`)는
+extension-analyzer 결과 폴더에만 있습니다.
+
 | 파일 | 내용 |
 | --- | --- |
-| `summary.csv` | 검색·파싱·접근 실패, Extension·의존관계·누락·순환 그룹 수, 스캔 완전성, 사용한 extractor 결과 폴더(`extractor_report`) |
-| `extensions.csv` | 모든 Extension의 XML 경로, 직접 의존 수, 자신을 참조하는 Extension 수, 누락 수, 순환 그룹 |
-| `dependencies.csv` | 출발 Extension → 직접 의존 Extension, 대상 발견 여부, 순환 그룹 |
-| `reverse-dependencies.csv` | 의존 대상 → 이를 사용하는 Extension. 누락 대상도 포함 |
-| `missing-dependencies.csv` | 찾지 못한 대상과 이를 참조한 Extension 및 XML 경로 |
-| `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
-| `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 (extractor 결과를 그대로 옮김) |
-| `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 (extractor 결과를 그대로 옮김) |
+| `summary.csv` | 사용한 extension-analyzer 결과 폴더(`extension_report`), 스캔·선택 완전성, 선택 수, Spring 분석 단계별 개수 |
 | *(카테고리 값 전체)* | 모든 CSV의 상태·종류 열에 들어가는 값과 뜻: `docs/CSV_CATEGORY_REFERENCE.md` |
-| `extension-duplicates.csv` | 같은 이름의 정의 중 사용하지 않은 것과 그 이유(`SHADOWED_BY_EARLIER_PATH`, `OUT_OF_LOOKUP`, `SAME_PATH_AMBIGUOUS`, `OVERRIDDEN_BY_DIR_DECLARATION`) |
 | `spring-xml-files.csv` | 선택된 Extension에서 조사한 XML, Spring 여부, 파싱 결과, import 수 |
 | `spring-imports.csv` | import 출발 XML·줄 번호·원문 resource·대상 후보·해석 상태 |
 | `spring-reverse-imports.csv` | 대상 XML을 참조하는 출발 XML 목록 |
@@ -136,6 +124,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-loading-entrypoints.csv` | 로딩 진입점 선언·규칙과 대상 후보 |
 | `spring-loading-reachability.csv` | 진입점별 XML 도달 관계, 이전 XML과 깊이 |
 | `spring-loading-issues.csv` | 진입점/로더/도달 관계 해석의 한계 및 문제 |
+| `spring-beans.csv`, `spring-bean-references.csv`, `spring-bean-issues.csv` | XML 빈 선언 목록, 명시 참조와 같은 컨텍스트 안의 후보, 목록 작성의 한계 |
 | `spring-bean-winners.csv` | 컨텍스트 × 빈 이름별 최종 승자 정의, 판정 상태, 선언/실효 클래스, 밀려난 정의, 순서 미확정 후보 |
 | `spring-alias-winners.csv` | 컨텍스트 × alias별 최종 대상, 판정 상태, 최종적으로 가리키는 빈 |
 | `spring-bean-registrations.csv` | 등록 재생 순서(sequence)·import 경로·결과(WINNER/OVERRIDDEN 등) |
@@ -143,9 +132,7 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-bean-winner-issues.csv` | 따라가지 못한 진입점·import, import 순환, 순서 순환 등 승자 판정의 한계 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
-의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
-각 목록은 이름순으로 정렬하므로 실행 간 비교할 수 있습니다.
-`extensions.csv`에는 의존하거나 참조하는 대상이 없는 Extension도 포함됩니다.
+행이 없는 파일도 헤더를 생성합니다.
 
 저장 위치를 바꾸려면 Program arguments가 아닌 **VM arguments**에 입력하세요.
 
@@ -153,79 +140,50 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
 -Danalyzer.output="C:\analysis-results"
 ```
 
-순환 그룹은 강하게 연결된 컴포넌트(SCC)입니다. 그룹 안의 모든 Extension은 서로 도달할 수 있습니다.
-자기 자신만 참조하는 경우도 순환으로 검출합니다. `cycles.csv`의 이름순 나열은 호출 순서나
-하나의 순환 경로가 아닙니다. 그룹 내부의 실제 간선은 `dependencies.csv`에서 확인합니다.
-`cycle_group=0`은 검출된 순환 그룹에 해당하지 않는다는 뜻입니다.
-전체 CSV의 관계는 직접 의존관계이며, 모든 간접 경로를 펼쳐서 저장하지 않습니다.
-
-단일 XML만 확인하려면 `ExtensionInfoParser`를 실행하고 Program arguments에
-`"C:\hybris\bin\custom\mmm\mmmcore\extensioninfo.xml"`을 입력합니다.
-
 ## 결과 해석
 
-- 발견 개수는 XML 파일 수이며 활성 Extension 수가 아닙니다. 622개로 고정하지 않습니다.
-  활성 대상은 별도의 설정 기반 추정으로 표시하며 실행 중인 서버 상태와 동일함을 보장하지 않습니다.
-- 트리는 XML에 선언된 Extension 의존관계이며 실제 메서드 호출이나 Bean 주입을 의미하지 않습니다.
-- `[NOT FOUND]`: 검색·파싱된 Extension 목록에 없음. 검색 범위 밖, 제외 디렉터리,
-  파싱 실패 등일 수 있으며 실제 Extension 부재를 단정하지 않습니다.
-- `[ALREADY VISITED]`: 앞에서 분석한 Extension. 하위 트리의 중복 출력을 생략합니다.
-- `[CYCLE]`: 현재 탐색 경로에 있는 Extension을 다시 참조합니다.
-- 동일 이름의 XML이 여러 개면 extractor가 `localextensions.xml`의 lookup 순서로 고른 정의 하나를 사용합니다.
-  규칙은 activated-extension-extractor README를 참고하세요.
-  고르지 않은 정의는 콘솔 `[DUPLICATE]`와 `extension-duplicates.csv`에 남습니다.
-- 파싱 또는 접근 실패가 있으면 결과가 불완전할 수 있습니다. 정상 종료 코드는 0,
-  extractor 결과 없음/hybris-root 불일치/extractor의 스캔 실패(`scan_complete=false`)/
-  결과에 적힌 `extensioninfo.xml`을 지금 읽을 수 없거나 이름이 바뀜(결과가 오래됨)/
-  선택 해석 문제(같은 lookup 경로 안의 중복 포함)/시작 Extension 누락은 1입니다. 하위 의존관계의 `[NOT FOUND]`는
-  표시만 하며 단독으로 종료 코드를 변경하지 않습니다.
-- extractor 결과는 실행 시점의 설치 상태입니다. 설치나 `localextensions.xml`을 바꿨다면 extractor를 다시 실행하세요.
-- 전체 분석의 누락 참조와 순환 그룹도 단독으로 종료 코드를 변경하지 않습니다.
-  파싱·접근 실패 시 가능한 범위에서 CSV를 저장하고 `scan_complete=false`로 표시합니다.
-- 활성 대상 판정 문제가 있으면 CSV는 저장하고 종료 코드는 1입니다.
-- 결과는 발견된 정의를 기준으로 합니다. 비활성 Extension이나 템플릿이 포함될 수 있어,
-  검출된 순환이 실행 환경의 실제 순환이라고 단정할 수 없습니다.
-- 검색 범위(제외 폴더, 심볼릭 링크)는 extractor의 규칙을 따릅니다.
-- DOCTYPE가 있는 `extensioninfo.xml`은 이 버전의 파서에서 거부합니다.
+- 활성 대상은 extension-analyzer의 설정 기반 추정이며 실행 중인 서버 상태와 동일함을 보장하지 않습니다.
+- 정상 종료 코드는 0입니다. 다음은 1입니다:
+  extension-analyzer 결과 없음 또는 필요한 파일·열 누락 / hybris-root 불일치 /
+  extension-analyzer의 스캔 실패(`scan_complete=false`) / 결과에 적힌 `extensioninfo.xml`이 지금은 없음(결과가 오래됨) /
+  선택 해석 문제(같은 lookup 경로 안의 중복 포함).
+  이 경우에도 가능한 범위에서 CSV는 저장합니다.
+- extension-analyzer 결과는 실행 시점의 설치 상태입니다. 설치나 `localextensions.xml`을 바꿨다면 extension-analyzer를 다시 실행하세요.
+  이 도구는 `extensioninfo.xml`을 다시 읽지 않으므로, 그 사이 바뀐 extension 이름이나 의존관계는 알아채지 못합니다.
 
 ## 소스 구조
 
 ```text
 src/com/sapcommerce/analyzer/
 ├── ExtensionScanner.java       진입점
-├── ExtractorReport.java        activated-extension-extractor 결과 폴더 선택·읽기
+├── ExtensionReport.java        extension-analyzer 결과 폴더 선택·읽기
 ├── ExtensionActivation.java    선택 상태·이슈·중복 정의 데이터
-├── ExtensionInfoParser.java
-├── ExtensionInfo.java
-├── ExtensionDependencyAnalyzer.java
-├── DependencyReportWriter.java
-└── Spring*.java 등             Spring XML·로딩·Bean 분석
+├── ExtensionInfo.java          extension 이름과 extensioninfo.xml 위치
+├── ExtensionOrder.java         extension-load-order.csv의 보장된 순서 (없는 쌍은 미확정)
+├── AnalysisReportWriter.java   분석 단계 실행과 summary.csv
+└── Spring*.java 등             Spring XML·로딩·Bean 분석과 최종 승자
 ```
 
 소스 및 Eclipse 설정만 제공하며 컴파일 산출물은 포함하지 않습니다.
 실제 SAP Commerce 환경에서의 검증은 개발 PC에서 수행하세요.
 
-## 활성 extension 정보 (activated-extension-extractor로 분리)
+## extension 정보 (extension-analyzer로 분리)
 
-`extensioninfo.xml` 전체 검색과 `localextensions.xml` 기반 선택 판정은
-[activated-extension-extractor](../activated-extension-extractor/README.md)로 분리했습니다.
-판정 규칙(`EXPLICIT`/`AUTOLOAD`/`PLATFORM`/`DEPENDENCY`/`NOT_SELECTED`/`UNKNOWN`, 같은 이름의 정의가 여러 개일 때의 처리,
-`<extension>` 중복 선언, 지원하는 `${...}` 속성 등)과 그 근거는 extractor README에 있습니다.
+`extensioninfo.xml` 전체 검색, `localextensions.xml` 기반 선택 판정, `requires-extension` 의존관계·순환 분석,
+extension 로드 순서 계산은 [extension-analyzer](../extension-analyzer/README.md)에 있습니다.
+판정 규칙과 근거는 extension-analyzer README를 참고하세요.
 
-이 도구는 extractor 결과를 그대로 사용합니다.
+이 도구는 그 결과를 그대로 사용합니다.
 
-- extension 목록: extractor의 `extension-activation.csv`에 있는 정의(이름당 사용하는 정의 하나)입니다.
-  그래서 의존관계 CSV의 범위도 "설치 루트에서 발견한 extension"으로 이전과 같습니다.
-- 의존 목록: 위 정의의 `extensioninfo.xml`을 이 도구가 다시 읽어서 얻습니다.
-  읽을 수 없거나 extension 이름이 바뀌었으면 그 extension은 분석에서 빼고 `[FAIL]`로 출력하며 종료 코드는 1입니다.
+- extension 목록: `extension-activation.csv`에 있는 정의(이름당 사용하는 정의 하나)입니다.
 - 선택 상태: Spring XML·JAR·속성 해석의 대상 범위(선택된 extension)와 비선택 보조 검색의 범위를 정합니다.
-- `extension-activation.csv`, `activation-issues.csv`, `extension-duplicates.csv`는 이 도구의 결과 폴더에도 그대로 옮겨 씁니다.
-- `summary.csv`의 `selection_complete`는 extractor의 `activation-issues.csv`가 비어 있는지입니다.
-  `scan_complete`는 extractor의 스캔 완전성과, 이 도구가 정의를 다시 읽은 결과를 합친 값입니다.
+- 로드 순서: `extension-load-order.csv`의 쌍만 "보장된 순서"로 씁니다. 빈 최종 승자 판정에 사용합니다.
+- `summary.csv`의 `selection_complete`는 extension-analyzer의 `activation-issues.csv`가 비어 있는지입니다.
+  `scan_complete`는 extension-analyzer의 스캔 완전성과, 적힌 `extensioninfo.xml`이 지금도 있는지를 합친 값입니다.
 
-검증용 소스는 `test/com/sapcommerce/analyzer/ExtractorReportTest.java`입니다.
-최신 결과 선택, CSV 읽기, 오래된 결과 검출, hybris-root 불일치, 27개 CSV 출력까지 확인합니다.
-판정 규칙 자체의 테스트는 extractor의 `ActivatedExtensionExtractorTest`에 있습니다.
+검증용 소스는 `test/com/sapcommerce/analyzer/ExtensionReportTest.java`입니다.
+최신 결과 선택, CSV·로드 순서 읽기, 오래된 결과(파일 없음, 예전 extractor 결과) 검출, hybris-root 불일치, 19개 CSV 출력까지 확인합니다.
+판정·의존관계·순서 규칙 자체의 테스트는 extension-analyzer의 `ExtensionAnalyzerTest`에 있습니다.
 
 ## Spring XML import 분석
 
@@ -518,14 +476,14 @@ CSV는 22개이며 참조는 문맥별 행으로 확장될 수 있습니다.
 ## 빈 최종 승자 결정
 
 같은 빈 이름이나 alias가 여러 번 정의될 때 컨텍스트(CORE/GLOBAL/WEB/SERVLET)마다 실제로 남는 정의를 정합니다.
-CSV는 5개가 추가되어 전체 **27개**입니다.
+CSV 5개가 추가되었습니다. extension CSV를 extension-analyzer로 옮긴 뒤 전체는 **19개**입니다.
 
 - Spring의 등록 순서를 재생합니다: 진입점 순서 → 문서 순서, `<import>`는 그 위치에서 대상 문서를 처리합니다.
-- extension 사이의 순서는 `requires-extension`(전이), `bin/platform/ext` 우선, `<meta key="load-prior-to">`로 **보장된 것만** 씁니다.
+- extension 사이의 순서는 extension-analyzer의 `extension-load-order.csv`(requires-extension 전이, `bin/platform/ext` 우선, `<meta key="load-prior-to">`)에 있는 **보장된 쌍만** 씁니다.
   관계가 없는 extension끼리 같은 이름을 정의하면 승자를 고르지 않고 `UNDETERMINED_ORDER`로 후보를 모두 보여 줍니다.
 - `additionalWebSpringConfigs`(addon)는 `web.xml`의 설정 뒤에 로드되는 것으로 봅니다.
 - 상태: `CONFIRMED` / `UNDETERMINED_ORDER` / `PROFILE_DEPENDENT` / `RESOURCE_CHOICE_UNCERTAIN`
 - 참조는 alias를 먼저 따르고, 없으면 부모 컨텍스트(SERVLET → WEB → CORE → GLOBAL, SAP 표준 구성 가정)에서 찾습니다.
-- `extensioninfo.xml`의 `load-prior-to` meta를 이제 읽습니다.
+- `load-prior-to` meta 해석과 순서 계산은 extension-analyzer가 합니다.
 
 상세 규칙·근거·한계: docs/BEAN_FINAL_WINNERS.md. 검증: `test/com/sapcommerce/analyzer/SpringBeanWinnerResolverTest.java`.

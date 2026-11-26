@@ -5,8 +5,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Comparator;
 
-import static com.sapcommerce.analyzer.DependencyReportWriter.csv;
-import static com.sapcommerce.analyzer.DependencyReportWriter.row;
+import static com.sapcommerce.analyzer.AnalysisReportWriter.csv;
+import static com.sapcommerce.analyzer.AnalysisReportWriter.row;
 
 final class SpringXmlReportWriter {
     private SpringXmlReportWriter() { }

@@ -17,7 +17,7 @@ public final class SpringXmlAnalyzerTest {
         for (String name : List.of("a", "b", "off")) {
             Path xml = root.resolve(name + "/extensioninfo.xml");
             Files.createDirectories(xml.getParent());
-            extensions.put(name, new ExtensionInfo(name, xml, List.of()));
+            extensions.put(name, new ExtensionInfo(name, xml));
             selections.put(name, new ExtensionActivation.Selection(
                     name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }

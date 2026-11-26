@@ -1,4 +1,4 @@
-package com.sapcommerce.analyzer;
+package com.sapcommerce.extension;
 
 import java.util.ArrayDeque;
 import java.util.Deque;

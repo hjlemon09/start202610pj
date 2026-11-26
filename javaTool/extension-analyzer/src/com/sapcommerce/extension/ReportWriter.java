@@ -1,4 +1,4 @@
-package com.sapcommerce.extractor;
+package com.sapcommerce.extension;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -14,12 +14,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import com.sapcommerce.extractor.ActivatedExtensionExtractor.Extraction;
-import com.sapcommerce.extractor.ActivatedExtensionExtractor.ScanFailure;
-import com.sapcommerce.extractor.ActiveExtensionAnalyzer.Duplicate;
-import com.sapcommerce.extractor.ActiveExtensionAnalyzer.Issue;
-import com.sapcommerce.extractor.ActiveExtensionAnalyzer.LookupPath;
-import com.sapcommerce.extractor.ActiveExtensionAnalyzer.Selection;
+import com.sapcommerce.extension.ExtensionAnalyzer.Extraction;
+import com.sapcommerce.extension.ExtensionAnalyzer.ScanFailure;
+import com.sapcommerce.extension.ActiveExtensionAnalyzer.Duplicate;
+import com.sapcommerce.extension.ActiveExtensionAnalyzer.Issue;
+import com.sapcommerce.extension.ActiveExtensionAnalyzer.LookupPath;
+import com.sapcommerce.extension.ActiveExtensionAnalyzer.Selection;
 
 /** Writes UTF-8 CSV with BOM, all fields quoted and CRLF line ends, for spreadsheet interoperability. */
 public final class ReportWriter {
@@ -33,7 +33,11 @@ public final class ReportWriter {
             "scan-failures.csv",
             "missing-dependencies.csv",
             "lookup-paths.csv",
-            "activation-notes.csv");
+            "activation-notes.csv",
+            "dependencies.csv",
+            "reverse-dependencies.csv",
+            "cycles.csv",
+            "extension-load-order.csv");
 
     private ReportWriter() {
     }
@@ -69,12 +73,22 @@ public final class ReportWriter {
                 selectedDependents.merge(dependency, 1, Integer::sum);
             }
         }
+        var dependencies = extraction.dependencies();
+        var order = extraction.order();
+        Map<String, Integer> cycleIds = new HashMap<>();
+        for (int i = 0; i < dependencies.cycleGroups().size(); i++) {
+            for (String member : dependencies.cycleGroups().get(i)) {
+                cycleIds.put(member, i + 1);
+            }
+        }
+        java.util.Set<String> orderCycle = new java.util.HashSet<>(order.cyclic());
 
         // 1) Selected (activated) extensions only.
         try (BufferedWriter out = csv(directory.resolve("extensions.csv"))) {
             row(out, "extension", "selection_status", "reason", "selected_by", "relative_dir", "xml_path",
                     "core_module", "web_module", "webroot", "direct_dependency_count", "dependencies",
-                    "selected_dependent_count", "missing_dependency_count");
+                    "selected_dependent_count", "missing_dependency_count", "load_prior_to", "platform_extension",
+                    "dependency_cycle_group", "load_order_cycle");
             for (ExtensionInfo info : selected.values()) {
                 Selection selection = activation.selections().get(info.getName());
                 long missing = info.getDependencies().stream().filter(name -> !all.containsKey(name)).count();
@@ -82,7 +96,43 @@ public final class ReportWriter {
                         relative(home, info.getDirectory()), info.getXmlPath(), info.hasCoreModule(),
                         info.hasWebModule(), info.getWebRoot(), info.getDependencies().size(),
                         String.join(";", info.getDependencies()),
-                        selectedDependents.getOrDefault(info.getName(), 0), missing);
+                        selectedDependents.getOrDefault(info.getName(), 0), missing,
+                        String.join(";", info.getLoadPriorTo()), order.isPlatform(info.getName()),
+                        cycleIds.getOrDefault(info.getName(), 0), orderCycle.contains(info.getName()));
+            }
+        }
+        // requires-extension edges over every effective definition (selected or not).
+        try (BufferedWriter out = csv(directory.resolve("dependencies.csv"))) {
+            row(out, "source_extension", "source_selection_status", "dependency_extension", "status", "cycle_group");
+            for (ExtensionDependencyAnalyzer.Dependency edge : dependencies.dependencies()) {
+                row(out, edge.source(), activation.selections().get(edge.source()).status(), edge.target(),
+                        edge.found() ? "FOUND" : "NOT_FOUND", edge.cycleGroup());
+            }
+        }
+        List<ExtensionDependencyAnalyzer.Dependency> reverse = new ArrayList<>(dependencies.dependencies());
+        reverse.sort(Comparator.comparing(ExtensionDependencyAnalyzer.Dependency::target)
+                .thenComparing(ExtensionDependencyAnalyzer.Dependency::source));
+        try (BufferedWriter out = csv(directory.resolve("reverse-dependencies.csv"))) {
+            row(out, "dependency_extension", "dependent_extension", "dependent_selection_status", "status",
+                    "cycle_group");
+            for (ExtensionDependencyAnalyzer.Dependency edge : reverse) {
+                row(out, edge.target(), edge.source(), activation.selections().get(edge.source()).status(),
+                        edge.found() ? "FOUND" : "NOT_FOUND", edge.cycleGroup());
+            }
+        }
+        try (BufferedWriter out = csv(directory.resolve("cycles.csv"))) {
+            row(out, "cycle_group", "extension", "selection_status", "xml_path");
+            for (int i = 0; i < dependencies.cycleGroups().size(); i++) {
+                for (String member : dependencies.cycleGroups().get(i)) {
+                    row(out, i + 1, member, activation.selections().get(member).status(), all.get(member).getXmlPath());
+                }
+            }
+        }
+        // Guaranteed load order between selected extensions. A pair that is not listed has no guaranteed order.
+        try (BufferedWriter out = csv(directory.resolve("extension-load-order.csv"))) {
+            row(out, "extension", "loads_before", "basis");
+            for (ExtensionOrder.Pair pair : order.pairs()) {
+                row(out, pair.before(), pair.after(), pair.basis());
             }
         }
         // 2) Every discovered extension (one definition per name) with its selection status.
@@ -130,6 +180,12 @@ public final class ReportWriter {
             row(out, "selection_complete", activation.complete());
             row(out, "lookup_paths", resolution.lookups().size());
             row(out, "activation_notes", resolution.notes().size());
+            row(out, "direct_dependency_edges", dependencies.dependencies().size());
+            row(out, "missing_dependency_edges", dependencies.missingCount());
+            row(out, "dependency_cycle_groups", dependencies.cycleGroups().size());
+            row(out, "load_order_pairs", order.pairs().size());
+            row(out, "load_order_cycle_extensions", order.cyclic().size());
+            row(out, "load_order_basis", "requires-extension, bin/platform/ext, load-prior-to; other pairs undetermined");
         }
         try (BufferedWriter out = csv(directory.resolve("scan-failures.csv"))) {
             row(out, "kind", "path", "message");
@@ -137,10 +193,10 @@ public final class ReportWriter {
                 row(out, failure.kind(), failure.path(), failure.message());
             }
         }
-        // requires-extension targets of selected extensions that were not found anywhere in the scan.
+        // requires-extension targets that were not found anywhere in the scan (selected and unselected sources).
         try (BufferedWriter out = csv(directory.resolve("missing-dependencies.csv"))) {
             row(out, "source_extension", "source_selection_status", "missing_dependency", "source_xml_path");
-            for (ExtensionInfo info : selected.values()) {
+            for (ExtensionInfo info : all.values()) {
                 for (String dependency : info.getDependencies().stream().sorted().toList()) {
                     if (!all.containsKey(dependency)) {
                         row(out, info.getName(), activation.selections().get(info.getName()).status(), dependency,

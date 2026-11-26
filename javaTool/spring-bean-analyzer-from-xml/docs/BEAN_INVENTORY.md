@@ -86,7 +86,7 @@ SpringBeanAnalyzerTest: 일반/부모/내부 Bean, 별칭, factory/default 메�
 profile별 동일 이름, p/c namespace, property/constructor/list/map/ref/idref,
 JAR XML, 비선택 제외, 도달성 표시, custom namespace 한계, literal 비노출,
 변경된 XML 파싱 실패와 외부 엔티티 차단을 검증한다.
-ExtractorReportTest는 activated-extension-extractor 결과를 읽는 ExtensionScanner의 CSV 22개 출력을 검증한다.
+ExtensionReportTest는 extension-analyzer 결과를 읽는 ExtensionScanner의 CSV 출력(현재 19개)을 검증한다.
 기존 import/선택/JAR/로딩 보고서 테스트도 실행한다.
 
 규칙 참고(Bean 선언과 명시적 참조의 구분에 한정; 대상 설치 버전의 런타임 전체를 재현하지 않음):

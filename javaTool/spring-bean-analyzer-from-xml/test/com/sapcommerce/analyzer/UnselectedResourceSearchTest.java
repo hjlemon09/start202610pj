@@ -15,7 +15,7 @@ public final class UnselectedResourceSearchTest {
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
         Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("app", "personalizationcmsweb", "swaggerintegration", "other", "unknown")) {
-            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
+            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml")));
             selections.put(name, new ExtensionActivation.Selection(name.equals("app") ? "EXPLICIT"
                     : name.equals("unknown") ? "UNKNOWN" : "NOT_SELECTED", "fixture", ""));
         }

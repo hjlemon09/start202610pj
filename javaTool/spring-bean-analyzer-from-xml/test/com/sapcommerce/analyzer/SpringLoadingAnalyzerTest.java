@@ -14,7 +14,7 @@ public final class SpringLoadingAnalyzerTest {
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
         Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("a", "b", "orphan", "custom", "off")) {
-            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
+            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml")));
             selections.put(name, new ExtensionActivation.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         put(root.resolve("a/project.properties"), "a.application-context=a-spring.xml\na.global-context=classpath:global.xml\n"

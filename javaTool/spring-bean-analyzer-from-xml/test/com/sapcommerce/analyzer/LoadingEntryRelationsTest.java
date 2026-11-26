@@ -13,7 +13,7 @@ public final class LoadingEntryRelationsTest {
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
         Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("provider", "shop", "off", "other")) {
-            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
+            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml")));
             selections.put(name, new ExtensionActivation.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         put(root.resolve("provider/project.properties"), "provider.application-context=common-spring.xml\n");

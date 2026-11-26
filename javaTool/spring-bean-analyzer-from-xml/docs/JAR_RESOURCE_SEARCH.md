@@ -51,7 +51,7 @@ some-library.jar
 
 ## 구현한 처리 순서
 
-1. activated-extension-extractor 결과의 선택 상태(localextensions.xml 및 의존관계 기반)를 사용한다.
+1. extension-analyzer 결과의 선택 상태(localextensions.xml 및 의존관계 기반)를 사용한다.
 2. 선택된 Extension 폴더 전체에서 JAR를 찾는다.
 3. 추가로 플랫폼 공통 bin/platform/lib와 bin/platform/bootstrap/bin을 검색한다.
 4. 각 JAR를 Java 표준 ZipFile로 열어 `.xml` 항목의 이름을 인덱싱한다.
@@ -140,7 +140,7 @@ Java 21에서 소스와 외부 라이브러리가 없는 테스트 클래스를 
 - 기존 Spring XML 분석 및 Extension 선택 분석 회귀 테스트
 
 테스트 코드: test/com/sapcommerce/analyzer/JarResourceIndexTest.java,
-SpringXmlAnalyzerTest.java, ExtractorReportTest.java.
+SpringXmlAnalyzerTest.java, ExtensionReportTest.java.
 실제 개발 환경의 미발견 9건 해소 여부는 아직 검증하지 않았다.
 
 ## 개발 환경에서 재실행할 방법

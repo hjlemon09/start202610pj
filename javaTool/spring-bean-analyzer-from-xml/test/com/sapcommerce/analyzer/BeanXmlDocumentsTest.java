@@ -24,7 +24,7 @@ public final class BeanXmlDocumentsTest {
             }
         }
         var activation=new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),Map.of("a",new ExtensionActivation.Selection("EXPLICIT","fixture","")),List.of());
-        var definitions=Map.of("a",new ExtensionInfo("a",root.resolve("a/extensioninfo.xml"),List.of()));
+        var definitions=Map.of("a",new ExtensionInfo("a",root.resolve("a/extensioninfo.xml")));
         var xml=SpringXmlAnalyzer.analyze(root,definitions,activation);
         check(xml.files().stream().anyMatch(f->f.path().endsWith("not-a-suffix.xml") && !f.spring() && f.parseStatus().equals("NOT_SPRING_BEAN_GENERATION_XML")),"Schema-based exclusion, not filename-based");
         check(xml.files().stream().anyMatch(f->f.path().endsWith("real-beans.xml") && f.spring()),"Real Spring -beans.xml retained");

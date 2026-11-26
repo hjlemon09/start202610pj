@@ -1,4 +1,4 @@
-package com.sapcommerce.extractor;
+package com.sapcommerce.extension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -53,7 +53,7 @@ import java.util.stream.Collectors;
  *   --max-depth <n>           default 20
  *   --full                    do not collapse repeated subtrees
  *   --include-models          also trace model/data/form/dto classes
- *   --extensions-csv <csv|dir> activated-extension-extractor extensions.csv, or its reports folder (latest run is used):
+ *   --extensions-csv <csv|dir> extension-analyzer extensions.csv, or its reports folder (latest run is used):
  *                             analyze activated extensions only. Omit it to analyze all extensions.
  *                             (ignored, i.e. all extensions, when the sibling summary.csv says scan_complete=false)
  *   --include-ext <name>      with --extensions-csv: also analyze this extension (repeatable, or comma-separated)
@@ -72,7 +72,7 @@ public class CallTreeExtractor {
     static final String CONTROLLER_ROOT = null;                          // 컨트롤러 스캔 범위를 더 좁힐 때만 지정. null이면 분석 대상 extension 전체
     static final String FILTER = null;                                   // 예: "/mystorefront/" (일부만 돌릴 때), 전체면 null
     static final boolean USE_ACTIVATED_EXTENSIONS = true;                // true: 아래 EXTENSIONS_CSV로 활성 extension만 대상 / false: 전체 extension 대상
-    static final String EXTENSIONS_CSV = null;                           // activated-extension-extractor의 extensions.csv 경로, 또는 reports 폴더
+    static final String EXTENSIONS_CSV = null;                           // extension-analyzer의 extensions.csv 경로, 또는 reports 폴더
                                                                          //   (폴더면 가장 최근 결과 폴더의 extensions.csv를 자동 선택). null이면 전체 대상
     static final String[] INCLUDE_EXTENSIONS = {};                       // EXTENSIONS_CSV 사용 시 추가로 포함할 extension 이름. 예: {"myaddon", "mytest"}
     static final String[] CLASS_PATHS = {};                              // 소스(.java)가 없는 클래스(model 등)의 반환 타입을 읽을 .class 폴더나 jar. 비우면
@@ -439,7 +439,7 @@ public class CallTreeExtractor {
         });
     }
 
-    // ===================== activated extensions (activated-extension-extractor output) =====================
+    // ===================== activated extensions (extension-analyzer output) =====================
     // extensions.csv에 있는 활성 extension 폴더의 파일만 남긴다. 어느 extension에도 속하지 않는 파일은 그대로 둔다.
     // 같은 폴더의 summary.csv가 scan_complete=false이면 필터를 쓰지 않고 전체를 대상으로 한다.
     static void applyActivatedFilter(List<Path> java, List<Path> extInfos, List<Path> spring) {

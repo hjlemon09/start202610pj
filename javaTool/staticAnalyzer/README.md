@@ -7,7 +7,7 @@ Accelerator의 **CMS 컴포넌트 컨트롤러**(`AbstractAcceleratorCMSComponen
 
 Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-method`, `ListMergeDirective` 포함)를 해석하여, 인터페이스 호출이 실제로 어느 구현 bean으로 가는지까지 따라갑니다.
 
-[`activated-extension-extractor`](../activated-extension-extractor/README.md)의 결과 `extensions.csv`를 넘기면 **활성 extension만** 분석합니다. 자세한 내용은 아래 「활성 extension만 분석」을 참고하세요.
+[`extension-analyzer`](../extension-analyzer/README.md)의 결과 `extensions.csv`를 넘기면 **활성 extension만** 분석합니다. 자세한 내용은 아래 「활성 extension만 분석」을 참고하세요.
 
 ## 폴더 구성
 
@@ -88,7 +88,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 | `--max-depth <n>` | 트리 최대 깊이. 기본값은 20입니다. |
 | `--full` | 이미 전개한 서브트리도 다시 전개합니다. 기본은 `(expanded above)`로 접습니다. |
 | `--include-models` | model/data/form/dto 계열 클래스도 추적합니다. |
-| `--extensions-csv <csv\|폴더>` | `activated-extension-extractor`의 `extensions.csv`, 결과 폴더, 또는 `reports` 폴더(가장 최근 결과를 자동 선택). 활성 extension만 분석합니다(아래 참고). 생략하면 전체 분석입니다. |
+| `--extensions-csv <csv\|폴더>` | `extension-analyzer`의 `extensions.csv`, 결과 폴더, 또는 `reports` 폴더(가장 최근 결과를 자동 선택). 활성 extension만 분석합니다(아래 참고). 생략하면 전체 분석입니다. |
 | `--include-ext <name>` | `--extensions-csv`와 함께 쓸 때, 이 extension도 분석 대상에 추가합니다. 여러 번 줄 수 있고 쉼표로 묶어도 됩니다(`--include-ext a,b --include-ext c`). |
 | `--class-path <폴더\|jar>` | 소스가 없는 클래스의 타입(메서드 반환 타입, 상수/enum 필드 타입, 상위 타입)을 읽을 `.class` 폴더나 jar입니다. 여러 번 줄 수 있습니다. 생략하면 `<base>/bin/platform/bootstrap/modelclasses`를 쓰고, 없으면 `bin/platform/bootstrap/bin/models.jar`를 씁니다. |
 
@@ -96,7 +96,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 
 ## 활성 extension만 분석 (`extensions.csv`)
 
-먼저 [`activated-extension-extractor`](../activated-extension-extractor/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그다음 `--extensions-csv`(또는 `EXTENSIONS_CSV`)에 아래 셋 중 하나를 지정합니다.
+먼저 [`extension-analyzer`](../extension-analyzer/README.md)를 같은 `HYBRIS_HOME`에 대해 실행합니다. 그다음 `--extensions-csv`(또는 `EXTENSIONS_CSV`)에 아래 셋 중 하나를 지정합니다.
 
 | 지정하는 값 | 사용하는 `extensions.csv` |
 |---|---|
@@ -105,10 +105,10 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 | **extractor의 `reports` 폴더** | 그 아래 결과 폴더 중 **가장 최근 것**의 `extensions.csv`를 자동으로 고릅니다 |
 
 ```powershell
-java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/tools/activated-extension-extractor/reports C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir C:/work/calltree --base C:/hybris --localextensions C:/hybris/config/localextensions.xml --extensions-csv C:/tools/extension-analyzer/reports C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
 ```
 
-소스 안 설정으로는 `EXTENSIONS_CSV = "C:/tools/activated-extension-extractor/reports";`처럼 `reports` 폴더를 한 번 넣어 두면 됩니다. 그러면 extractor를 다시 실행할 때마다 staticAnalyzer가 자동으로 최신 결과를 씁니다.
+소스 안 설정으로는 `EXTENSIONS_CSV = "C:/tools/extension-analyzer/reports";`처럼 `reports` 폴더를 한 번 넣어 두면 됩니다. 그러면 extension-analyzer를 다시 실행할 때마다 staticAnalyzer가 자동으로 최신 결과를 씁니다.
 
 **가장 최근 결과 폴더를 고르는 방법**
 - `extensions.csv`가 들어 있는 하위 폴더만 후보로 봅니다.
@@ -124,7 +124,7 @@ java -Xmx6g -cp javaparser-core-3.27.1.jar com/CallTreeExtractor.java --out-dir 
 - 루트를 전부 탐색한 다음, **활성 extension 폴더에 속한 파일만 남깁니다.** 대상은 `.java`, `extensioninfo.xml`, `*-spring.xml`, `*-servlet.xml`입니다.
   - 파일이 어느 extension에 속하는지는, 그 파일을 포함하는 **가장 안쪽** `extensioninfo.xml` 폴더로 정합니다.
   - 어느 extension 폴더에도 속하지 않는 파일은 그대로 둡니다.
-- 활성 extension 폴더는 `extensions.csv`의 `relative_dir`을 `--base`(기본값 `HYBRIS_HOME`)에 붙여서 정합니다. `relative_dir`이 비어 있으면 `xml_path`의 폴더를 씁니다. 그래서 **`--base`는 extractor를 실행할 때 쓴 `HYBRIS_HOME`과 같은 구조여야 합니다.**
+- 활성 extension 폴더는 `extensions.csv`의 `relative_dir`을 `--base`(기본값 `HYBRIS_HOME`)에 붙여서 정합니다. `relative_dir`이 비어 있으면 `xml_path`의 폴더를 씁니다. 그래서 **`--base`는 extension-analyzer를 실행할 때 쓴 `HYBRIS_HOME`과 같은 구조여야 합니다.**
 - 같은 이름의 extension이 여러 개 있으면 extractor가 고른 폴더만 남습니다. 백업 복사본 같은 다른 폴더는 빠집니다.
 - extension 로드 순서는 `localextensions.xml` 순서, `extensions.csv`의 extension 순서, 알파벳 순서 순으로 시작점을 잡고, `requires-extension` 대상을 먼저 배치합니다. 필터를 쓰면 남은 extension이 모두 활성 extension이라서, 비활성 extension이 끼어들지 않습니다.
 

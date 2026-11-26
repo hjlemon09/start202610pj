@@ -1,6 +1,5 @@
 package com.sapcommerce.analyzer;
 
-import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -90,15 +89,9 @@ public final class SpringBeanWinnerResolver {
         this.order = order;
     }
 
-    public static Result analyze(SpringXmlAnalyzer.Result spring, SpringBeanAnalyzer.Result inventory,
-            Map<String, ExtensionInfo> extensions, ExtensionActivation.Result activation, Path hybrisRoot) {
-        Map<String, ExtensionInfo> selected = new TreeMap<>();
-        extensions.forEach((name, info) -> {
-            var selection = activation.selections().get(name);
-            if (selection != null && selection.selected()) selected.put(name, info);
-        });
-        SpringBeanWinnerResolver resolver = new SpringBeanWinnerResolver(spring, inventory, ExtensionOrder.of(selected, hybrisRoot));
-        return resolver.run();
+    /** order: guaranteed extension load order from extension-analyzer (extension-load-order.csv). */
+    public static Result analyze(SpringXmlAnalyzer.Result spring, SpringBeanAnalyzer.Result inventory, ExtensionOrder order) {
+        return new SpringBeanWinnerResolver(spring, inventory, order).run();
     }
 
     private Result run() {

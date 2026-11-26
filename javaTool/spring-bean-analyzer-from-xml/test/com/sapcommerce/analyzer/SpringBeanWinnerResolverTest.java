@@ -15,13 +15,18 @@ public final class SpringBeanWinnerResolverTest {
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
         Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
 
-        // core (platform) < base < shop ; other is unrelated to shop ; early load-prior-to other.
-        extension(definitions, "core", "bin/platform/ext/core", "");
-        extension(definitions, "base", "bin/custom/base", "");
-        extension(definitions, "shop", "bin/custom/shop", "<requires-extension name='base'/>");
-        extension(definitions, "other", "bin/custom/other", "");
-        extension(definitions, "early", "bin/custom/early", "<meta key='load-prior-to' value='other'/>");
+        extension(definitions, "core", "bin/platform/ext/core");
+        extension(definitions, "base", "bin/custom/base");
+        extension(definitions, "shop", "bin/custom/shop");
+        extension(definitions, "other", "bin/custom/other");
+        extension(definitions, "early", "bin/custom/early");
         definitions.keySet().forEach(name -> selections.put(name, new ExtensionActivation.Selection("EXPLICIT", "fixture", "")));
+        // As extension-analyzer's extension-load-order.csv would list it: core (platform) before all others,
+        // base requires-before shop, early load-prior-to other. shop and other are unrelated.
+        ExtensionOrder order = ExtensionOrder.of(List.of(
+                new String[] {"core", "base"}, new String[] {"core", "shop"}, new String[] {"core", "other"},
+                new String[] {"core", "early"}, new String[] {"base", "shop"}, new String[] {"early", "other"}),
+                List.of());
 
         put("bin/platform/ext/core/project.properties", "core.application-context=core-spring.xml\n");
         put("bin/platform/ext/core/resources/core-spring.xml", beans(
@@ -68,13 +73,12 @@ public final class SpringBeanWinnerResolverTest {
         var spring = SpringXmlAnalyzer.analyze(root, definitions, activation);
         var loading = SpringLoadingAnalyzer.trace(spring);
         var inventory = SpringBeanAnalyzer.analyze(spring, loading);
-        var result = SpringBeanWinnerResolver.analyze(spring, inventory, definitions, activation, root);
+        var result = SpringBeanWinnerResolver.analyze(spring, inventory, order);
 
-        // Extension order
-        check(result.order().compare("core", "shop") == ExtensionOrder.Relation.BEFORE, "platform/ext loads first");
-        check(result.order().compare("base", "shop") == ExtensionOrder.Relation.BEFORE, "requires-extension order");
-        check(result.order().compare("shop", "other") == ExtensionOrder.Relation.UNDETERMINED, "unrelated extensions");
-        check(result.order().compare("early", "other") == ExtensionOrder.Relation.BEFORE, "load-prior-to order");
+        // Extension order as read from the table: listed pairs only, both directions, unlisted undetermined.
+        check(result.order().compare("core", "shop") == ExtensionOrder.Relation.BEFORE, "listed pair");
+        check(result.order().compare("shop", "base") == ExtensionOrder.Relation.AFTER, "reverse of a listed pair");
+        check(result.order().compare("shop", "other") == ExtensionOrder.Relation.UNDETERMINED, "unlisted pair");
 
         var productService = winner(result, "CORE", "productService");
         check(productService.status().equals("PROFILE_DEPENDENT"), "profile bean last: " + productService.status());
@@ -126,7 +130,7 @@ public final class SpringBeanWinnerResolverTest {
         check(winners.contains("\"CORE\",\"shopProductFacade\",\"CONFIRMED\"") && winners.contains("\"DefaultProductFacade\""),
                 "effective class column");
         check(Files.readString(report.resolve("spring-bean-registrations.csv")).contains("\"OVERRIDDEN\""), "registration outcome");
-        System.out.println("PASS: extension partial order (requires/platform/load-prior-to), import position, profiles, "
+        System.out.println("PASS: extension order table, import position, profiles, "
                 + "unrelated and classpath* undetermined order, alias override, inherited class, addon web config, "
                 + "parent-context references and winner CSV. Fixtures: " + root);
     }
@@ -150,9 +154,9 @@ public final class SpringBeanWinnerResolverTest {
                 .orElseThrow(() -> new AssertionError("No reference " + context + " " + ownerClass + " -> " + target));
     }
 
-    private static void extension(Map<String, ExtensionInfo> definitions, String name, String dir, String body) throws Exception {
-        Path xml = put(dir + "/extensioninfo.xml", "<extensioninfo><extension name='" + name + "'>" + body + "</extension></extensioninfo>");
-        definitions.put(name, ExtensionInfoParser.parse(xml));
+    private static void extension(Map<String, ExtensionInfo> definitions, String name, String dir) throws Exception {
+        Path xml = put(dir + "/extensioninfo.xml", "<extensioninfo><extension name='" + name + "'/></extensioninfo>");
+        definitions.put(name, new ExtensionInfo(name, xml));
     }
 
     private static Path put(String relative, String content) throws Exception {

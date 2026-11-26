@@ -40,8 +40,8 @@ public final class SpringBeanAnalyzerTest {
             zip.putNextEntry(new ZipEntry("META-INF/beans.xml"));
             zip.write(beans("<bean id='jarBean' class='demo.FromJar'/>").getBytes(StandardCharsets.UTF_8)); zip.closeEntry();
         }
-        Map<String,ExtensionInfo> definitions=Map.of("main",new ExtensionInfo("main",root.resolve("main/extensioninfo.xml"),List.of()),
-                "off",new ExtensionInfo("off",root.resolve("off/extensioninfo.xml"),List.of()));
+        Map<String,ExtensionInfo> definitions=Map.of("main",new ExtensionInfo("main",root.resolve("main/extensioninfo.xml")),
+                "off",new ExtensionInfo("off",root.resolve("off/extensioninfo.xml")));
         var activation=new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),Map.of(
                 "main",new ExtensionActivation.Selection("EXPLICIT","fixture",""),
                 "off",new ExtensionActivation.Selection("NOT_SELECTED","fixture","")),List.of());

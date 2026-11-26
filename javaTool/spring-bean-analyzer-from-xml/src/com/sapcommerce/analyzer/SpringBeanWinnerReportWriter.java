@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.sapcommerce.analyzer.DependencyReportWriter.csv;
-import static com.sapcommerce.analyzer.DependencyReportWriter.row;
+import static com.sapcommerce.analyzer.AnalysisReportWriter.csv;
+import static com.sapcommerce.analyzer.AnalysisReportWriter.row;
 
 /** Final (winning) bean/alias reports. */
 final class SpringBeanWinnerReportWriter {

@@ -16,35 +16,35 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Reads one result folder of activated-extension-extractor.
- * The analyzer takes extension definitions and selection from here instead of scanning and judging by itself.
+ * Reads one result folder of extension-analyzer.
+ * Extension selection, definitions and guaranteed load order come from here; nothing is re-parsed.
  */
-public final class ExtractorReport {
+public final class ExtensionReport {
     /** Default location, relative to the working directory (the project folder when run from Eclipse). */
-    public static final String DEFAULT_LOCATION = "../activated-extension-extractor/reports";
+    public static final String DEFAULT_LOCATION = "../extension-analyzer/reports";
 
     private static final Pattern REPORT_DIR = Pattern.compile("^\\d{8}_\\d{6}_.*");
     private static final String MARKER = "extension-activation.csv";
 
-    /** A definition listed by the extractor that this analyzer could not read. */
+    /** A definition listed by extension-analyzer whose extensioninfo.xml no longer exists. */
     public record Unreadable(String name, Path xmlPath, String message) {
     }
 
     public record Loaded(Path directory, Path hybrisHome, ExtensionActivation.Result activation,
             Map<String, ExtensionInfo> extensions, List<ExtensionActivation.Duplicate> duplicates,
-            List<ExtensionActivation.Issue> notes, List<Unreadable> unreadable,
-            int foundXml, int parsedXml, int parseFailures, int accessFailures, boolean extractorScanComplete) {
-        /** False when the extractor's scan was partial or a listed extensioninfo.xml cannot be read now. */
+            List<ExtensionActivation.Issue> notes, List<Unreadable> unreadable, ExtensionOrder order,
+            int foundXml, int parsedXml, int parseFailures, int accessFailures, boolean sourceScanComplete) {
+        /** False when extension-analyzer's scan was partial or a listed extensioninfo.xml no longer exists. */
         public boolean scanComplete() {
-            return extractorScanComplete && unreadable.isEmpty();
+            return sourceScanComplete && unreadable.isEmpty();
         }
     }
 
-    private ExtractorReport() {
+    private ExtensionReport() {
     }
 
     /**
-     * spec: a result folder, any file inside it, or the extractor's reports folder.
+     * spec: a result folder, any file inside it, or extension-analyzer's reports folder.
      * For a reports folder the latest result is chosen: newest yyyyMMdd_HHmmss_ folder name, else newest file time.
      */
     public static Path resolve(Path spec) throws IOException {
@@ -53,8 +53,8 @@ public final class ExtractorReport {
             path = path.getParent();
         }
         if (!Files.isDirectory(path)) {
-            throw new IOException("activated-extension-extractor result not found: " + path
-                    + " (run activated-extension-extractor first, or pass --extractor <folder>)");
+            throw new IOException("extension-analyzer result not found: " + path
+                    + " (run extension-analyzer first, or pass --extensions <folder>)");
         }
         if (Files.isRegularFile(path.resolve(MARKER))) {
             return path;
@@ -64,7 +64,7 @@ public final class ExtractorReport {
             children.filter(child -> Files.isRegularFile(child.resolve(MARKER))).forEach(candidates::add);
         }
         if (candidates.isEmpty()) {
-            throw new IOException("No activated-extension-extractor result (" + MARKER + ") in " + path);
+            throw new IOException("No extension-analyzer result (" + MARKER + ") in " + path);
         }
         List<Path> named = candidates.stream()
                 .filter(child -> REPORT_DIR.matcher(child.getFileName().toString()).matches()).toList();
@@ -98,18 +98,26 @@ public final class ExtractorReport {
             selections.put(name, new ExtensionActivation.Selection(row.get("selection_status"),
                     row.get("reason"), row.get("selected_by")));
             Path xml = Path.of(row.get("xml_path"));
-            try {
-                ExtensionInfo info = ExtensionInfoParser.parse(xml);
-                if (!info.getName().equals(name)) {
-                    unreadable.add(new Unreadable(name, xml, "extensioninfo.xml now declares '" + info.getName()
-                            + "'; the extractor result is out of date"));
-                    continue;
-                }
-                extensions.put(name, info);
-            } catch (Exception e) {
-                unreadable.add(new Unreadable(name, xml, e.getMessage() == null ? e.toString() : e.getMessage()));
+            if (Files.isRegularFile(xml)) {
+                extensions.put(name, new ExtensionInfo(name, xml.toAbsolutePath().normalize()));
+            } else {
+                unreadable.add(new Unreadable(name, xml,
+                        "extensioninfo.xml no longer exists; the extension-analyzer result is out of date"));
             }
         }
+
+        // Guaranteed load order between selected extensions. Older extractor results lack these columns/files.
+        List<String> cyclic = new ArrayList<>();
+        for (Map<String, String> row : read(directory, "extensions.csv", true, "extension", "load_order_cycle")) {
+            if ("true".equals(row.get("load_order_cycle"))) {
+                cyclic.add(row.get("extension"));
+            }
+        }
+        List<String[]> pairs = new ArrayList<>();
+        for (Map<String, String> row : read(directory, "extension-load-order.csv", true, "extension", "loads_before")) {
+            pairs.add(new String[] {row.get("extension"), row.get("loads_before")});
+        }
+        ExtensionOrder order = ExtensionOrder.of(pairs, cyclic);
 
         List<ExtensionActivation.Issue> issues = issues(directory, "activation-issues.csv", true);
         List<ExtensionActivation.Issue> notes = issues(directory, "activation-notes.csv", false);
@@ -132,7 +140,7 @@ public final class ExtractorReport {
                 new ExtensionActivation.Result(config,
                         Collections.unmodifiableMap(selections), List.copyOf(issues)),
                 Collections.unmodifiableMap(extensions), List.copyOf(duplicates), List.copyOf(notes),
-                List.copyOf(unreadable), number(summary, "found_xml_files"), number(summary, "parsed_xml_files"),
+                List.copyOf(unreadable), order, number(summary, "found_xml_files"), number(summary, "parsed_xml_files"),
                 parseFailures, accessFailures, "true".equals(summary.get("scan_complete")));
     }
 
@@ -167,7 +175,7 @@ public final class ExtractorReport {
         Path path = directory.resolve(file);
         if (!Files.isRegularFile(path)) {
             if (mandatory) {
-                throw new IOException("Missing " + file + " in activated-extension-extractor result " + directory);
+                throw new IOException("Missing " + file + " in extension-analyzer result " + directory);
             }
             return List.of();
         }

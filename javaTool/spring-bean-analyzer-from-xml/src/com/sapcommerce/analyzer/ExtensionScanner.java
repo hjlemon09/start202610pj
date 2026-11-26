@@ -10,37 +10,37 @@ import java.util.Map;
 
 /**
  * Application entry point. The SAP Commerce directory is read only.
- * Extension definitions and selection come from the latest activated-extension-extractor result.
+ * Extension selection, definitions and guaranteed load order come from the latest extension-analyzer result;
+ * this tool analyzes Spring XML only.
  */
 public final class ExtensionScanner {
     private ExtensionScanner() {
     }
 
     public static void main(String[] args) {
-        String extractor = System.getProperty("analyzer.extractor", ExtractorReport.DEFAULT_LOCATION);
+        String extensions = System.getProperty("analyzer.extensions", ExtensionReport.DEFAULT_LOCATION);
         List<String> positional = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             if ("--help".equals(args[i]) || "-h".equals(args[i])) {
                 usage();
                 return;
             }
-            if ("--extractor".equals(args[i])) {
+            if ("--extensions".equals(args[i])) {
                 if (i + 1 >= args.length) {
-                    System.err.println("[ERROR] --extractor needs a folder");
+                    System.err.println("[ERROR] --extensions needs a folder");
                     System.exit(1);
                 }
-                extractor = args[++i];
+                extensions = args[++i];
             } else {
                 positional.add(args[i]);
             }
         }
-        if (positional.size() > 2) {
+        if (positional.size() > 1) {
             usage();
             System.exit(1);
         }
         try {
-            int result = scan(Path.of(extractor), positional.isEmpty() ? null : Path.of(positional.get(0)),
-                    positional.size() == 2 ? positional.get(1) : null);
+            int result = scan(Path.of(extensions), positional.isEmpty() ? null : Path.of(positional.get(0)));
             if (result != 0) {
                 System.exit(result);
             }
@@ -51,34 +51,33 @@ public final class ExtensionScanner {
     }
 
     private static void usage() {
-        System.out.println("Usage: ExtensionScanner [--extractor <folder>] [hybris-root] [extension-name]");
-        System.out.println("--extractor   : activated-extension-extractor result folder, or its reports folder");
-        System.out.println("                (latest result is used). Default: " + ExtractorReport.DEFAULT_LOCATION);
-        System.out.println("                Also settable with -Danalyzer.extractor=<folder>");
-        System.out.println("hybris-root   : optional. Default is hybris_home of the extractor result;");
-        System.out.println("                a different root is rejected.");
-        System.out.println("extension-name: optional. Additionally prints its dependency tree.");
+        System.out.println("Usage: ExtensionScanner [--extensions <folder>] [hybris-root]");
+        System.out.println("--extensions : extension-analyzer result folder, or its reports folder");
+        System.out.println("               (latest result is used). Default: " + ExtensionReport.DEFAULT_LOCATION);
+        System.out.println("               Also settable with -Danalyzer.extensions=<folder>");
+        System.out.println("hybris-root  : optional. Default is hybris_home of the extension-analyzer result;");
+        System.out.println("               a different root is rejected.");
         System.out.println("Report root: ./reports (override: -Danalyzer.output=<directory>)");
     }
 
-    private static int scan(Path extractorSpec, Path rootArgument, String extensionName) throws IOException {
-        Path reportDirectory = ExtractorReport.resolve(extractorSpec);
-        ExtractorReport.Loaded input = ExtractorReport.load(reportDirectory);
+    private static int scan(Path extensionSpec, Path rootArgument) throws IOException {
+        Path reportDirectory = ExtensionReport.resolve(extensionSpec);
+        ExtensionReport.Loaded input = ExtensionReport.load(reportDirectory);
         Path hybrisRoot = input.hybrisHome();
         if (rootArgument != null && !rootArgument.toAbsolutePath().normalize().equals(hybrisRoot)) {
             System.err.println("[ERROR] hybris-root " + rootArgument.toAbsolutePath().normalize()
-                    + " differs from hybris_home of the extractor result " + hybrisRoot
-                    + ". Run activated-extension-extractor for this root, or omit hybris-root.");
+                    + " differs from hybris_home of the extension-analyzer result " + hybrisRoot
+                    + ". Run extension-analyzer for this root, or omit hybris-root.");
             return 1;
         }
         if (!Files.isDirectory(hybrisRoot)) {
             System.err.println("[ERROR] SAP Commerce directory not found: " + hybrisRoot);
             return 1;
         }
-        System.out.println("=== SAP Commerce Extension Analyzer ===");
-        System.out.println("Extractor result: " + reportDirectory);
+        System.out.println("=== Spring Bean Analyzer (from XML) ===");
+        System.out.println("Extension result: " + reportDirectory);
         System.out.println("Hybris root     : " + hybrisRoot);
-        for (ExtractorReport.Unreadable item : input.unreadable()) {
+        for (ExtensionReport.Unreadable item : input.unreadable()) {
             System.err.println("[FAIL] " + item.name() + " " + item.xmlPath() + " - " + item.message());
         }
         int failedCount = input.parseFailures() + input.unreadable().size();
@@ -86,56 +85,17 @@ public final class ExtensionScanner {
         ExtensionActivation.Result activation = input.activation();
 
         System.out.println();
-        System.out.println("=== Analysis Summary (from activated-extension-extractor) ===");
-        System.out.println("Found XML files : " + input.foundXml());
-        System.out.println("Parsed          : " + input.parsedXml());
-        System.out.println("Failed          : " + failedCount);
-        System.out.println("Unique names    : " + extensionMap.size());
-        System.out.println("Unused duplicates: " + input.duplicates().size());
-        System.out.println("Access failures : " + input.accessFailures());
-        System.out.println("Runtime state is not inspected; selection below is configuration-based inference.");
-        if (!input.duplicates().isEmpty()) {
-            System.out.println();
-            System.out.println("=== Duplicate Extension Names (lookup-order rule applied) ===");
-            for (ExtensionActivation.Duplicate duplicate : input.duplicates()) {
-                System.out.println("[DUPLICATE] " + duplicate.name() + " - " + duplicate.reason());
-                System.out.println("  Used : " + duplicate.effectiveXml());
-                System.out.println("  Other: " + duplicate.otherXml());
-            }
-        }
-        ExtensionDependencyAnalyzer analyzer = new ExtensionDependencyAnalyzer(extensionMap);
-        ExtensionDependencyAnalyzer.Analysis analysis = analyzer.analyzeAll();
-        System.out.println();
-        System.out.println("=== Full Dependency Analysis ===");
-        System.out.println("Dependency edges: " + analysis.dependencies().size());
-        System.out.println("Missing edges   : " + analysis.missingCount());
-        System.out.println("Cycle groups    : " + analysis.cycleGroups().size());
-        for (ExtensionDependencyAnalyzer.Dependency edge : analysis.dependencies()) {
-            if (!edge.found()) {
-                System.out.println("[NOT FOUND] " + edge.source() + " -> " + edge.target());
-            }
-        }
-        for (int i = 0; i < analysis.cycleGroups().size(); i++) {
-            System.out.println("[CYCLE GROUP " + (i + 1) + "] "
-                    + String.join(", ", analysis.cycleGroups().get(i)));
-        }
-        System.out.println();
-        System.out.println("=== Extension Selection (from activated-extension-extractor) ===");
-        System.out.println("Config file     : " + activation.config());
+        System.out.println("=== Extensions (from extension-analyzer) ===");
+        System.out.println("Definitions     : " + extensionMap.size());
         System.out.println("Selected        : " + activation.selectedCount());
-        System.out.println("Explicit        : " + activation.count("EXPLICIT"));
-        System.out.println("Path autoload   : " + activation.count("AUTOLOAD"));
-        System.out.println("Platform default: " + activation.count("PLATFORM"));
-        System.out.println("Dependency      : " + activation.count("DEPENDENCY"));
         System.out.println("Not selected    : " + activation.count("NOT_SELECTED"));
         System.out.println("Unknown         : " + activation.count("UNKNOWN"));
-        System.out.println("Selection issues: " + activation.issues().size());
         System.out.println("Selection complete: " + activation.complete());
+        System.out.println("Scan complete   : " + input.scanComplete());
+        System.out.println("Load order cycles: " + input.order().cyclic().size());
+        System.out.println("Dependencies, duplicates and load order details: see the extension-analyzer result.");
         for (ExtensionActivation.Issue issue : activation.issues()) {
             System.out.println("[SELECTION WARN] " + issue.reference() + " - " + issue.message());
-        }
-        for (ExtensionActivation.Issue note : input.notes()) {
-            System.out.println("[SELECTION NOTE] " + note.reference() + " - " + note.message());
         }
         SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(hybrisRoot, extensionMap, activation);
         System.out.println();
@@ -184,30 +144,13 @@ public final class ExtensionScanner {
                 java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach((status, count) -> System.out.println("  " + status + ": " + count));
         System.out.println("Declared/configuration-convention candidates only; runtime loading/Context hierarchy are not verified.");
-        Path reports = DependencyReportWriter.write(
-                Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
-                new DependencyReportWriter.ScanSummary(hybrisRoot, input.foundXml(), input.parsedXml(),
-                        failedCount, input.accessFailures(), reportDirectory), activation, spring);
-        try (java.io.BufferedWriter out = DependencyReportWriter.csv(reports.resolve("extension-duplicates.csv"))) {
-            DependencyReportWriter.row(out, "extension", "reason", "used_xml_path", "other_xml_path");
-            for (ExtensionActivation.Duplicate duplicate : input.duplicates()) {
-                DependencyReportWriter.row(out, duplicate.name(), duplicate.reason(), duplicate.effectiveXml(),
-                        duplicate.otherXml());
-            }
-        }
+        Path reports = AnalysisReportWriter.write(Path.of(System.getProperty("analyzer.output", "reports")), input,
+                new AnalysisReportWriter.ScanSummary(hybrisRoot, input.foundXml(), input.parsedXml(),
+                        failedCount, input.accessFailures(), reportDirectory), spring);
         System.out.println("CSV reports: " + reports);
         if (!input.scanComplete()) {
-            System.out.println("[WARN] Reports are partial; review scan failures before interpretation.");
+            System.out.println("[WARN] Reports are partial; review the extension-analyzer scan failures first.");
         }
-        if (extensionName != null) {
-            System.out.println();
-            System.out.println("=== Extension Dependency Analysis ===");
-            analyzer.printDependencies(extensionName);
-            if (!extensionMap.containsKey(extensionName)) {
-                return 1;
-            }
-        }
-        // Duplicates resolved by lookup order are not failures; same-path ambiguity is reported as an issue.
         return !input.scanComplete() || !activation.complete() ? 1 : 0;
     }
 }

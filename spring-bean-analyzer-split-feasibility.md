@@ -1,5 +1,9 @@
 # spring-bean-analyzer 분리 구상의 실현 가능성 검토
 
+> **2026-11-26 갱신**: `activated-extension-extractor`는 `extension-analyzer`로 이름을 바꾸고, 의존관계 분석과 extension 로드 순서 계산도 맡게 되었습니다.
+> 4.2절과 6장의 "`load_order` 열 추가"는 `extension-analyzer`의 `extension-load-order.csv`(보장된 순서 쌍)로 구현했습니다. 순서가 보장되지 않는 쌍이 있어 하나의 순번 열 대신 쌍 목록으로 냈습니다.
+> 본문은 검토 당시의 이름 그대로 둡니다.
+
 ## 검토 대상 구상
 
 도구를 작고 단순한 프로그램으로 나누고, 결과 파일로 서로 연결해서 쓴다.

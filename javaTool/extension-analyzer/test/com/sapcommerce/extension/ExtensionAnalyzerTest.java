@@ -1,4 +1,4 @@
-package com.sapcommerce.extractor;
+package com.sapcommerce.extension;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -7,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Standalone behavioral tests, no JUnit dependency. Run with Java 21. */
-public final class ActivatedExtensionExtractorTest {
+public final class ExtensionAnalyzerTest {
     private static Path root;
     private static Path config;
     private static final Map<String, ExtensionInfo> EXTENSIONS = new LinkedHashMap<>();
@@ -131,12 +131,48 @@ public final class ActivatedExtensionExtractorTest {
         duplicateRules();
 
         lookupPaths();
+        loadOrderRules();
         extractorReports();
         System.out.println("PASS: explicit names/dirs, transitive and cyclic closure, comments, "
                 + "platform defaults/disable, path autoload/depth, lookup boundaries, unknown names/properties, "
                 + "relative paths, bad depth, name/dir mismatch, incomplete scan, XML safety/missing/malformed, "
-                + "webapp notes, duplicate names by lookup order, lookup path order, "
-                + "extractor run with nine CSV reports. Fixtures: " + root);
+                + "webapp notes, duplicate names by lookup order, lookup path order, load order partial order, "
+                + "analyzer run with " + ReportWriter.FILES.size() + " CSV reports. Fixtures: " + root);
+    }
+
+    /** Guaranteed load order: platform/ext, requires (transitive) and load-prior-to only; cycles stay undetermined. */
+    private static void loadOrderRules() throws Exception {
+        Path base = Files.createTempDirectory("load-order-test-");
+        Map<String, ExtensionInfo> defs = new LinkedHashMap<>();
+        defs.put("core", definition(base, "bin/platform/ext/core", "core"));
+        defs.put("base", definition(base, "bin/custom/base", "base"));
+        defs.put("shop", definition(base, "bin/custom/shop", "shop", "base"));
+        defs.put("store", definition(base, "bin/custom/store", "store", "shop"));
+        defs.put("other", definition(base, "bin/custom/other", "other"));
+        defs.put("loopA", definition(base, "bin/custom/loopA", "loopA", "loopB"));
+        defs.put("loopB", definition(base, "bin/custom/loopB", "loopB", "loopA"));
+        Path earlyXml = base.resolve("bin/custom/early/extensioninfo.xml");
+        Files.createDirectories(earlyXml.getParent());
+        Files.writeString(earlyXml, "<extensioninfo><extension name='early'>"
+                + "<meta key='load-prior-to' value='other, missing'/></extension></extensioninfo>");
+        ExtensionInfo early = ExtensionInfoParser.parse(earlyXml);
+        check(early.getLoadPriorTo().equals(java.util.List.of("other", "missing")), "load-prior-to parsed");
+        defs.put("early", early);
+
+        ExtensionOrder order = ExtensionOrder.of(defs, base);
+        check(order.compare("core", "shop") == ExtensionOrder.Relation.BEFORE, "platform/ext loads first");
+        check(order.compare("base", "store") == ExtensionOrder.Relation.BEFORE, "requires is transitive");
+        check(order.compare("store", "base") == ExtensionOrder.Relation.AFTER, "reverse relation");
+        check(order.compare("shop", "other") == ExtensionOrder.Relation.UNDETERMINED, "unrelated pair");
+        check(order.compare("early", "other") == ExtensionOrder.Relation.BEFORE, "load-prior-to");
+        check(order.compare("loopA", "loopB") == ExtensionOrder.Relation.UNDETERMINED, "cycle stays undetermined");
+        check(order.cyclic().equals(java.util.List.of("loopA", "loopB")), "cycle members");
+        var pairs = order.pairs();
+        check(pairs.contains(new ExtensionOrder.Pair("base", "store", "TRANSITIVE")), "transitive basis");
+        check(pairs.contains(new ExtensionOrder.Pair("base", "shop", "REQUIRES")), "direct basis");
+        check(pairs.stream().noneMatch(p -> p.before().startsWith("loop") && p.after().startsWith("loop")),
+                "no pair inside a cycle");
+        check(pairs.contains(new ExtensionOrder.Pair("core", "loopA", "PLATFORM")), "platform before cycle members");
     }
 
     /** Lookup paths are exposed in evaluation order, platform/ext first when extensions autoload is on. */
@@ -165,10 +201,13 @@ public final class ActivatedExtensionExtractorTest {
         fixture(home, "bin/platform/ext/core", "<extension name='core'><coremodule/></extension>");
         fixture(home, "bin/custom/shop", "<extension name='shop'><requires-extension name='core'/>"
                 + "<coremodule/><webmodule webroot='/shop'/></extension>");
-        fixture(home, "bin/custom/idle", "<extension name='idle'/>");
+        fixture(home, "bin/custom/idle", "<extension name='idle'><requires-extension name='shop'/></extension>");
         fixture(home, "bin/custom/temp/hidden", "<extension name='hidden'/>");
+        fixture(home, "bin/custom/early", "<extension name='early'><meta key='load-prior-to' value='other'/></extension>");
+        fixture(home, "bin/custom/other", "<extension name='other'/>");
         Files.writeString(homeConfig, "<hybrisconfig><extensions><path dir='${HYBRIS_BIN_DIR}/custom'/>"
-                + "<extension name='shop'/><webapp contextroot='/x' path='${HYBRIS_BIN_DIR}/x.war'/>"
+                + "<extension name='shop'/><extension name='early'/><extension name='other'/>"
+                + "<webapp contextroot='/x' path='${HYBRIS_BIN_DIR}/x.war'/>"
                 + "</extensions></hybrisconfig>");
 
         Path report = runExtractor(home, 0);
@@ -186,11 +225,26 @@ public final class ActivatedExtensionExtractorTest {
         check(extensions.contains("\"bin/custom/shop\"") && extensions.contains("\"true\",\"true\",\"/shop\""),
                 "relative_dir, core_module, web_module and webroot");
         check(extensions.lines().filter(line -> line.startsWith("\"core\"")).findFirst().orElseThrow()
-                .endsWith("\"1\",\"0\""), "core is required by one selected extension");
+                .endsWith("\"1\",\"0\",\"\",\"true\",\"0\",\"false\""),
+                "core: one selected dependent, no missing, platform, no cycles");
+        check(extensions.contains("\"other\",\"false\",\"0\",\"false\""), "load_prior_to column");
         String activation = Files.readString(report.resolve("extension-activation.csv"));
         check(activation.contains("\"idle\",\"NOT_SELECTED\""), "Not selected extensions stay in activation csv");
+        String dependencyCsv = Files.readString(report.resolve("dependencies.csv"));
+        check(dependencyCsv.contains("\"shop\",\"EXPLICIT\",\"core\",\"FOUND\",\"0\"")
+                && dependencyCsv.contains("\"idle\",\"NOT_SELECTED\",\"shop\",\"FOUND\""),
+                "Dependencies of selected and unselected definitions");
+        check(Files.readString(report.resolve("reverse-dependencies.csv")).contains("\"shop\",\"idle\",\"NOT_SELECTED\""),
+                "Reverse dependencies");
+        String loadOrder = Files.readString(report.resolve("extension-load-order.csv"));
+        check(loadOrder.contains("\"core\",\"shop\",\"PLATFORM;REQUIRES\""), "Platform and requires basis");
+        check(loadOrder.contains("\"early\",\"other\",\"LOAD_PRIOR_TO\""), "load-prior-to basis");
+        check(!loadOrder.contains("\"shop\",\"other\"") && !loadOrder.contains("\"other\",\"shop\""),
+                "Unrelated extensions are not ordered");
+        check(!loadOrder.contains("\"idle\""), "Unselected extensions are not ordered");
         String summary = Files.readString(report.resolve("summary.csv"));
-        check(summary.contains("\"selected_extensions\",\"2\"") && summary.contains("\"scan_complete\",\"true\"")
+        check(summary.contains("\"load_order_pairs\",\"4\""), "core before shop/early/other, early before other");
+        check(summary.contains("\"selected_extensions\",\"4\"") && summary.contains("\"scan_complete\",\"true\"")
                 && summary.contains("\"selection_complete\",\"true\""), "Summary counts");
         check(Files.readString(report.resolve("lookup-paths.csv")).contains("platform/ext (extensions autoload)"),
                 "Lookup paths written");
@@ -216,7 +270,7 @@ public final class ActivatedExtensionExtractorTest {
     private static Path runExtractor(Path home, int expectedExit) throws Exception {
         Path output = Files.createTempDirectory(home, "reports-");
         System.setProperty("extractor.output", output.toString());
-        int exit = ActivatedExtensionExtractor.run(home);
+        int exit = ExtensionAnalyzer.run(home);
         System.clearProperty("extractor.output");
         check(exit == expectedExit, "Exit code " + exit + ", expected " + expectedExit);
         try (var directories = Files.list(output)) {

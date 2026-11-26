@@ -45,7 +45,7 @@ public final class SpringUtilNamespaceTest {
                     +"<util:list id='jarList'><ref bean='jarTarget'/></util:list></beans>").getBytes(StandardCharsets.UTF_8));zip.closeEntry();
         }
         var activation=new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),Map.of("a",new ExtensionActivation.Selection("EXPLICIT","fixture","")),List.of());
-        var spring=SpringXmlAnalyzer.analyze(root,Map.of("a",new ExtensionInfo("a",root.resolve("a/extensioninfo.xml"),List.of())),activation);
+        var spring=SpringXmlAnalyzer.analyze(root,Map.of("a",new ExtensionInfo("a",root.resolve("a/extensioninfo.xml"))),activation);
         var result=SpringBeanAnalyzer.analyze(spring,SpringLoadingAnalyzer.trace(spring));
         var pipeline=bean(result,"pipeline");
         check(pipeline.declarationKind().equals("UTIL_LIST") && pipeline.className().isEmpty(),"Namespace URI support and no invented declared class");

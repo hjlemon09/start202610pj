@@ -16,7 +16,7 @@ public final class JarXmlTraversalTest {
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
         Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("app", "other", "off")) {
-            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
+            definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml")));
             selections.put(name, new ExtensionActivation.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         String rootImport = "<import resource='classpath:META-INF/root.xml'/>";

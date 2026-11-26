@@ -39,7 +39,7 @@ Spring의 XML 리더가 빈을 등록하는 순서를 컨텍스트별로 재생�
 | WEB, `web.xml` 위치 vs `additionalWebSpringConfigs` | `additionalWebSpringConfigs`가 나중(addon이 storefront 빈을 덮어쓰는 구조) |
 | WEB, 서로 다른 `additionalWebSpringConfigs` 속성끼리 | **미확정** |
 
-extension 부분 순서(`ExtensionOrder`)는 SAP Help 「Extension Dependencies」가 보장하는 관계만 쓴다.
+extension 부분 순서는 extension-analyzer가 계산해 `extension-load-order.csv`로 내보낸 것을 읽는다(`ExtensionOrder`). 그 파일은 SAP Help 「Extension Dependencies」가 보장하는 관계만 담는다.
 
 - B가 `requires-extension` A → A가 먼저 (전이적으로)
 - A가 `bin/platform/ext` 아래이고 B는 아님 → A가 먼저 (플랫폼 extension에 대한 암묵적 의존)
@@ -96,7 +96,7 @@ Spring 버전에 따라 등록 시점에 alias를 지우는 동작이 있어 결
 ## 검증
 
 `test/com/sapcommerce/analyzer/SpringBeanWinnerResolverTest.java`
-- 플랫폼·requires·load-prior-to 순서와 무관한 extension의 미확정
+- 순서표에 있는 쌍과 없는 쌍(미확정)의 구분. 순서 계산 자체는 extension-analyzer의 `ExtensionAnalyzerTest`
 - import 위치에 따른 덮어쓰기, `classpath*:` 후보 사이의 미확정
 - profile 승자와 fallback, alias 재연결, parent 상속 클래스
 - addon(`additionalWebSpringConfigs`)이 web.xml 정의를 덮어쓰는 경우

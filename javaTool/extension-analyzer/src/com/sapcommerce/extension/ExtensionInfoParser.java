@@ -1,4 +1,4 @@
-package com.sapcommerce.extractor;
+package com.sapcommerce.extension;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -68,6 +68,7 @@ public final class ExtensionInfoParser {
         Element extension = definitions.getFirst();
         String extensionName = requiredName(extension);
         Set<String> dependencies = new LinkedHashSet<>();
+        Set<String> loadPriorTo = new LinkedHashSet<>();
         boolean coreModule = false;
         boolean webModule = false;
         String webRoot = "";
@@ -79,10 +80,17 @@ public final class ExtensionInfoParser {
             } else if (isElement(child, "webmodule")) {
                 webModule = true;
                 webRoot = ((Element) child).getAttribute("webroot").trim();
+            } else if (isElement(child, "meta")
+                    && "load-prior-to".equals(((Element) child).getAttribute("key").trim())) {
+                for (String target : ((Element) child).getAttribute("value").split("[,;\\s]+")) {
+                    if (!target.isBlank()) {
+                        loadPriorTo.add(target.trim());
+                    }
+                }
             }
         }
         return new ExtensionInfo(extensionName, xmlPath.toAbsolutePath().normalize(),
-                new ArrayList<>(dependencies), coreModule, webModule, webRoot);
+                new ArrayList<>(dependencies), new ArrayList<>(loadPriorTo), coreModule, webModule, webRoot);
     }
 
     private static boolean isElement(Node node, String name) {

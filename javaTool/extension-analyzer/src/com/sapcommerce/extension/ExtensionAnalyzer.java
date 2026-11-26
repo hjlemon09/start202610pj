@@ -1,4 +1,4 @@
-package com.sapcommerce.extractor;
+package com.sapcommerce.extension;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -10,13 +10,15 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Entry point. Scans HYBRIS_HOME for extensioninfo.xml, decides the selected (activated) extensions from
  * config/localextensions.xml by static rules, and writes CSV reports. The SAP Commerce directory is read only.
  */
-public final class ActivatedExtensionExtractor {
+public final class ExtensionAnalyzer {
     static final String DEFAULT_HYBRIS_HOME = "C:\\hybris";
     private static final Set<String> EXCLUDED = Set.of("node_modules", ".git", "temp");
 
@@ -26,26 +28,29 @@ public final class ActivatedExtensionExtractor {
 
     /** Everything collected by one run. */
     public record Extraction(Path hybrisHome, int foundXmlFiles, int parsedXmlFiles, int duplicateNameFiles,
-            List<ScanFailure> failures, ActiveExtensionAnalyzer.Resolution resolution) {
+            List<ScanFailure> failures, ActiveExtensionAnalyzer.Resolution resolution,
+            ExtensionDependencyAnalyzer.Analysis dependencies, ExtensionOrder order) {
         public boolean scanComplete() {
             return failures.isEmpty();
         }
     }
 
-    private ActivatedExtensionExtractor() {
+    private ExtensionAnalyzer() {
     }
 
     public static void main(String[] args) {
-        if (args.length > 1 || (args.length == 1 && ("--help".equals(args[0]) || "-h".equals(args[0])))) {
-            System.out.println("Usage: ActivatedExtensionExtractor [HYBRIS_HOME]");
+        if (args.length > 2 || (args.length >= 1 && ("--help".equals(args[0]) || "-h".equals(args[0])))) {
+            System.out.println("Usage: ExtensionAnalyzer [HYBRIS_HOME] [extension-name]");
             System.out.println("Default HYBRIS_HOME: " + DEFAULT_HYBRIS_HOME);
+            System.out.println("extension-name: optional. Also prints its requires-extension tree.");
             System.out.println("Config : <HYBRIS_HOME>/config/localextensions.xml "
                     + "(override: -Dextractor.localextensions=<file>)");
             System.out.println("Reports: ./reports/<timestamp>_<id>/ (override: -Dextractor.output=<directory>)");
             return;
         }
         try {
-            int result = run(Path.of(args.length == 0 ? DEFAULT_HYBRIS_HOME : args[0]));
+            int result = run(Path.of(args.length == 0 ? DEFAULT_HYBRIS_HOME : args[0]),
+                    args.length == 2 ? args[1] : null);
             if (result != 0) {
                 System.exit(result);
             }
@@ -56,6 +61,10 @@ public final class ActivatedExtensionExtractor {
     }
 
     static int run(Path home) throws IOException {
+        return run(home, null);
+    }
+
+    static int run(Path home, String extensionName) throws IOException {
         Path hybrisHome = home.toAbsolutePath().normalize();
         if (!Files.isDirectory(hybrisHome)) {
             System.err.println("[ERROR] HYBRIS_HOME directory not found: " + hybrisHome);
@@ -63,7 +72,7 @@ public final class ActivatedExtensionExtractor {
         }
         Path config = Path.of(System.getProperty("extractor.localextensions",
                 hybrisHome.resolve("config/localextensions.xml").toString()));
-        System.out.println("=== Activated Extension Extractor ===");
+        System.out.println("=== Extension Analyzer ===");
         System.out.println("HYBRIS_HOME : " + hybrisHome);
         System.out.println("Config      : " + config.toAbsolutePath().normalize());
         System.out.println("Excluded directories: node_modules, .git, temp");
@@ -102,11 +111,38 @@ public final class ActivatedExtensionExtractor {
             System.out.println("[SELECTION NOTE] " + note.reference() + " - " + note.message());
         }
 
+        var dependencies = extraction.dependencies();
+        System.out.println();
+        System.out.println("=== requires-extension Dependencies (all definitions) ===");
+        System.out.println("Dependency edges: " + dependencies.dependencies().size());
+        System.out.println("Missing edges   : " + dependencies.missingCount());
+        System.out.println("Cycle groups    : " + dependencies.cycleGroups().size());
+        for (ExtensionDependencyAnalyzer.Dependency edge : dependencies.dependencies()) {
+            if (!edge.found()) {
+                System.out.println("[NOT FOUND] " + edge.source() + " -> " + edge.target());
+            }
+        }
+        for (int i = 0; i < dependencies.cycleGroups().size(); i++) {
+            System.out.println("[CYCLE GROUP " + (i + 1) + "] " + String.join(", ", dependencies.cycleGroups().get(i)));
+        }
+        System.out.println();
+        System.out.println("=== Load Order (selected extensions, guaranteed pairs only) ===");
+        System.out.println("Ordered pairs   : " + extraction.order().pairs().size());
+        System.out.println("Order cycles    : " + extraction.order().cyclic().size());
+        System.out.println("Pairs not listed in extension-load-order.csv have no guaranteed order.");
+
         Path reports = ReportWriter.write(Path.of(System.getProperty("extractor.output", "reports")), extraction);
         System.out.println();
         System.out.println("CSV reports: " + reports);
         if (!extraction.scanComplete()) {
             System.out.println("[WARN] Scan is incomplete; see scan-failures.csv before interpreting the result.");
+        }
+        if (extensionName != null) {
+            System.out.println();
+            new ExtensionDependencyAnalyzer(extraction.resolution().effective()).printDependencies(extensionName);
+            if (!extraction.resolution().effective().containsKey(extensionName)) {
+                return 1;
+            }
         }
         return !extraction.scanComplete() || !activation.complete() ? 1 : 0;
     }
@@ -168,7 +204,16 @@ public final class ActivatedExtensionExtractor {
         }
         ActiveExtensionAnalyzer.Resolution resolution = ActiveExtensionAnalyzer.resolve(root, config, definitions,
                 failures.isEmpty());
+        // Dependencies over every effective definition; load order over the selected ones only.
+        var dependencies = new ExtensionDependencyAnalyzer(resolution.effective()).analyzeAll();
+        Map<String, ExtensionInfo> selected = new TreeMap<>();
+        resolution.effective().forEach((name, info) -> {
+            var selection = resolution.result().selections().get(name);
+            if (selection != null && selection.selected()) {
+                selected.put(name, info);
+            }
+        });
         return new Extraction(root, xmlFiles.size(), definitions.size(), duplicates, List.copyOf(failures),
-                resolution);
+                resolution, dependencies, ExtensionOrder.of(selected, root));
     }
 }
