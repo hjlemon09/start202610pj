@@ -197,7 +197,7 @@ Console의 `Spring XML Import Analysis (SOURCE AND REACHABLE JAR XML)`에서 조
 import 선언 수, 결과 행 수 및 문제 수를 확인할 수 있습니다.
 
 수집 범위는 선택 상태가 EXPLICIT/AUTOLOAD/PLATFORM/DEPENDENCY인 Extension의
-`resources/`와 `web/webroot/` 아래 XML입니다. `.git`, `node_modules`, `temp` 및
+`resources/`와 `web/webroot/` 아래 XML입니다(`web/webroot/`는 `extensioninfo.xml`에 `<webmodule>`이 선언된 extension만). `.git`, `node_modules`, `temp` 및
 심볼릭 링크 대상은 따라가지 않습니다. 기본 Spring namespace의 `<beans>` 루트와
 namespace 없는 `<beans>`를 Spring XML로 식별합니다. 그 안의 beans/import만 추출하며,
 주석과 다른 namespace의 import는 무시합니다. 프로파일별 중첩 beans의 import도
