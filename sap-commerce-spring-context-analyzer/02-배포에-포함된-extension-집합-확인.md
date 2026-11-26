@@ -417,3 +417,19 @@ https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8bbf6b5e
 
 SAP Help — Building SAP Commerce
 https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8b6ded0d86691014a6fab18e171c1f91.html
+
+## 2.5 프로그램에서의 처리 (extension-analyzer)
+
+2장의 조사는 [extension-analyzer](../javaTool/extension-analyzer/README.md)가 처리한다.
+[spring-bean-analyzer-from-xml](../javaTool/spring-bean-analyzer-from-xml/README.md)은 2장을 다시 판정하지 않고 extension-analyzer의 최신 결과를 읽어서 쓴다.
+
+|2장의 절|extension-analyzer의 처리|결과 파일|
+|---|---|---|
+|2.1 명시 선언과 검색 경로|`HYBRIS_HOME` 아래의 모든 `extensioninfo.xml`을 찾은 뒤 `localextensions.xml`의 `<extension name/dir>`, `<path dir autoload depth>`를 적용한다. 주석은 XML 파서가 제외한다. 지원하지 않는 `${...}`, 상대 경로, 설치 루트 밖 경로는 추측하지 않고 문제로 남긴다.|`extension-activation.csv`, `lookup-paths.csv`, `activation-issues.csv`|
+|2.2 플랫폼 자동 로드와 의존성|`<extensions autoload>`가 켜져 있으면 `bin/platform/ext`를 포함하고, `requires-extension`을 새 이름이 없을 때까지 따라간다.|`extensions.csv`(선택된 것만), `dependencies.csv`, `reverse-dependencies.csv`|
+|2.3 중복 이름과 누락|같은 이름은 먼저 적힌 `<path>` 우선, `<extension dir>` 지정 우선, 검색 경로 밖 복사본은 무시한다. 같은 `<path>` 안의 중복과 찾지 못한 의존 대상, 순환을 기록한다.|`extension-duplicates.csv`, `missing-dependencies.csv`, `cycles.csv`, `activation-issues.csv`|
+|2.4 빌드 완성 목록과 대조|**하지 않는다.** 빌드 결과나 패키지 인벤토리와의 차이는 사람이 확인한다.|—|
+
+- 판정은 설정 파일만 읽은 정적 추정이다. 실행 중인 서버나 빌드 결과는 확인하지 않는다.
+- 스캔이나 판정에 문제가 있으면 `summary.csv`의 `scan_complete`/`selection_complete`가 `false`가 된다. 이때 spring-bean-analyzer-from-xml은 결과를 만들되 종료 코드 1로 끝난다.
+- extension-analyzer는 7장 일부(의존성으로 보장되는 선후관계)도 함께 계산해 `extension-load-order.csv`로 낸다.
