@@ -36,7 +36,7 @@ public class PageComponentTreeExporter {
         "navigationEntryPk", "navigationEntryId"
     );
 
-    public static void main(String[] args) throws IOException {
+    public static void run(String[] args) throws IOException {
         Path output = args.length == 0 ? Path.of("output") : Path.of(args[0]);
         List<List<String>> pages = readCsv(output.resolve("page_slot_component.csv"), PAGE_COLUMNS);
         List<List<String>> tree = readCsv(output.resolve("component_tree.csv"), TREE_COLUMNS);

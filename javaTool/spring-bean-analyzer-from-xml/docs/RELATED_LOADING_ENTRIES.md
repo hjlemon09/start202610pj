@@ -88,7 +88,7 @@ LoadingEntryRelationsTest는 실제 가상 Extension/WEB 설정으로 다음을 
 
 ## 개발환경에서 확인할 것
 
-변경 소스를 반영한 후 기존대로 ExtensionScanner를 실행한다.
+변경 소스를 반영한 후 기존대로 Execute를 실행한다.
 CSV 18개 중 spring-loading-issues.csv에서
 source=acceleratorstorefrontcommons.application-context 행을 찾는다.
 같은 입력 조건이라면 원래 status는 유지되고 related_entry_status=SAME_FILENAME_ONLY,

@@ -54,7 +54,7 @@ $env:EXTENSION_ANALYZER_OPTS = '-Dextractor.output=C:\extension-results -Dextrac
 
 1. **File → Import → General → Existing Projects into Workspace**로 이 폴더를 가져옵니다.
 2. JavaSE-21 JRE가 연결되어 있는지 확인합니다.
-3. `src/com/sapcommerce/extension/ExtensionAnalyzer.java`를 **Run As → Java Application**으로 실행합니다.
+3. 실행 클래스 `src/execute/Execute.java`(`execute.Execute`)를 **Run As → Java Application**으로 실행합니다.
    - 경로는 **Program arguments**에, `-D` 옵션은 **VM arguments**에 넣습니다.
 
 예전 이름으로 가져온 프로젝트가 Eclipse에 남아 있으면 지우고 다시 가져오세요.
@@ -208,8 +208,10 @@ spring-bean-analyzer-from-xml은 이 표를 그대로 읽어 같은 이름 빈�
 ## 소스 구조
 
 ```text
+src/execute/
+└── Execute.java                      실행 클래스: 인자 처리, 사용법 출력
 src/com/sapcommerce/extension/
-├── ExtensionAnalyzer.java            실행 진입점: 스캔, 콘솔 요약, 종료 코드
+├── ExtensionAnalyzer.java            분석 실행: 스캔, 콘솔 요약, 종료 코드
 ├── ExtensionInfoParser.java          extensioninfo.xml 파서 (외부 엔티티/DTD 차단, load-prior-to 포함)
 ├── ExtensionInfo.java                extension 정의 (이름, 경로, 의존, load-prior-to, core/web 모듈)
 ├── ActiveExtensionAnalyzer.java      localextensions.xml 기반 선택 판정, 중복 처리, 검색 경로

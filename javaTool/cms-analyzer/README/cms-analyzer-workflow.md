@@ -11,8 +11,8 @@ CMS-ANALYZER는 페이지와 슬롯에 연결된 CMS 컴포넌트를 수집하�
 
 | 구성 요소 | 실행 위치 | 역할 |
 |---|---|---|
-| `CmsAnalyzerRunner` | 분석기 | 6단계 실행 순서 제어, 단계별 오류 전달 |
-| 각 `Exporter` 및 `CommerceConnectionTest` | 분석기 | HTTP 조회, CSV 저장·결합, 트리 구성·출력 |
+| `execute.Execute` | 분석기(실행 클래스) | 6단계 실행 순서 제어, 단계별 오류 전달 |
+| 각 `Exporter` 및 `PageSlotComponentExporter` | 분석기 | HTTP 조회, CSV 저장·결합, 트리 구성·출력 |
 | `ComponentRenderingResolver` | 분석기 | Java 파일명 검색, Renderer 설명 매핑, PK별 JSP 정보 결합 |
 | `TestController` | Accelerator storefront | CMS 데이터를 조회하는 HTTP API 제공 |
 | `FlexibleSearchService` | Accelerator | 페이지·슬롯·JSP 속성 조회 |
@@ -24,7 +24,7 @@ CMS-ANALYZER는 페이지와 슬롯에 연결된 CMS 컴포넌트를 수집하�
 
 ```mermaid
 flowchart TD
-    A["CmsAnalyzerRunner 시작"] --> B["1. 페이지·슬롯·컴포넌트 수집"]
+    A["execute.Execute 시작"] --> B["1. 페이지·슬롯·컴포넌트 수집"]
     B --> C["2. 루트 컴포넌트 추출"]
     C --> D["3. 컴포넌트 참조 관계 수집"]
     D --> E["4. 컴포넌트 트리 구성"]
@@ -44,7 +44,7 @@ Mermaid를 지원하지 않는 Markdown 뷰어에서는 아래 단계와 파일 
 
 | 단계 | 실행 클래스 | 입력 | 출력 |
 |---|---|---|---|
-| 1 | `CommerceConnectionTest` | `TestController.getAllPages()` 응답 | `page_slot_component.csv` |
+| 1 | `PageSlotComponentExporter` | `TestController.getAllPages()` 응답 | `page_slot_component.csv` |
 | 2 | `RootComponentsExporter` | `page_slot_component.csv` | `root_components.csv` |
 | 3 | `ComponentRelationsExporter` | `TestController.getNavigationRelations()` 응답 | `component_relations.csv` |
 | 4 | `ComponentTreeExporter` | 루트 CSV + 관계 CSV | `component_tree.csv`, `warnings.csv` |
@@ -55,7 +55,7 @@ Mermaid를 지원하지 않는 Markdown 뷰어에서는 아래 단계와 파일 
 
 ### 3.1 페이지·슬롯·컴포넌트 수집
 
-`CommerceConnectionTest`가 `/cms-analyzer/pages/all`을 호출한다. `TestController.getAllPages()`는 `SQL_FILE`에 지정된 FlexibleSearch문을 읽고 실행하여 JSON을 반환한다.
+`PageSlotComponentExporter`가 `/cms-analyzer/pages/all`을 호출한다. `TestController.getAllPages()`는 `SQL_FILE`에 지정된 FlexibleSearch문을 읽고 실행하여 JSON을 반환한다.
 
 제공된 SQL은 `Online` 페이지의 페이지 전용 슬롯, 템플릿 슬롯, 슬롯이 없는 페이지를 수집한다. 페이지 슬롯과 위치가 겹치는 템플릿 슬롯에는 `OVERRIDDEN`을 표시하며, 해당 슬롯도 결과에 남긴다.
 

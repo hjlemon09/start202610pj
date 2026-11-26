@@ -24,8 +24,8 @@ run.cmd "C:\hybris" "검색어" --charset=MS949
 ```
 
 Eclipse에서는 Existing Projects into Workspace로 가져오고 JavaSE-21을 지정한 후
-`com.javatool.search.JarCodeSearch`를 Java Application으로 실행합니다.
-실행 인자가 없으면 화면이 열립니다. 기존 분석기의 ExtensionScanner는 실행하지 않습니다.
+실행 클래스 `execute.Execute`(`src/execute/Execute.java`)를 Java Application으로 실행합니다.
+실행 인자가 없으면 화면이 열립니다. 이 저장소의 모든 프로그램은 실행 클래스를 `execute.Execute`로 통일했습니다.
 
 ## 검색 방법
 
@@ -77,6 +77,7 @@ CSV의 검색 문자열이 스프레드시트 수식으로 해석되지 않도�
 
 ## 소스 구조와 검증
 
+- `execute/Execute.java`: 실행 클래스. 인자가 없으면 화면, 있으면 명령줄 검색
 - `JarCodeSearch.java`: 폴더 탐색, ZipFile 엔트리 읽기, CFR 입력/출력 연결, 검색, CSV 작성
 - `SearchWindow.java`: 폴더/검색어 입력 화면과 백그라운드 검색
 - `test.cmd`: Java 21 클래스를 직접 컴파일하고 JAR를 만들어 실제 생성자 호출 검색 검증

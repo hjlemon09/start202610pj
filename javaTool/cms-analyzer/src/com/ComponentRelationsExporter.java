@@ -39,7 +39,7 @@ public class ComponentRelationsExporter {
             "navigationEntryId"
         );
 
-    public static void main(String[] args) throws Exception {
+    public static void run(String[] args) throws Exception {
 
         // 1. HTTPS 통신
         HttpClient client = HttpClient.newBuilder()

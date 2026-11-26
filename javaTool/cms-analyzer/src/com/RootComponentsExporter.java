@@ -18,7 +18,7 @@ public class RootComponentsExporter {
     private static final Path OUTPUT_FILE =
         Path.of("output", "root_components.csv");
 
-    public static void main(String[] args)
+    public static void run(String[] args)
             throws Exception {
 
         // 1. 기존 CSV 읽기

@@ -23,7 +23,7 @@ public class PageComponentTextTreeExporter {
         "navigationEntryPk"
     );
 
-    public static void main(String[] args) throws IOException {
+    public static void run(String[] args) throws IOException {
         Path output = args.length == 0 ? Path.of("output") : Path.of(args[0]);
         Path input = output.resolve("page_component_tree.csv");
         List<List<String>> records = parseCsv(Files.readString(input, StandardCharsets.UTF_8), input);

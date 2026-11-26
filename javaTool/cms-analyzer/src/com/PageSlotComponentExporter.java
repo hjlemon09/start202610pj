@@ -14,7 +14,7 @@ import java.util.Map;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-public class CommerceConnectionTest {
+public class PageSlotComponentExporter {
     private static final String URL =
         "https://localhost:9002/mmmstorefront/mmm-faec/ja/JPY/cms-analyzer/pages/all";
 
@@ -25,7 +25,7 @@ public class CommerceConnectionTest {
         "componentName", "componentType", "pageTemplatePk"
     );
 
-    public static void main(String[] args) throws Exception {
+    public static void run(String[] args) throws Exception {
         Path output = args.length == 0 ? Path.of("output") : Path.of(args[0]);
         HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)

@@ -122,7 +122,7 @@ public final class BreakpointCheck {
         List<String> cmd = new ArrayList<>();
         cmd.add(Paths.get(System.getProperty("java.home"), "bin/java.exe").toString());
         cmd.add("-cp"); cmd.add(root.resolve("dist/trace-controller.jar").toString());
-        cmd.add("trace.control.Client"); cmd.add(config.toString()); Collections.addAll(cmd, args);
+        cmd.add("execute.Execute"); cmd.add(config.toString()); Collections.addAll(cmd, args);
         long begin = System.nanoTime();
         Process process = new ProcessBuilder(cmd).redirectErrorStream(true).start();
         if (!process.waitFor(15, TimeUnit.SECONDS)) { process.destroyForcibly(); throw new AssertionError("Control command timeout"); }

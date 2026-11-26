@@ -146,7 +146,7 @@ SpringXmlAnalyzerTest.java, ExtensionReportTest.java.
 ## 개발 환경에서 재실행할 방법
 
 1. 변경된 소스와 새 JarResourceIndex.java를 Git으로 옮긴다.
-2. 기존처럼 ExtensionScanner.java를 Run As → Java Application으로 실행한다.
+2. 기존처럼 execute/Execute.java를 Run As → Java Application으로 실행한다.
 3. Program arguments는 비운다. Extension이나 JAR를 수동 선택할 필요는 없다.
 4. JAR files, JAR XML entries, JAR index issues, JAR target rows를 확인한다.
 5. CSV 13개 생성 여부와 spring-jar-files.csv의 검색 목록/실패를 확인한다.

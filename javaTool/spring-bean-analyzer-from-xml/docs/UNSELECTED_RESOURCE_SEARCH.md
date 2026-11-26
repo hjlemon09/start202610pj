@@ -148,7 +148,7 @@ Java 21에서 다음 테스트를 검증했다.
 
 테스트: test/com/sapcommerce/analyzer/UnselectedResourceSearchTest.java.
 
-개발 환경에서는 변경분 반영 후 ExtensionScanner를 인자 없이 실행한다.
+개발 환경에서는 변경분 반영 후 Execute를 인자 없이 실행한다.
 두 resource의 resolution_status, target_extension, target_selection_status와
 Unselected target rows 및 상태별 진단 수를 확인한다.
 실제 개발 환경에서 두 사례가 자동 분류되는지는 재실행으로 검증해야 한다.

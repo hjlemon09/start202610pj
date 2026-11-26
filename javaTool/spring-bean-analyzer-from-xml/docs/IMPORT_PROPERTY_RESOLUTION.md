@@ -135,7 +135,7 @@ Java 21에서 검증용 properties 및 XML로 다음을 확인했다.
 
 ## 재실행 확인 사항
 
-ExtensionScanner를 인자 없이 실행한다. CSV 14개와 아래 Console 수치를 확인한다.
+Execute를 인자 없이 실행한다. CSV 14개와 아래 Console 수치를 확인한다.
 
 ```text
 Resolved property imports

@@ -10,6 +10,7 @@ IntelliJ가 대상 JVM을 디버깅하고, Eclipse에서 실행한 별도 Java �
 
 ```text
 src/
+  execute/       # package execute (실행 클래스 Execute)
   trace/
     agent/       # package trace.agent
     runtime/     # package trace.runtime
@@ -27,8 +28,9 @@ Eclipse에서 새 Java 프로젝트를 만든 경우 `src`의 내용을 그대�
 
 - `src/trace/agent`: Byte Buddy 기반 premain Agent. 시작 시 로딩되는 클래스에 계측합니다.
 - `src/trace/runtime`: bootstrap loader에 올리는 기록기·루프백 제어 서버.
-- `src/trace/control`: Eclipse에서 실행할 Swing 화면과 CLI 제어기.
-- `src/demo`: 동기 호출·예외·재귀·다른 스레드가 있는 작은 대상.
+- `src/execute/Execute.java`: 제어기 실행 클래스(`execute.Execute`). 인수가 설정 파일 하나뿐이면 Swing 화면을 열고, 명령(`STATUS`/`START`/`STOP` …)이 이어지면 CLI로 한 번 보냅니다. `trace-controller.jar`에 함께 들어갑니다.
+- `src/trace/control`: Swing 화면과 제어 서버 통신 코드.
+- `src/demo`: 동기 호출·예외·재귀·다른 스레드가 있는 작은 대상. `demo.shop.Demo`·`demo.launch.IsolatedTarget`은 이 도구가 아니라 추적 대상 예제 프로그램의 시작 클래스라서 그대로 둡니다.
 - `src/trace/test`: 선택적으로 실행하는 검증 코드. 일반 빌드 및 툴 실행에는 필요하지 않습니다.
 - `dist`: 실행 JAR 4개와 `lib/byte-buddy.jar`. 이 폴더 구조를 함께 이동해야 합니다.
 - `logs`: 세션별 CSV, 열린 호출 CSV, 측정 요약 TXT.
@@ -50,7 +52,7 @@ Byte Buddy 1.17.8을 `lib/byte-buddy.jar`에 포함했습니다. Maven/Gradle �
 ## 2. IntelliJ + Eclipse 수동 데모
 
 1. Eclipse: **File → Import → General → Existing Projects into Workspace**로 이 폴더를 가져옵니다. JRE를 JDK 21로 설정합니다.
-2. `Controller.launch`를 **Run As → Controller**로 실행합니다. 또는 `trace.control.ControlWindow`를 Java Application으로 실행하고 프로그램 인수에 `config/demo.properties`의 전체 경로를 넣습니다. 작업 디렉터리는 프로젝트 폴더로 지정합니다. 배치 실행은 `run-controller.bat`입니다.
+2. `Controller.launch`를 **Run As → Controller**로 실행합니다. 또는 실행 클래스 `execute.Execute`를 Java Application으로 실행하고 프로그램 인수에 `config/demo.properties`의 전체 경로를 넣습니다. 작업 디렉터리는 프로젝트 폴더로 지정합니다. 배치 실행은 `run-controller.bat`입니다.
 3. IntelliJ에서 같은 폴더의 `src`를 소스 루트로 열고 `demo.shop.Demo` 실행 구성을 만듭니다. JDK 21을 선택하고 작업 디렉터리를 프로젝트 폴더로 설정합니다. VM 옵션:
 
    ```text

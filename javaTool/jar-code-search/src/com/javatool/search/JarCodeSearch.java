@@ -200,19 +200,4 @@ public final class JarCodeSearch {
     public static Path newOutput() {
         return Path.of("reports", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + "_" + UUID.randomUUID().toString().substring(0,8));
     }
-    public static void main(String[] args) throws Exception {
-        if (args.length == 0) { SearchWindow.open(); return; }
-        if (args.length < 2 || args[0].equals("--help")) {
-            System.out.println("Usage: run.cmd <folder> <keyword> [--regex] [--ignore-case] [--charset=MS949]\nNo arguments: open search window."); return;
-        }
-        boolean regex = false, ignore = false;
-        Charset charset = StandardCharsets.UTF_8;
-        for (int i=2; i<args.length; i++) {
-            if (args[i].equals("--regex")) regex=true;
-            else if (args[i].equals("--ignore-case")) ignore=true;
-            else if (args[i].startsWith("--charset=")) charset=Charset.forName(args[i].substring(10));
-            else throw new IllegalArgumentException("Unknown option: " + args[i]);
-        }
-        new JarCodeSearch(new Options(Path.of(args[0]), args[1], regex, ignore, charset, newOutput()), System.out::println).run();
-    }
 }

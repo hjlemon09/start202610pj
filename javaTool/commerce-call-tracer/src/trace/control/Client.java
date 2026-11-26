@@ -24,10 +24,4 @@ public final class Client {
             return reply;
         }
     }
-    public static void main(String[] args) throws Exception {
-        if (args.length < 2) throw new IllegalArgumentException("Client config.properties STATUS|START|STOP [thread-id] [DISCARD]");
-        String reply = send(load(args[0]), String.join(" ", Arrays.copyOfRange(args, 1, args.length)));
-        System.out.println(reply);
-        if (!reply.startsWith("OK ")) System.exit(2);
-    }
 }

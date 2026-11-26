@@ -19,7 +19,7 @@
 
 동일 PK라도 여러 경로에 출현할 수 있다. 참조 속성 조사는 PK별 한 번 수행하지만, 트리 출력은 경로별로 수행한다.
 
-## 2. 전체 실행 제어 — CmsAnalyzerRunner
+## 2. 전체 실행 제어 — execute.Execute
 
 ```text
 ALGORITHM RunAnalyzer
@@ -27,12 +27,12 @@ ALGORITHM RunAnalyzer
     출력 경로 표시
 
     아래 작업을 순서대로 실행:
-        1. CommerceConnectionTest.main(빈 인자 배열)
-        2. RootComponentsExporter.main(빈 인자 배열)
-        3. ComponentRelationsExporter.main(빈 인자 배열)
-        4. ComponentTreeExporter.main(빈 인자 배열)
-        5. PageComponentTreeExporter.main(빈 인자 배열)
-        6. PageComponentTextTreeExporter.main(빈 인자 배열)
+        1. PageSlotComponentExporter.run(빈 인자 배열)
+        2. RootComponentsExporter.run(빈 인자 배열)
+        3. ComponentRelationsExporter.run(빈 인자 배열)
+        4. ComponentTreeExporter.run(빈 인자 배열)
+        5. PageComponentTreeExporter.run(빈 인자 배열)
+        6. PageComponentTextTreeExporter.run(빈 인자 배열)
 
     각 작업 직전:
         단계 번호와 클래스명 표시
@@ -55,7 +55,7 @@ Runner는 실행 인자를 각 단계로 전달하지 않는다. 전체 실행�
 
 ## 3. 페이지·슬롯 수집
 
-### 3.1 분석기의 HTTP 요청 — CommerceConnectionTest
+### 3.1 분석기의 HTTP 요청 — PageSlotComponentExporter
 
 ```text
 ALGORITHM ExportPageSlots
@@ -666,7 +666,7 @@ END
 
 ```powershell
 javac -encoding UTF-8 -cp "lib/*" -d bin src/com/*.java
-java "-Djdk.httpclient.allowRestrictedHeaders=host" "-Dcms.analyzer.sourceRoot=C:/hybris/bin" -cp "bin;lib/*" com.CmsAnalyzerRunner
+java "-Djdk.httpclient.allowRestrictedHeaders=host" "-Dcms.analyzer.sourceRoot=C:/hybris/bin" -cp "bin;lib/*" execute.Execute
 ```
 
 환경에 맞는 기존 HTTPS truststore 옵션을 함께 적용해야 한다. 실제 사용을 위해서는 수정된 `TestController` 배포, 서버 SQL 경로 확인, 18/19개 컬럼 불일치 해소가 필요하다. 이 문서 작성 중 코드나 SQL을 추가 수정하지 않았다.

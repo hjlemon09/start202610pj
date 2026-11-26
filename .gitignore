@@ -4,4 +4,4 @@
 /.settings/
 
 # Local handoff archives; retain source files in Git.
-/javaTool/sap-commerce-analyzer/sap-commerce-analyzer-handoff-*.zip
+/javaTool/spring-bean-analyzer-from-xml/sap-commerce-analyzer-handoff-*.zip

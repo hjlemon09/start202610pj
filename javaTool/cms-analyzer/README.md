@@ -1,6 +1,6 @@
 # CMS analyzer
 
-`CmsAnalyzerRunner` runs the existing six export steps. Each component line in
+`execute.Execute` (the run class, `src/execute/Execute.java`) runs the existing six export steps. Each component line in
 `output/page_component_tree.txt` now also contains its Controller/Renderer and JSP result.
 The existing CSV format and tree structure are unchanged.
 
@@ -14,13 +14,13 @@ The existing CSV format and tree structure are unchanged.
 2. Compile all analyzer sources (Java 21 or newer) from this project directory:
 
    ```powershell
-   javac -encoding UTF-8 -cp "lib/*" -d bin src/com/*.java
+   javac -encoding UTF-8 -cp "lib/*" -d bin src/com/*.java src/execute/*.java
    ```
 
 3. Run from this project directory, using the Accelerator source root to search:
 
    ```powershell
-   java "-Djdk.httpclient.allowRestrictedHeaders=host" "-Dcms.analyzer.sourceRoot=C:/hybris/bin" -cp "bin;lib/*" com.CmsAnalyzerRunner
+   java "-Djdk.httpclient.allowRestrictedHeaders=host" "-Dcms.analyzer.sourceRoot=C:/hybris/bin" -cp "bin;lib/*" execute.Execute
    ```
 
    Preserve any existing JVM truststore/HTTPS options used in your environment.
@@ -31,7 +31,7 @@ The existing CSV format and tree structure are unchanged.
 To regenerate only the TXT from an existing `page_component_tree.csv`:
 
 ```powershell
-java "-Djdk.httpclient.allowRestrictedHeaders=host" "-Dcms.analyzer.sourceRoot=C:/hybris/bin" -cp "bin;lib/*" com.PageComponentTextTreeExporter output
+java "-Djdk.httpclient.allowRestrictedHeaders=host" "-Dcms.analyzer.sourceRoot=C:/hybris/bin" -cp "bin;lib/*" execute.Execute PageComponentTextTreeExporter output
 ```
 
 The JSP API defaults to

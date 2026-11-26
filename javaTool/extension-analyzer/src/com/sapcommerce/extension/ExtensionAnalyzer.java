@@ -15,11 +15,11 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Entry point. Scans HYBRIS_HOME for extensioninfo.xml, decides the selected (activated) extensions from
+ * Analysis run (started by execute.Execute). Scans HYBRIS_HOME for extensioninfo.xml, decides the selected (activated) extensions from
  * config/localextensions.xml by static rules, and writes CSV reports. The SAP Commerce directory is read only.
  */
 public final class ExtensionAnalyzer {
-    static final String DEFAULT_HYBRIS_HOME = "C:\\hybris";
+    public static final String DEFAULT_HYBRIS_HOME = "C:\\hybris";
     private static final Set<String> EXCLUDED = Set.of("node_modules", ".git", "temp");
 
     /** A file that could not be scanned or parsed. kind: PARSE_FAILED, ACCESS_FAILED, INCOMPLETE_DIRECTORY. */
@@ -38,33 +38,11 @@ public final class ExtensionAnalyzer {
     private ExtensionAnalyzer() {
     }
 
-    public static void main(String[] args) {
-        if (args.length > 2 || (args.length >= 1 && ("--help".equals(args[0]) || "-h".equals(args[0])))) {
-            System.out.println("Usage: ExtensionAnalyzer [HYBRIS_HOME] [extension-name]");
-            System.out.println("Default HYBRIS_HOME: " + DEFAULT_HYBRIS_HOME);
-            System.out.println("extension-name: optional. Also prints its requires-extension tree.");
-            System.out.println("Config : <HYBRIS_HOME>/config/localextensions.xml "
-                    + "(override: -Dextractor.localextensions=<file>)");
-            System.out.println("Reports: ./reports/<timestamp>_<id>/ (override: -Dextractor.output=<directory>)");
-            return;
-        }
-        try {
-            int result = run(Path.of(args.length == 0 ? DEFAULT_HYBRIS_HOME : args[0]),
-                    args.length == 2 ? args[1] : null);
-            if (result != 0) {
-                System.exit(result);
-            }
-        } catch (Exception e) {
-            System.err.println("[ERROR] " + e.getMessage());
-            System.exit(1);
-        }
-    }
-
-    static int run(Path home) throws IOException {
+    public static int run(Path home) throws IOException {
         return run(home, null);
     }
 
-    static int run(Path home, String extensionName) throws IOException {
+    public static int run(Path home, String extensionName) throws IOException {
         Path hybrisHome = home.toAbsolutePath().normalize();
         if (!Files.isDirectory(hybrisHome)) {
             System.err.println("[ERROR] HYBRIS_HOME directory not found: " + hybrisHome);

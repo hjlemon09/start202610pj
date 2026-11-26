@@ -104,24 +104,4 @@ public final class ExtensionInfoParser {
         }
         return name;
     }
-
-    /** Optional single-file inspection: pass the XML path as the only argument. */
-    public static void main(String[] args) {
-        if (args.length != 1) {
-            System.out.println("Usage: ExtensionInfoParser <extensioninfo.xml path>");
-            return;
-        }
-        try {
-            ExtensionInfo info = parse(Path.of(args[0]));
-            System.out.println("=== Extension Information ===");
-            System.out.println("Name: " + info.getName());
-            System.out.println("File: " + info.getXmlPath());
-            System.out.println("Dependencies:");
-            info.getDependencies().forEach(name -> System.out.println("  - " + name));
-            System.out.println("Total dependencies: " + info.getDependencies().size());
-        } catch (Exception e) {
-            System.err.println("[ERROR] " + e.getMessage());
-            System.exit(1);
-        }
-    }
 }

@@ -114,7 +114,7 @@ Java 21의 검증용 JAR로 다음을 확인했다.
 
 ## 개발 환경 재실행
 
-기존처럼 ExtensionScanner를 Program arguments 없이 실행한다.
+기존처럼 Execute를 Program arguments 없이 실행한다.
 CSV 15개와 새 JAR XML 조사 수/오류 수, 소스 및 JAR import 선언 수를 확인한다.
 JAR_XML_INSPECTION_ERROR 또는 새 미발견이 있으면 해당 행을 검토한다.
 새로운 문제를 숨기거나 이전과 같은 3건이 나오도록 강제하지 않는다.

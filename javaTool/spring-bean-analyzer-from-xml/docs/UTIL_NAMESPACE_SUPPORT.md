@@ -85,7 +85,7 @@ spring-bean-issues.csv는 미지원 종류를 아래처럼 구분한다.
 
 ## 실행과 확인
 
-기존대로 ExtensionScanner를 실행한다. 새 인자/라이브러리는 없다.
+기존대로 Execute를 실행한다. 새 인자/라이브러리는 없다.
 콘솔 Bean 집계에 Util declarations와 Inventory issues의 status별 건수를 추가했다.
 summary.csv에는 bean_util_declarations를 추가했다.
 

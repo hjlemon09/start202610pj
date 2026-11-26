@@ -1,6 +1,6 @@
 # 결과 CSV의 카테고리 값 정리
 
-`ExtensionScanner` 실행 결과 폴더(`reports/<날짜_시각>/`)에 생성되는 CSV 19개에서,
+`Execute` 실행 결과 폴더(`reports/<날짜_시각>/`)에 생성되는 CSV 19개에서,
 **정해진 값 중 하나가 들어가는 열(카테고리 열)**과 그 값의 뜻을 정리한 문서입니다.
 
 - 값은 소스 코드(`src/com/sapcommerce/analyzer/*.java`)에서 실제로 기록하는 문자열을 기준으로 모았습니다.

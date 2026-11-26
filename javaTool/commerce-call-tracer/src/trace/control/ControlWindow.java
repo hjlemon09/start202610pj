@@ -5,8 +5,8 @@ import java.util.*;
 import javax.swing.*;
 
 public final class ControlWindow {
-    public static void main(String[] args) throws Exception {
-        final Properties props = Client.load(args.length == 0 ? "config/demo.properties" : args[0]);
+    /** Opens the controller window on the Swing event thread. */
+    public static void open(final Properties props) {
         SwingUtilities.invokeLater(() -> show(props));
     }
     private static void show(Properties props) {

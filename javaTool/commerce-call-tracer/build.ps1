@@ -27,7 +27,7 @@ if (!(Test-Path -LiteralPath $ByteBuddyJar)) {
 $sources = @{
     runtime = @(Get-Sources 'trace\runtime')
     agent = @(Get-Sources 'trace\agent')
-    controller = @(Get-Sources 'trace\control')
+    controller = @(Get-Sources 'trace\control') + @(Get-Sources 'execute')
     demo = @(Get-Sources 'demo')
 }
 foreach ($part in @('runtime','agent','controller','demo')) {

@@ -94,7 +94,7 @@ Java 21에서 가상의 Extension, web.xml, properties와 JAR를 만들어 확�
 
 ## 다음 검증에서 볼 것
 
-ExtensionScanner를 Program arguments 없이 실행한다. CSV 18개 생성 여부와 새 콘솔 영역을 확인한다.
+Execute를 Program arguments 없이 실행한다. CSV 18개 생성 여부와 새 콘솔 영역을 확인한다.
 Loading issues가 있으면 상태별 수를 먼저 보고 필요한 선언/파일만 함께 조사한다.
 실제 로딩됐다고 단정하지 않고, 시작점의 근거와 XML 도달 경로를 원본 설정과 비교한다.
 

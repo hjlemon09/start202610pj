@@ -152,7 +152,7 @@ public final class ExtensionReportTest {
     private static Run scanner(String property, String... args) throws Exception {
         List<String> command = new java.util.ArrayList<>(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(), property,
-                "-cp", System.getProperty("java.class.path"), ExtensionScanner.class.getName()));
+                "-cp", System.getProperty("java.class.path"), execute.Execute.class.getName()));
         command.addAll(List.of(args));
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         String console = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

@@ -28,7 +28,7 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 3. 이 폴더를 Root directory로 지정하고 프로젝트를 가져옵니다.
 4. **Preferences → Java → Installed JREs**에서 JDK 21을 등록합니다.
 5. 프로젝트의 **Java Build Path → Libraries**에서 JavaSE-21 연결을 확인합니다.
-6. `src/com/sapcommerce/analyzer/ExtensionScanner.java`를 선택하고
+6. 실행 클래스 `src/execute/Execute.java`(`execute.Execute`)를 선택하고
    **Run As → Java Application**으로 실행합니다.
 
 프로젝트에 Java 21 소스/컴파일 대상과 UTF-8 인코딩 설정을 포함했습니다.
@@ -60,7 +60,7 @@ extension-analyzer를 다시 실행하세요.
 
 전체 분석은 **Program arguments를 비운 상태로 실행**하면 됩니다. 분석 루트는 extension-analyzer 결과의 `hybris_home`입니다.
 
-**Run → Run Configurations → Java Application → ExtensionScanner → Arguments → Program arguments**:
+**Run → Run Configurations → Java Application → Execute → Arguments → Program arguments**:
 
 ```text
 --extensions "C:\work\extension-analyzer\reports" "C:\hybris"
@@ -154,8 +154,10 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
 ## 소스 구조
 
 ```text
+src/execute/
+└── Execute.java                실행 클래스: 인자 처리, 사용법 출력
 src/com/sapcommerce/analyzer/
-├── ExtensionScanner.java       진입점
+├── AnalysisRunner.java         분석 순서 실행(결과 읽기 → Spring 분석 → CSV)
 ├── ExtensionReport.java        extension-analyzer 결과 폴더 선택·읽기
 ├── ExtensionActivation.java    선택 상태·이슈·중복 정의 데이터
 ├── ExtensionInfo.java          extension 이름과 extensioninfo.xml 위치
@@ -248,7 +250,7 @@ XML 외부 엔티티와 네트워크 요청을 차단합니다. DOCTYPE 선언�
 
 ## JAR 리소스 검색 확장
 
-`ExtensionScanner`를 실행 인자 없이 실행하면 JAR 검색도 자동 수행합니다.
+`Execute`를 실행 인자 없이 실행하면 JAR 검색도 자동 수행합니다.
 선택된 Extension의 폴더 전체와 플랫폼 공통 `bin/platform/lib`,
 `bin/platform/bootstrap/bin` 아래 JAR에서 XML 항목 이름을 수집합니다.
 `.git`, `node_modules`, `temp`와 심볼릭 링크 대상은 제외합니다.
@@ -310,7 +312,7 @@ NOT_FOUND_IN_SCOPE로 유지합니다. 접근 실패와 JAR 읽기 실패도 별
 
 ## import 속성 표현식 해석
 
-`ExtensionScanner`를 인자 없이 실행하면 `${key:default}` 및 `${key}`를 해석한 뒤
+`Execute`를 인자 없이 실행하면 `${key:default}` 및 `${key}`를 해석한 뒤
 기존 소스/JAR/비선택 보조 검색에 연결합니다. 기본값은 읽은 설정 범위에서 키가 없을 때만 사용합니다.
 
 높은 우선순위부터 다음 파일을 읽습니다.
@@ -364,7 +366,7 @@ SKIPPED_NO_ROOT_ELEMENT로 바뀌었다면 재분류된 것입니다.
 
 ## 도달한 JAR XML 본문과 후속 import 추적
 
-실행 방법은 같습니다. ExtensionScanner를 인자 없이 실행합니다.
+실행 방법은 같습니다. Execute를 인자 없이 실행합니다.
 ZipFile.getInputStream으로 JAR 내부의 XML을 읽고 기존과 같은 namespace/import 및 속성 해석 규칙을 적용합니다.
 디스크에 XML을 추출하지 않습니다. 상대 import는 같은 JAR의 출발 entry 디렉터리에서 찾고,
 클래스패스 import는 선택된 소스/JAR에서 찾습니다. 미발견 클래스패스는 비선택 보조 검색에도 연결하지만,
@@ -393,7 +395,7 @@ Runtime 로딩은 여전히 NOT_EVALUATED이고 모호한 클래스패스 후보
 
 ## Spring 로딩 진입점과 잠재 도달 관계
 
-ExtensionScanner를 인자 없이 실행하면 import 분석 후
+Execute를 인자 없이 실행하면 import 분석 후
 `Spring Loading Entry Analysis (STATIC CANDIDATES)`를 출력합니다. 전체 CSV는 18개입니다.
 
 선택된 Extension에서 다음 근거를 수집합니다.
@@ -446,7 +448,7 @@ Spring Java Config/코드에 의한 동적 등록 및 전체 서버 속성 계�
 
 ## XML Bean 선언과 명시적 참조 목록
 
-ExtensionScanner의 기본 실행에 Bean 목록 작성을 추가했습니다. 현재 CSV 총수는 **22개**입니다(`extension-duplicates.csv` 포함).
+Execute의 기본 실행에 Bean 목록 작성을 추가했습니다. 현재 CSV 총수는 **22개**입니다(`extension-duplicates.csv` 포함).
 
 | 신규 파일 | 내용 |
 | --- | --- |

@@ -41,6 +41,19 @@ Spring XML의 bean 정의(`parent`, `property`, `constructor-arg`, `lookup-metho
 
 ## 실행 방법
 
+### 실행 클래스 `execute.Execute`
+
+이 저장소의 모든 프로그램은 실행 클래스를 `execute.Execute`로 통일했습니다. staticAnalyzer에서는 `execute/Execute.java`가 `CallTreeExtractor`를 그대로 호출하며, 인자도 같습니다.
+컴파일해서 실행할 때는 `run.cmd`를 씁니다. `build.cmd`로 `bin`에 컴파일한 뒤 `execute.Execute`를 실행합니다.
+
+```powershell
+$env:JAVAPARSER_JAR = 'C:\tools\javaparser-core-3.27.1.jar'; .\run.cmd --out-dir C:/work/calltree --base C:/hybris C:/hybris/bin/platform C:/hybris/bin/modules C:/hybris/bin/custom
+```
+
+- `JAVAPARSER_JAR`을 지정하지 않으면 이 폴더의 `javaparser-core-3.27.1.jar`를 찾습니다.
+- Eclipse에서는 이 폴더를 소스 폴더로, JavaParser jar를 Build Path에 넣고 `execute.Execute`를 Java Application으로 실행합니다.
+- 아래의 단일 파일 실행(`java ... com/CallTreeExtractor.java`)도 그대로 쓸 수 있습니다. Java 21의 단일 파일 실행은 다른 파일의 클래스를 함께 컴파일하지 않으므로, 이 방식에서는 `Execute`를 거치지 않고 `CallTreeExtractor`를 직접 실행합니다.
+
 ### 1. 소스 안의 설정값으로 실행 (인자 없음)
 
 파일 상단의 `EDIT HERE` 블록을 고친 다음 인자 없이 실행합니다.

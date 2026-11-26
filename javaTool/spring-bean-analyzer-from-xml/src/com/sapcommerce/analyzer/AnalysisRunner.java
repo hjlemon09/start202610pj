@@ -3,64 +3,20 @@ package com.sapcommerce.analyzer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * Application entry point. The SAP Commerce directory is read only.
+ * Analysis run (started by execute.Execute). The SAP Commerce directory is read only.
  * Extension selection, definitions and guaranteed load order come from the latest extension-analyzer result;
  * this tool analyzes Spring XML only.
  */
-public final class ExtensionScanner {
-    private ExtensionScanner() {
+public final class AnalysisRunner {
+    private AnalysisRunner() {
     }
 
-    public static void main(String[] args) {
-        String extensions = System.getProperty("analyzer.extensions", ExtensionReport.DEFAULT_LOCATION);
-        List<String> positional = new ArrayList<>();
-        for (int i = 0; i < args.length; i++) {
-            if ("--help".equals(args[i]) || "-h".equals(args[i])) {
-                usage();
-                return;
-            }
-            if ("--extensions".equals(args[i])) {
-                if (i + 1 >= args.length) {
-                    System.err.println("[ERROR] --extensions needs a folder");
-                    System.exit(1);
-                }
-                extensions = args[++i];
-            } else {
-                positional.add(args[i]);
-            }
-        }
-        if (positional.size() > 1) {
-            usage();
-            System.exit(1);
-        }
-        try {
-            int result = scan(Path.of(extensions), positional.isEmpty() ? null : Path.of(positional.get(0)));
-            if (result != 0) {
-                System.exit(result);
-            }
-        } catch (Exception e) {
-            System.err.println("[ERROR] " + e.getMessage());
-            System.exit(1);
-        }
-    }
-
-    private static void usage() {
-        System.out.println("Usage: ExtensionScanner [--extensions <folder>] [hybris-root]");
-        System.out.println("--extensions : extension-analyzer result folder, or its reports folder");
-        System.out.println("               (latest result is used). Default: " + ExtensionReport.DEFAULT_LOCATION);
-        System.out.println("               Also settable with -Danalyzer.extensions=<folder>");
-        System.out.println("hybris-root  : optional. Default is hybris_home of the extension-analyzer result;");
-        System.out.println("               a different root is rejected.");
-        System.out.println("Report root: ./reports (override: -Danalyzer.output=<directory>)");
-    }
-
-    private static int scan(Path extensionSpec, Path rootArgument) throws IOException {
+    /** extensionSpec: extension-analyzer result or reports folder. rootArgument: optional hybris root to check. */
+    public static int run(Path extensionSpec, Path rootArgument) throws IOException {
         Path reportDirectory = ExtensionReport.resolve(extensionSpec);
         ExtensionReport.Loaded input = ExtensionReport.load(reportDirectory);
         Path hybrisRoot = input.hybrisHome();
