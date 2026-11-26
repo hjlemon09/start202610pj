@@ -47,4 +47,34 @@
 완료 기준. 각 활성 extension의 실제 진입 XML별 순번과 그 순서가 로더까지 유지되는 근거를 기록했다.
 extension 간 순서가 미확정이어도 각 extension 내부 순서는 독립적으로 확정할 수 있다.
 
+## 8.4 프로그램에서의 처리 (spring-bean-analyzer-from-xml)
+
+8장의 처리는 [spring-bean-analyzer-from-xml](../javaTool/spring-bean-analyzer-from-xml/README.md)이 한다. extension-analyzer는 8장에 관여하지 않는다.
+**설정값의 토큰 순서가 그대로 진입 순서가 된다**고 보고 처리한다. 실제 로더 호출 지점의 순서는 확인하지 않는다.
+
+### 구성 위치
+
+|소스|하는 일|
+|---|---|
+|`SpringLoadingAnalyzer.java`|값을 토큰으로 나눈 순서대로 진입 후보를 만들고, 순번이 붙은 ID(`ENTRY_1`, `ENTRY_2`, …)를 준다(`split()`, `add()`).|
+|`SpringXmlAnalyzer.java`|진입 후보마다 따로 대상 리소스를 찾는다(`resolveLoadingEntry()`).|
+|`SpringBeanWinnerResolver.java`|같은 extension의 진입 XML끼리는 ID의 순번(`entryIndex()`) 순서로 처리한 것으로 보고, 나중 진입 XML의 정의가 앞의 정의를 덮어쓴다고 판정한다.|
+
+### 8장의 절과의 대응
+
+|8장의 절|프로그램에서 하는가|내용|
+|---|---|---|
+|8.1 토큰 순서가 리스트에 어떻게 반영되는지|**일부**|원문 토큰 순서대로 진입 후보를 만든다. 같은 이름이 반복되면 중복 제거 없이 각각 진입 후보가 된다(같은 XML을 두 번 읽는 것으로 본다). 대상을 찾지 못한 토큰도 진입 후보로 남고 순번을 가진다. 실제 SAP 코드의 분리·자료구조·중복 처리와 같은지는 확인하지 않는다.|
+|8.2 실제 XML 로더 호출 지점까지 확인한다|**하지 않음**|리스트를 Spring에 넘기는 메서드, 호출 직전의 정렬·역순·중복 제거, 한 파일의 실패가 뒤쪽 파일 처리를 멈추는지는 확인하지 않는다. 대상을 찾지 못한 진입 후보는 건너뛰고(`ENTRY_NOT_FOLLOWED`) 뒤쪽 후보는 계속 처리한 것으로 본다.|
+|8.3 결과 예시|**함**|원문 토큰 위치에 해당하는 것이 진입 ID의 순번이다. 진입 XML별 대상 위치와 도달 관계를 기록한다.|
+
+### 결과물
+
+|파일|내용|
+|---|---|
+|`spring-loading-entrypoints.csv`|`entry_id`(순번이 붙은 ID), `configuration`(원문), `target_xml`, `match_status`|
+|`spring-loading-reachability.csv`|진입 XML별로 import를 따라 도달한 XML과 깊이|
+|`spring-bean-registrations.csv`|등록 재생 순서(`sequence`). 같은 extension 안의 진입 XML 순서가 여기에 반영된다.|
+|`spring-bean-winner-issues.csv`|`ENTRY_NOT_FOLLOWED`(대상을 찾지 못해 따라가지 못한 진입 후보)|
+
 ## 9장에서 사용할 내용

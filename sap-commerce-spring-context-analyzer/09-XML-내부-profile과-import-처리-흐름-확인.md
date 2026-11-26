@@ -100,4 +100,44 @@ https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframewo
 Spring Framework 6.2 API — PathMatchingResourcePatternResolver
 https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/core/io/support/PathMatchingResourcePatternResolver.html
 
+## 9.7 프로그램에서의 처리 (spring-bean-analyzer-from-xml)
+
+9장의 처리는 [spring-bean-analyzer-from-xml](../javaTool/spring-bean-analyzer-from-xml/README.md)이 한다. extension-analyzer는 9장에 관여하지 않는다.
+Spring의 `DefaultBeanDefinitionDocumentReader` 처리 순서(문서 순서, import는 그 위치에서 처리)를 **전제로 재생**한다. 대상 Spring 버전과 실제 Environment는 확인하지 않는다.
+
+### 구성 위치
+
+|소스|하는 일|
+|---|---|
+|`SpringXmlAnalyzer.java`|XML에서 `<import resource>`를 찾고, `${…}`를 치환한 뒤 대상 리소스를 찾는다(상대 경로, `classpath:`, `classpath*:`, 패턴).|
+|`ImportPropertyResolver.java`|`${key}`, `${key:기본값}`을 프로퍼티 파일 값으로 치환한다.|
+|`SpringBeanAnalyzer.java`|최상위 `<bean>`, `<alias>`, `<import>`의 문서 순서와, 각 요소를 감싼 `<beans profile>` 조건을 기록한다.|
+|`SpringLoadingAnalyzer.java`|진입 XML에서 import를 따라 도달하는 XML과 깊이를 구한다(`trace()`).|
+|`SpringBeanWinnerResolver.java`|진입 XML을 문서 순서대로 읽고, `<import>`를 만나면 그 자리에서 대상 문서를 끝까지 처리한 뒤 부모 문서의 다음 요소로 돌아가는 순서를 재생한다.|
+
+### 9장의 절과의 대응
+
+|9장의 절|프로그램에서 하는가|내용|
+|---|---|---|
+|9.1 대상 Spring XML 로더와 환경|**하지 않음**|Spring JAR 버전, 실제 문서 리더(커스텀 리더 여부), Spring Environment가 설정되는 곳은 확인하지 않는다. 기본 문서 리더의 동작을 전제로 한다.|
+|9.2 profile 활성 여부를 먼저 판정한다|**일부**|`<beans profile>` 조건을 기록하지만 **활성 profile은 평가하지 않는다.** 최종 승자가 profile 블록 안의 정의면 `PROFILE_DEPENDENT`로 두고, profile이 꺼졌을 때의 승자를 따로 적는다. profile 블록 안의 `<import>`도 조건과 관계없이 따라가며, **부모의 profile 조건이 import된 문서의 정의에는 전달되지 않는다**(한계).|
+|9.3 import의 원문과 치환 결과를 기록한다|**함**|부모 파일, 줄 번호, `resource` 원문, 치환 결과와 근거를 기록한다. 치환 값은 Spring Environment가 아니라 프로퍼티 파일(`local.properties`, 선택된 extension의 `project.properties`, `bin/platform/project.properties`)에서 구한다. `#{…}`는 계산하지 않는다.|
+|9.4 상대 경로·절대 경로·패턴의 대상을 판정한다|**일부**|상대 경로는 현재 XML 기준(JAR 안이면 같은 JAR 기준)으로, `classpath:`는 분석 범위에서 찾는다. `classpath*:`와 와일드카드는 일치하는 후보를 모두 찾지만 **반환 순서는 미확정**으로 둔다. `file:`, URL, 커스텀 프로토콜은 찾지 않는다(`UNSUPPORTED_LOCATION`). 네임스페이스 핸들러가 따로 찾는 리소스는 다루지 않는다.|
+|9.5 중첩 처리와 반복 참조를 기록한다|**함**|import 대상 문서를 다시 같은 방식으로 처리하고 부모 문서로 돌아간다. 현재 처리 중인 파일로 다시 들어가면 `IMPORT_CYCLE`로 기록하고 따라가지 않는다. 이미 끝난 파일을 다시 import하면 다시 처리한다(나중 위치가 된다). 깊이 64를 넘으면 멈춘다(`IMPORT_DEPTH_LIMIT`).|
+|9.6 파일 진입과 문서 요소 처리를 구별한다|**함**|빈·alias가 등록되는 순서를 import 경로와 함께 기록한다. import 앞의 선언, import된 문서의 선언, 복귀 후의 선언이 서로 다른 순번으로 나온다.|
+
+### 결과물
+
+|파일|내용|
+|---|---|
+|`spring-imports.csv`|import별 부모 XML(`source_xml`), 줄 번호(`line`), 원문(`resource`), 치환 결과(`resolved_resource`), 대상(`target_xml`), 상태(`resolution_status`)|
+|`spring-reverse-imports.csv`|대상 XML을 import하는 부모 XML 목록|
+|`spring-property-resolutions.csv`|import 속성식의 치환 근거(`PROPERTY` / `DEFAULT` / `PROPERTY_AND_DEFAULT`)와 실패 사유|
+|`spring-import-issues.csv`|치환 실패, 찾지 못함, 모호함, 지원하지 않는 위치|
+|`spring-loading-reachability.csv`|진입 XML별 도달 XML과 깊이|
+|`spring-beans.csv`|빈 선언과 `declared_profile_chain`(감싼 profile 조건)|
+|`spring-bean-registrations.csv`|등록 재생 순서(`sequence`), import 경로(`import_path`), profile 조건(`profiles`)|
+|`spring-bean-winners.csv`|최종 승자와 `PROFILE_DEPENDENT` 등 판정 상태|
+|`spring-bean-winner-issues.csv`|`IMPORT_CYCLE`, `IMPORT_NOT_FOLLOWED`, `IMPORT_DEPTH_LIMIT` 등|
+
 ## 10장에서 사용할 내용

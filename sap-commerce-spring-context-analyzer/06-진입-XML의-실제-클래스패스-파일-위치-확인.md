@@ -61,4 +61,46 @@
 완료 기준. 모든 활성 extension의 진입 후보에 대해 선택된 리소스, 로드 대상 없음, 실패, 미확정 중 하나를 판정했다.
 실제로 선택된 후보에는 파일이나 JAR 엔트리와 선택 근거가 모두 있다.
 
+## 6.5 프로그램에서의 처리 (spring-bean-analyzer-from-xml)
+
+6장의 처리는 [spring-bean-analyzer-from-xml](../javaTool/spring-bean-analyzer-from-xml/README.md)이 한다. extension-analyzer는 6장에 관여하지 않는다.
+실제 클래스 로더를 재현하지 않고, **분석 범위 안의 파일과 JAR 엔트리에서 같은 경로를 찾는 방식**으로 후보를 정한다.
+
+### 구성 위치
+
+|소스|하는 일|
+|---|---|
+|`SpringXmlAnalyzer.java`|선택된 extension의 `resources/`와 `web/webroot/`(`<webmodule>` extension만) 아래 XML을 모은다(`collect()`). 진입 XML·import 문자열을 실제 파일·JAR 엔트리 후보와 대조한다(`resolveLoadingEntry()`, `resolve()`).|
+|`JarResourceIndex.java`|JAR를 열어 엔트리 목록을 색인한다. 범위(`scope`)를 함께 기록한다.|
+
+### 검색 범위
+
+|범위|대상|비고|
+|---|---|---|
+|소스 파일|선택된 extension의 `resources/`, 같은 웹 컨텍스트의 `web/webroot/WEB-INF/classes`|다른 storefront의 `WEB-INF/classes`는 섞지 않는다.|
+|`EXTENSION_LIBRARY`|선택된 extension 폴더 아래의 JAR|`web/webroot` 아래 JAR는 `<webmodule>` extension만|
+|`WEB_LIBRARY`|`web/webroot` 아래의 JAR|그 웹 컨텍스트에서만 후보가 된다.|
+|`PLATFORM_SHARED`|`bin/platform/lib`, `bin/platform/bootstrap/bin`의 JAR| |
+|비선택 보조 검색|`NOT_SELECTED` extension의 소스와 JAR|참고용. 진입 후보로 쓰지 않고 `FOUND_IN_UNSELECTED_EXTENSION`으로만 표시한다.|
+
+### 6장의 절과의 대응
+
+|6장의 절|프로그램에서 하는가|내용|
+|---|---|---|
+|6.1 코어 로더가 사용하는 클래스 로더|**하지 않음**|실제 클래스 로더(컨텍스트 클래스 로더, 커스텀 ResourceLoader 등), 부모 위임, JAR 순서를 재현하지 않는다. 위 「검색 범위」를 클래스패스로 본다.|
+|6.2 파일과 JAR에서 후보를 확인한다|**함**|소스 파일과 JAR 엔트리를 모두 찾는다. JAR 안의 엔트리 경로 전체(예: `spring/core.xml`)로 비교하며, 대소문자를 구분한다. 빌드가 소스를 어느 JAR에 넣었는지(소스와 배포의 대응)는 확인하지 않는다.|
+|6.3 중복 리소스와 부재를 판정한다|**일부**|후보가 하나면 `CLASSPATH_CANDIDATE`, 둘 이상이면 하나를 고르지 않고 `AMBIGUOUS_CLASSPATH`, 없으면 `NOT_FOUND_IN_SCOPE`로 둔다. 여러 후보 중 실제로 선택되는 쪽(위임·검색 순서)은 판정하지 않는다. 외부 파일(`file:` 등)은 찾지 않고 `UNSUPPORTED_LOCATION`으로 둔다. 누락 시 계속/오류 분기는 확인하지 않는다.|
+|6.4 실제 위치를 표에 저장한다|**함**|파일은 절대 경로로, JAR 엔트리는 `jar:file:/…/x.jar!/spring/core.xml` 형식(`!/` 앞이 JAR, 뒤가 엔트리)으로 기록한다.|
+
+### 결과물
+
+|파일|내용|
+|---|---|
+|`spring-loading-entrypoints.csv`|진입 XML 후보별 `target_xml`(찾은 위치), `match_status`(`CLASSPATH_CANDIDATE` / `AMBIGUOUS_CLASSPATH` / `NOT_FOUND_IN_SCOPE` 등)|
+|`spring-imports.csv`|`<import>`별 대상(`target_xml`, `target_jar`, `target_entry`)과 상태(`resolution_status`, 같은 상태값)|
+|`spring-xml-files.csv`|조사한 소스 XML 목록|
+|`spring-jar-files.csv`|색인한 JAR, 소유 extension, 범위(`scope`), XML 엔트리 수|
+|`spring-jar-xml-files.csv`|도달한 JAR 내부 XML의 위치와 파싱 상태|
+|`spring-import-issues.csv`|찾지 못함, 모호함, 지원하지 않는 위치 등|
+
 ## 8장에서 사용할 내용
