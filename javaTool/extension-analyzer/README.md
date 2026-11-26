@@ -144,9 +144,18 @@ $env:EXTENSION_ANALYZER_OPTS = '-Dextractor.output=C:\extension-results -Dextrac
 | `"early","other","LOAD_PRIOR_TO"` | early가 other보다 먼저 로드된다. early가 `load-prior-to`로 other를 지정했기 때문이다. |
 | (행 없음) shop과 other | 두 extension 사이에는 보장된 순서가 없다(순서 미확정). |
 
-- 행은 `extension`, `loads_before`의 이름순으로 정렬합니다. 행의 순서는 로드 순서가 아닙니다.
-- 순서가 서로 반대인 근거가 모두 있는 쌍(순환)은 행을 만들지 않습니다. 이런 extension은 `extensions.csv`의 `load_order_cycle`이 `true`입니다.
-- 선택된 extension끼리만 계산합니다. 선택되지 않은 extension은 나오지 않습니다.
+**주의점**
+
+- **전체 로드 순서가 아닙니다.** 순서가 보장된 쌍만 담습니다. 행이 없는 쌍은 "순서가 같다"가 아니라 "순서를 알 수 없다(미확정)"입니다. 실제 서버에서는 어떤 순서로든 로드될 수 있습니다.
+- **행의 순서는 로드 순서가 아닙니다.** 행은 `extension`, `loads_before`의 이름순으로 정렬했을 뿐입니다. 위에서 아래로 읽어 순번을 매기면 안 됩니다.
+- **간접 관계도 이미 행으로 들어 있습니다.** `"A","B"`와 `"B","C"`가 있으면 `"A","C"`(`TRANSITIVE` 또는 직접 근거)도 있습니다. 직접 이어 붙여 계산할 필요가 없습니다.
+- **`REQUIRES`에서 필요로 하는 쪽은 오른쪽(`loads_before`)입니다.** 왼쪽이 필요한 쪽이라 먼저 로드됩니다.
+- **순환하는 쌍은 행이 없습니다.** 순서가 서로 반대인 근거가 모두 있으면 미확정으로 두고 행을 만들지 않습니다. 이런 extension은 `extensions.csv`의 `load_order_cycle`이 `true`입니다.
+- **선택된 extension끼리만 계산합니다.** 선택되지 않았거나 판단할 수 없는(`UNKNOWN`) extension은 나오지 않습니다.
+- **찾지 못한 대상과의 관계는 나오지 않습니다.** `requires-extension`이나 `load-prior-to`에 적힌 이름이 선택되지 않았거나 설치에 없으면 그 관계는 무시합니다. 찾지 못한 의존 대상은 `missing-dependencies.csv`에서 확인합니다.
+- **결과가 불완전할 수 있습니다.** `summary.csv`의 `scan_complete`나 `selection_complete`가 `false`이면 일부 extension이 빠져 있어 순서 쌍도 빠질 수 있습니다.
+- **실행 시점의 설치 상태입니다.** `extensioninfo.xml`이나 `localextensions.xml`을 바꿨다면 다시 실행해야 합니다.
+- **미확정 쌍의 실제 순서**는 이 도구로 알 수 없습니다. 필요하면 `ant` 빌드 로그나 실행 중인 서버에서 확인합니다.
 
 ## 판정 방법
 
