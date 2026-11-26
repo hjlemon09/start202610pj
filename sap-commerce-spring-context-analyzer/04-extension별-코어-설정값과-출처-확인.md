@@ -46,6 +46,58 @@ melcocore.application-context=melcocore-spring.xml,melcocore-overrides.xml
 - 최종값은 5장에서 XML 파일 목록으로 나눈다.
 - 키가 없거나 값이 비어 있으면, 기본 파일명 규칙(`<ext>-application-context.xml`)이 적용되는지 5장에서 판단한다.
 
+## 배경지식 — `${key}`, `${key:기본값}` 치환이 필요한 이유
+
+Spring XML과 프로퍼티 값에는 **다른 프로퍼티를 참조하는 자리표시자(`${…}`)**가 들어갈 수 있다.
+치환하지 않으면 `${…}`가 들어간 문자열 그대로를 파일 이름으로 찾게 되고, 그런 파일은 없으므로 실제로 읽히는 XML을 놓친다.
+
+### 치환이 필요한 두 경우
+
+**1. Spring XML의 `<import resource>`** (9.3절)
+
+```xml
+<import resource="classpath:${mystore.env}/payment-spring.xml"/>
+```
+
+```properties
+mystore.env=prod
+```
+
+실제로 읽히는 파일은 `classpath:prod/payment-spring.xml`이다. 치환하지 않으면 `${mystore.env}`라는 폴더를 찾다가 "대상 없음"으로 끝나고, 그 아래의 빈이 목록에서 빠진다.
+
+**2. 로딩 프로퍼티 값 자체가 다른 키를 참조할 때** (이 장의 코어 설정값)
+
+```properties
+mystore.basename=mystore
+mystore.application-context=${mystore.basename}-spring.xml,${mystore.basename}-overrides.xml
+```
+
+이 경우 코어 진입 XML은 `mystore-spring.xml`, `mystore-overrides.xml`이다.
+
+### `${key:기본값}`이 필요한 이유
+
+Spring의 자리표시자 문법으로, "키가 없으면 콜론 뒤의 값을 쓴다"는 뜻이다.
+
+```xml
+<import resource="classpath:${mystore.variant:default}/beans.xml"/>
+```
+
+`mystore.variant`가 어디에도 없으면 `classpath:default/beans.xml`을 읽는다.
+이 문법을 모르면 키가 없을 때 해석 실패로 처리하게 되어, 실제로는 기본값 경로로 읽히는 XML을 놓친다.
+
+### 프로그램에서는
+
+spring-bean-analyzer-from-xml의 `ImportPropertyResolver`가 치환한다. 처음에는 `<import resource>`용으로 만들었고(클래스 이름의 `Import`), 코어 설정값을 구할 때도 같은 클래스를 쓴다.
+
+- 키에서 온 값인지 기본값인지 구분해 남긴다.
+  - `property_status`: `PROPERTY`, `DEFAULT`, `PROPERTY_AND_DEFAULT`
+  - `property_evidence`: 근거. 기본값을 썼으면 `XML_DEFAULT`
+- `<import resource>`의 치환 결과는 `spring-property-resolutions.csv`, 코어 설정값의 출처는 `spring-loading-entrypoints.csv`의 `property_evidence`에 나온다.
+- 치환하지 않는 것(한계)
+  - `#{…}`(Spring 표현식 언어)는 계산하지 않고 해석 실패로 둔다.
+  - 환경 변수, JVM 시스템 프로퍼티, 테넌트별 설정은 읽지 않는다. 이런 곳에만 값이 있으면 해석 실패가 되거나 기본값이 쓰인다.
+  - 실제 서버의 Spring Environment 값은 확인하지 않는다. 정적 추정이다.
+
 ## 4.1 실제 키와 조회 메서드를 식별한다
 
 1. 대상 extension 이름이 melcocore면 melcocore.application-context를 정확한 문자열로 검색한다.
