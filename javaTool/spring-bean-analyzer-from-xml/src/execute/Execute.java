@@ -1,11 +1,12 @@
 package execute;
 
+import com.extension.ExtensionReport;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 import com.sapcommerce.analyzer.AnalysisRunner;
-import com.sapcommerce.analyzer.ExtensionReport;
 
 /** Entry point of spring-bean-analyzer-from-xml: {@code Execute [--extensions <folder>] [hybris-root]}. */
 public final class Execute {

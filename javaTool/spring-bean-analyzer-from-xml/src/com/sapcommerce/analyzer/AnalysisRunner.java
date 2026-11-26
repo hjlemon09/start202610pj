@@ -1,5 +1,9 @@
 package com.sapcommerce.analyzer;
 
+import com.extension.ExtensionActivation;
+import com.extension.ExtensionInfo;
+import com.extension.ExtensionReport;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

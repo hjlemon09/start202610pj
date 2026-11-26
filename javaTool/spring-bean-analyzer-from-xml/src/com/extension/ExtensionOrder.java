@@ -1,4 +1,4 @@
-package com.sapcommerce.analyzer;
+package com.extension;
 
 import java.util.HashMap;
 import java.util.HashSet;

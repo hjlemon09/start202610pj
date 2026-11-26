@@ -1,4 +1,4 @@
-package com.sapcommerce.analyzer;
+package com.extension;
 
 import java.nio.file.Path;
 import java.util.List;

@@ -1,5 +1,8 @@
 package com.sapcommerce.analyzer;
 
+import com.extension.ExtensionActivation;
+import com.extension.ExtensionReport;
+
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

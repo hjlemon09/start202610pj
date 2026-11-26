@@ -156,15 +156,18 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
 ```text
 src/execute/
 └── Execute.java                실행 클래스: 인자 처리, 사용법 출력
-src/com/sapcommerce/analyzer/
-├── AnalysisRunner.java         분석 순서 실행(결과 읽기 → Spring 분석 → CSV)
+src/com/extension/              extension-analyzer 결과를 받는 쪽 (분석 로직 없음)
 ├── ExtensionReport.java        extension-analyzer 결과 폴더 선택·읽기
 ├── ExtensionActivation.java    선택 상태·이슈·중복 정의 데이터
 ├── ExtensionInfo.java          extension 이름과 extensioninfo.xml 위치
-├── ExtensionOrder.java         extension-load-order.csv의 보장된 순서 (없는 쌍은 미확정)
+└── ExtensionOrder.java         extension-load-order.csv의 보장된 순서 (없는 쌍은 미확정)
+src/com/sapcommerce/analyzer/   Spring 분석
+├── AnalysisRunner.java         분석 순서 실행(결과 읽기 → Spring 분석 → CSV)
 ├── AnalysisReportWriter.java   분석 단계 실행과 summary.csv
 └── Spring*.java 등             Spring XML·로딩·Bean 분석과 최종 승자
 ```
+
+Eclipse의 소스 폴더는 그대로 `src` 하나입니다. 패키지만 나뉘었습니다.
 
 소스 및 Eclipse 설정만 제공하며 컴파일 산출물은 포함하지 않습니다.
 실제 SAP Commerce 환경에서의 검증은 개발 PC에서 수행하세요.
@@ -183,7 +186,7 @@ extension 로드 순서 계산은 [extension-analyzer](../extension-analyzer/REA
 - `summary.csv`의 `selection_complete`는 extension-analyzer의 `activation-issues.csv`가 비어 있는지입니다.
   `scan_complete`는 extension-analyzer의 스캔 완전성과, 적힌 `extensioninfo.xml`이 지금도 있는지를 합친 값입니다.
 
-검증용 소스는 `test/com/sapcommerce/analyzer/ExtensionReportTest.java`입니다.
+검증용 소스는 `test/com/extension/ExtensionReportTest.java`입니다.
 최신 결과 선택, CSV·로드 순서 읽기, 오래된 결과(파일 없음, 예전 extractor 결과) 검출, hybris-root 불일치, 19개 CSV 출력까지 확인합니다.
 판정·의존관계·순서 규칙 자체의 테스트는 extension-analyzer의 `ExtensionAnalyzerTest`에 있습니다.
 
