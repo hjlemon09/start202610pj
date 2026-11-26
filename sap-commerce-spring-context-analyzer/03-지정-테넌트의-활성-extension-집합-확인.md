@@ -70,4 +70,19 @@ https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris
 https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/core/Tenant.html
 https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/platform/core/AbstractTenant.html
 
+## 3.5 프로그램에서의 처리 (master 고정)
+
+[extension-analyzer](../javaTool/extension-analyzer/README.md)와 [spring-bean-analyzer-from-xml](../javaTool/spring-bean-analyzer-from-xml/README.md)은 3장의 조사를 하지 않는다.
+테넌트는 1.4절과 같이 **`master`로 고정**하고, 아래를 전제로 한다.
+
+|3장의 절|프로그램의 처리|
+|---|---|
+|3.1 코어 컨텍스트를 구성하는 코드의 위치|확인하지 않는다. 코어 컨텍스트는 `CORE` 하나로 모델링한다.|
+|3.2 테넌트별 후보 목록의 생성 규칙|확인하지 않는다. master 테넌트는 2장에서 선택된 extension을 모두 사용한다고 본다.|
+|3.3 설정 기반 분기|테넌트별 설정 파일과 필터 키를 읽지 않는다.|
+|3.4 활성 상태와 XML 선택 상태|extension-analyzer의 선택 상태(`EXPLICIT`, `AUTOLOAD`, `PLATFORM`, `DEPENDENCY`)를 그대로 활성으로 쓴다. 진입 XML이 있는지는 4~6장에 해당하는 처리에서 따로 판정한다.|
+
+- 이 전제가 실제 SAP 코드와 일치하는지(3.2의 `MasterTenant` 구현)는 확인하지 않았다.
+- master가 아닌 테넌트를 분석하려면 3장의 처리를 새로 구현해야 한다.
+
 ## 4장에서 사용할 내용
