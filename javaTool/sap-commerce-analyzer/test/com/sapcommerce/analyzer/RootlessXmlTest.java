@@ -22,8 +22,8 @@ public final class RootlessXmlTest {
         Files.writeString(resources.resolve("utf16.xml"), "<?xml version='1.0' encoding='UTF-16'?>\n<!-- comment -->",
                 java.nio.charset.StandardCharsets.UTF_16);
         var definitions = Map.of("app", new ExtensionInfo("app", root.resolve("app/extensioninfo.xml"), List.of()));
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
-                Map.of("app", new ActiveExtensionAnalyzer.Selection("EXPLICIT", "fixture", "")), List.of());
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
+                Map.of("app", new ExtensionActivation.Selection("EXPLICIT", "fixture", "")), List.of());
         var result = SpringXmlAnalyzer.analyze(root, definitions, activation);
         for (String name : List.of("widgets.xml", "whitespace.xml", "utf16.xml")) {
             check(result.files().stream().anyMatch(file -> file.path().endsWith(name)

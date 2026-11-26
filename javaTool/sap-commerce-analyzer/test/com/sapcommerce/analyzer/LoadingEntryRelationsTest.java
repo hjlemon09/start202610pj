@@ -11,10 +11,10 @@ public final class LoadingEntryRelationsTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("entry-relations-");
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
-        Map<String, ActiveExtensionAnalyzer.Selection> selections = new LinkedHashMap<>();
+        Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("provider", "shop", "off", "other")) {
             definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
-            selections.put(name, new ActiveExtensionAnalyzer.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
+            selections.put(name, new ExtensionActivation.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         put(root.resolve("provider/project.properties"), "provider.application-context=common-spring.xml\n");
         put(root.resolve("provider/resources/provider/web/common-spring.xml"), beans());
@@ -27,7 +27,7 @@ public final class LoadingEntryRelationsTest {
         put(root.resolve("shop/web/webroot/WEB-INF/web.xml"),
                 "<web-app><display-name>Shop</display-name><listener><listener-class>de.hybris.platform.spring.HybrisContextLoaderListener</listener-class></listener>"
                 + "<context-param><param-name>contextConfigLocation</param-name><param-value></param-value></context-param></web-app>");
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"), Map.copyOf(selections), List.of());
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"), Map.copyOf(selections), List.of());
         var spring = SpringXmlAnalyzer.analyze(root, definitions, activation);
         var loading = SpringLoadingAnalyzer.trace(spring);
         var missing = loading.entries().stream().filter(e -> e.declaration().source().equals("provider.application-context")).findFirst().orElseThrow();

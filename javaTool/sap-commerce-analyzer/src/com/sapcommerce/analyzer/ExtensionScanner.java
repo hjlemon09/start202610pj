@@ -1,39 +1,46 @@
 package com.sapcommerce.analyzer;
 
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-/** Application entry point. The SAP Commerce directory is read only. */
+/**
+ * Application entry point. The SAP Commerce directory is read only.
+ * Extension definitions and selection come from the latest activated-extension-extractor result.
+ */
 public final class ExtensionScanner {
-    private static final Set<String> EXCLUDED = Set.of("node_modules", ".git", "temp");
-
     private ExtensionScanner() {
     }
 
     public static void main(String[] args) {
-        if (args.length > 2 || (args.length > 0
-                && ("--help".equals(args[0]) || "-h".equals(args[0])))) {
-            System.out.println("Usage: ExtensionScanner [hybris-root] [extension-name]");
-            System.out.println("Default root: C:\\hybris");
-            System.out.println("All extensions are analyzed and CSV reports are always written.");
-            System.out.println("Optional extension-name additionally prints its dependency tree.");
-            System.out.println("Report root: ./reports (override: -Danalyzer.output=<directory>)");
-            System.out.println("Config: <hybris-root>/config/localextensions.xml "
-                    + "(override: -Danalyzer.localextensions=<file>)");
-            return;
+        String extractor = System.getProperty("analyzer.extractor", ExtractorReport.DEFAULT_LOCATION);
+        List<String> positional = new ArrayList<>();
+        for (int i = 0; i < args.length; i++) {
+            if ("--help".equals(args[i]) || "-h".equals(args[i])) {
+                usage();
+                return;
+            }
+            if ("--extractor".equals(args[i])) {
+                if (i + 1 >= args.length) {
+                    System.err.println("[ERROR] --extractor needs a folder");
+                    System.exit(1);
+                }
+                extractor = args[++i];
+            } else {
+                positional.add(args[i]);
+            }
+        }
+        if (positional.size() > 2) {
+            usage();
+            System.exit(1);
         }
         try {
-            int result = scan(Path.of(args.length == 0 ? "C:\\hybris" : args[0]),
-                    args.length == 2 ? args[1] : null);
+            int result = scan(Path.of(extractor), positional.isEmpty() ? null : Path.of(positional.get(0)),
+                    positional.size() == 2 ? positional.get(1) : null);
             if (result != 0) {
                 System.exit(result);
             }
@@ -43,100 +50,54 @@ public final class ExtensionScanner {
         }
     }
 
-    private static int scan(Path root, String extensionName) throws IOException {
-        Path hybrisRoot = root.toAbsolutePath().normalize();
+    private static void usage() {
+        System.out.println("Usage: ExtensionScanner [--extractor <folder>] [hybris-root] [extension-name]");
+        System.out.println("--extractor   : activated-extension-extractor result folder, or its reports folder");
+        System.out.println("                (latest result is used). Default: " + ExtractorReport.DEFAULT_LOCATION);
+        System.out.println("                Also settable with -Danalyzer.extractor=<folder>");
+        System.out.println("hybris-root   : optional. Default is hybris_home of the extractor result;");
+        System.out.println("                a different root is rejected.");
+        System.out.println("extension-name: optional. Additionally prints its dependency tree.");
+        System.out.println("Report root: ./reports (override: -Danalyzer.output=<directory>)");
+    }
+
+    private static int scan(Path extractorSpec, Path rootArgument, String extensionName) throws IOException {
+        Path reportDirectory = ExtractorReport.resolve(extractorSpec);
+        ExtractorReport.Loaded input = ExtractorReport.load(reportDirectory);
+        Path hybrisRoot = input.hybrisHome();
+        if (rootArgument != null && !rootArgument.toAbsolutePath().normalize().equals(hybrisRoot)) {
+            System.err.println("[ERROR] hybris-root " + rootArgument.toAbsolutePath().normalize()
+                    + " differs from hybris_home of the extractor result " + hybrisRoot
+                    + ". Run activated-extension-extractor for this root, or omit hybris-root.");
+            return 1;
+        }
         if (!Files.isDirectory(hybrisRoot)) {
             System.err.println("[ERROR] SAP Commerce directory not found: " + hybrisRoot);
             return 1;
         }
-        List<Path> xmlFiles = new ArrayList<>();
-        int[] accessFailures = { 0 };
         System.out.println("=== SAP Commerce Extension Analyzer ===");
-        System.out.println("Search root: " + hybrisRoot);
-        System.out.println("Excluded directories: node_modules, .git, temp");
-
-        // No FOLLOW_LINKS: do not traverse symbolic links or junction targets.
-        Files.walkFileTree(hybrisRoot, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                Path name = dir.getFileName();
-                if (!dir.equals(hybrisRoot) && name != null
-                        && EXCLUDED.contains(name.toString().toLowerCase(java.util.Locale.ROOT))) {
-                    return FileVisitResult.SKIP_SUBTREE;
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                if (attrs.isRegularFile()
-                        && "extensioninfo.xml".equalsIgnoreCase(file.getFileName().toString())) {
-                    xmlFiles.add(file);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                accessFailures[0]++;
-                System.err.println("[WARN] Cannot access: " + file + " - " + exc.getMessage());
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                if (exc != null) {
-                    accessFailures[0]++;
-                    System.err.println("[WARN] Incomplete directory: " + dir
-                            + " - " + exc.getMessage());
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        xmlFiles.sort(null);
-
-        List<ExtensionInfo> definitions = new ArrayList<>();
-        Set<String> seenNames = new java.util.HashSet<>();
-        int parsedCount = 0;
-        int failedCount = 0;
-        int duplicateCount = 0;
-        for (Path xmlPath : xmlFiles) {
-            try {
-                ExtensionInfo info = ExtensionInfoParser.parse(xmlPath);
-                parsedCount++;
-                definitions.add(info);
-                if (!seenNames.add(info.getName())) {
-                    duplicateCount++;
-                }
-                System.out.println("[OK] " + info.getName() + " (dependencies: "
-                        + info.getDependencies().size() + ")");
-            } catch (Exception e) {
-                failedCount++;
-                System.err.println("[FAIL] " + xmlPath + " - " + e.getMessage());
-            }
+        System.out.println("Extractor result: " + reportDirectory);
+        System.out.println("Hybris root     : " + hybrisRoot);
+        for (ExtractorReport.Unreadable item : input.unreadable()) {
+            System.err.println("[FAIL] " + item.name() + " " + item.xmlPath() + " - " + item.message());
         }
+        int failedCount = input.parseFailures() + input.unreadable().size();
+        Map<String, ExtensionInfo> extensionMap = new LinkedHashMap<>(input.extensions());
+        ExtensionActivation.Result activation = input.activation();
 
         System.out.println();
-        System.out.println("=== Analysis Summary ===");
-        System.out.println("Found XML files : " + xmlFiles.size());
-        System.out.println("Parsed          : " + parsedCount);
+        System.out.println("=== Analysis Summary (from activated-extension-extractor) ===");
+        System.out.println("Found XML files : " + input.foundXml());
+        System.out.println("Parsed          : " + input.parsedXml());
         System.out.println("Failed          : " + failedCount);
-        System.out.println("Unique names    : " + seenNames.size());
-        System.out.println("Duplicate files : " + duplicateCount);
-        System.out.println("Access failures : " + accessFailures[0]);
+        System.out.println("Unique names    : " + extensionMap.size());
+        System.out.println("Unused duplicates: " + input.duplicates().size());
+        System.out.println("Access failures : " + input.accessFailures());
         System.out.println("Runtime state is not inspected; selection below is configuration-based inference.");
-
-        // Resolve the configuration first: it decides which copy of a duplicated name is used.
-        Path config = Path.of(System.getProperty("analyzer.localextensions",
-                hybrisRoot.resolve("config/localextensions.xml").toString()));
-        ActiveExtensionAnalyzer.Resolution resolution = ActiveExtensionAnalyzer.resolve(
-                hybrisRoot, config, definitions, failedCount == 0 && accessFailures[0] == 0);
-        ActiveExtensionAnalyzer.Result activation = resolution.result();
-        Map<String, ExtensionInfo> extensionMap = new LinkedHashMap<>(new java.util.TreeMap<>(resolution.effective()));
-        if (!resolution.duplicates().isEmpty()) {
+        if (!input.duplicates().isEmpty()) {
             System.out.println();
             System.out.println("=== Duplicate Extension Names (lookup-order rule applied) ===");
-            for (ActiveExtensionAnalyzer.Duplicate duplicate : resolution.duplicates()) {
+            for (ExtensionActivation.Duplicate duplicate : input.duplicates()) {
                 System.out.println("[DUPLICATE] " + duplicate.name() + " - " + duplicate.reason());
                 System.out.println("  Used : " + duplicate.effectiveXml());
                 System.out.println("  Other: " + duplicate.otherXml());
@@ -159,7 +120,7 @@ public final class ExtensionScanner {
                     + String.join(", ", analysis.cycleGroups().get(i)));
         }
         System.out.println();
-        System.out.println("=== Extension Selection Analysis (STATIC INFERENCE) ===");
+        System.out.println("=== Extension Selection (from activated-extension-extractor) ===");
         System.out.println("Config file     : " + activation.config());
         System.out.println("Selected        : " + activation.selectedCount());
         System.out.println("Explicit        : " + activation.count("EXPLICIT"));
@@ -170,10 +131,10 @@ public final class ExtensionScanner {
         System.out.println("Unknown         : " + activation.count("UNKNOWN"));
         System.out.println("Selection issues: " + activation.issues().size());
         System.out.println("Selection complete: " + activation.complete());
-        for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
+        for (ExtensionActivation.Issue issue : activation.issues()) {
             System.out.println("[SELECTION WARN] " + issue.reference() + " - " + issue.message());
         }
-        for (ActiveExtensionAnalyzer.Issue note : resolution.notes()) {
+        for (ExtensionActivation.Issue note : input.notes()) {
             System.out.println("[SELECTION NOTE] " + note.reference() + " - " + note.message());
         }
         SpringXmlAnalyzer.Result spring = SpringXmlAnalyzer.analyze(hybrisRoot, extensionMap, activation);
@@ -225,17 +186,17 @@ public final class ExtensionScanner {
         System.out.println("Declared/configuration-convention candidates only; runtime loading/Context hierarchy are not verified.");
         Path reports = DependencyReportWriter.write(
                 Path.of(System.getProperty("analyzer.output", "reports")), extensionMap, analysis,
-                new DependencyReportWriter.ScanSummary(hybrisRoot, xmlFiles.size(), parsedCount,
-                        failedCount, accessFailures[0]), activation, spring);
+                new DependencyReportWriter.ScanSummary(hybrisRoot, input.foundXml(), input.parsedXml(),
+                        failedCount, input.accessFailures(), reportDirectory), activation, spring);
         try (java.io.BufferedWriter out = DependencyReportWriter.csv(reports.resolve("extension-duplicates.csv"))) {
             DependencyReportWriter.row(out, "extension", "reason", "used_xml_path", "other_xml_path");
-            for (ActiveExtensionAnalyzer.Duplicate duplicate : resolution.duplicates()) {
+            for (ExtensionActivation.Duplicate duplicate : input.duplicates()) {
                 DependencyReportWriter.row(out, duplicate.name(), duplicate.reason(), duplicate.effectiveXml(),
                         duplicate.otherXml());
             }
         }
         System.out.println("CSV reports: " + reports);
-        if (failedCount > 0 || accessFailures[0] > 0) {
+        if (!input.scanComplete()) {
             System.out.println("[WARN] Reports are partial; review scan failures before interpretation.");
         }
         if (extensionName != null) {
@@ -247,6 +208,6 @@ public final class ExtensionScanner {
             }
         }
         // Duplicates resolved by lookup order are not failures; same-path ambiguity is reported as an issue.
-        return failedCount > 0 || accessFailures[0] > 0 || !activation.complete() ? 1 : 0;
+        return !input.scanComplete() || !activation.complete() ? 1 : 0;
     }
 }

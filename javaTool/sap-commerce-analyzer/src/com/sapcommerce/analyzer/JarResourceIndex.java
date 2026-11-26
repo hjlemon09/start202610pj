@@ -41,17 +41,17 @@ public final class JarResourceIndex {
     private final List<Problem> problems = new ArrayList<>();
 
     public static Result scan(Path root, Map<String, ExtensionInfo> extensions,
-            ActiveExtensionAnalyzer.Result activation) {
+            ExtensionActivation.Result activation) {
         return scan(root, extensions, activation, false);
     }
 
     public static Result scanUnselected(Path root, Map<String, ExtensionInfo> extensions,
-            ActiveExtensionAnalyzer.Result activation) {
+            ExtensionActivation.Result activation) {
         return scan(root, extensions, activation, true);
     }
 
     private static Result scan(Path root, Map<String, ExtensionInfo> extensions,
-            ActiveExtensionAnalyzer.Result activation, boolean unselected) {
+            ExtensionActivation.Result activation, boolean unselected) {
         JarResourceIndex index = new JarResourceIndex();
         for (String name : extensions.keySet().stream().sorted().toList()) {
             var selection = activation.selections().get(name);

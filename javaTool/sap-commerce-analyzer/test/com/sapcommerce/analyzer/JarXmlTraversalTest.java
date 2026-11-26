@@ -14,10 +14,10 @@ public final class JarXmlTraversalTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("jar-xml-traversal-");
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
-        Map<String, ActiveExtensionAnalyzer.Selection> selections = new LinkedHashMap<>();
+        Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("app", "other", "off")) {
             definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
-            selections.put(name, new ActiveExtensionAnalyzer.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
+            selections.put(name, new ExtensionActivation.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         String rootImport = "<import resource='classpath:META-INF/root.xml'/>";
         put(root.resolve("app/resources/main.xml"), beans(rootImport + rootImport));
@@ -44,7 +44,7 @@ public final class JarXmlTraversalTest {
         firstEntries.put("unreachable.xml", "<broken>");
         jar(first, firstEntries, true);
         jar(root.resolve("other/lib/second.jar"), Map.of("other.xml", beans(rootImport)), false);
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"), Map.copyOf(selections), List.of());
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"), Map.copyOf(selections), List.of());
         var result = SpringXmlAnalyzer.analyze(root, definitions, activation);
         check(result.jarXmlFiles().stream().filter(file -> file.entry().equals("META-INF/root.xml")).count() == 2,
                 "One parse per resource AND originating extension context");

@@ -16,10 +16,10 @@ public final class JarResourceIndexTest {
                 "a", new ExtensionInfo("a", root.resolve("a/extensioninfo.xml"), List.of()),
                 "b", new ExtensionInfo("b", root.resolve("b/extensioninfo.xml"), List.of()),
                 "off", new ExtensionInfo("off", root.resolve("off/extensioninfo.xml"), List.of()));
-        var selected = new ActiveExtensionAnalyzer.Selection("EXPLICIT", "fixture", "");
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
+        var selected = new ExtensionActivation.Selection("EXPLICIT", "fixture", "");
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
                 Map.of("a", selected, "b", selected,
-                        "off", new ActiveExtensionAnalyzer.Selection("NOT_SELECTED", "fixture", "")), List.of());
+                        "off", new ExtensionActivation.Selection("NOT_SELECTED", "fixture", "")), List.of());
         Path source = root.resolve("a/resources/main.xml");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "<beans xmlns='http://www.springframework.org/schema/beans'>"

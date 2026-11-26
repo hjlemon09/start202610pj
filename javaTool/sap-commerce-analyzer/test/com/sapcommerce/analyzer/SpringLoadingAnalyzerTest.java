@@ -12,10 +12,10 @@ public final class SpringLoadingAnalyzerTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("spring-loading-test-");
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
-        Map<String, ActiveExtensionAnalyzer.Selection> selections = new LinkedHashMap<>();
+        Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("a", "b", "orphan", "custom", "off")) {
             definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
-            selections.put(name, new ActiveExtensionAnalyzer.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
+            selections.put(name, new ExtensionActivation.Selection(name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         put(root.resolve("a/project.properties"), "a.application-context=a-spring.xml\na.global-context=classpath:global.xml\n"
                 + "Shop.additionalWebSpringConfigs.addon=classpath:META-INF/entry.xml\n");
@@ -48,7 +48,7 @@ public final class SpringLoadingAnalyzerTest {
                 zip.closeEntry();
             }
         }
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"), Map.copyOf(selections), List.of());
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"), Map.copyOf(selections), List.of());
         var spring = SpringXmlAnalyzer.analyze(root, definitions, activation);
         var loading = SpringLoadingAnalyzer.trace(spring);
         check(spring.loadingPlan().declarations().size() == 8, "Core/global/convention/web/servlet/additional/custom declarations");

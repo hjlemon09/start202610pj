@@ -42,9 +42,9 @@ public final class SpringBeanAnalyzerTest {
         }
         Map<String,ExtensionInfo> definitions=Map.of("main",new ExtensionInfo("main",root.resolve("main/extensioninfo.xml"),List.of()),
                 "off",new ExtensionInfo("off",root.resolve("off/extensioninfo.xml"),List.of()));
-        var activation=new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),Map.of(
-                "main",new ActiveExtensionAnalyzer.Selection("EXPLICIT","fixture",""),
-                "off",new ActiveExtensionAnalyzer.Selection("NOT_SELECTED","fixture","")),List.of());
+        var activation=new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),Map.of(
+                "main",new ExtensionActivation.Selection("EXPLICIT","fixture",""),
+                "off",new ExtensionActivation.Selection("NOT_SELECTED","fixture","")),List.of());
         var spring=SpringXmlAnalyzer.analyze(root,definitions,activation);
         var loading=SpringLoadingAnalyzer.trace(spring);
         var result=SpringBeanAnalyzer.analyze(spring,loading);

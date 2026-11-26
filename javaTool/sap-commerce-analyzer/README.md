@@ -6,13 +6,12 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 
 ## 구현 범위
 
-- 지정한 루트 아래의 `extensioninfo.xml` 검색
-- `node_modules`, `.git`, `temp` 디렉터리 제외 및 접근 실패 시 경고 후 계속 검색
-- Extension 이름과 직접 `requires-extension` 목록 파싱
-- 검색/파싱 성공/실패/이름 중복/접근 실패 수 출력
+- [activated-extension-extractor](../activated-extension-extractor/README.md)의 **가장 최근 결과**를 읽어
+  extension 정의(사용하는 정의 하나씩)와 선택 상태(명시 지정·자동 로딩·플랫폼 기본 포함·간접 의존)를 사용
+  (이 도구 안에서는 더 이상 `extensioninfo.xml` 전체 검색과 `localextensions.xml` 선택 판정을 하지 않습니다)
+- 결과에 적힌 `extensioninfo.xml`을 다시 읽어 직접 `requires-extension` 목록 파싱
 - 특정 Extension에서 시작하는 직접·간접 의존관계 트리 출력
-- 실행 인자 없이 전체 Extension의 직접·역방향 의존관계, 누락 참조, 순환 그룹 분석 및 CSV 저장
-- `config/localextensions.xml`을 분석하여 명시 지정·자동 로딩·플랫폼 기본 포함·간접 의존 대상 구분
+- 전체 Extension의 직접·역방향 의존관계, 누락 참조, 순환 그룹 분석 및 CSV 저장
 - 선택된 Extension의 Spring XML 및 import 정방향·역방향 관계 분석
 - 순환 참조와 이미 방문한 공유 의존관계 구분
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
@@ -33,34 +32,60 @@ Spring 로딩 진입점과 XML Bean 선언·명시적 참조의 정적 목록을
 프로젝트에 Java 21 소스/컴파일 대상과 UTF-8 인코딩 설정을 포함했습니다.
 `module-info.java`는 사용하지 않습니다.
 
+## 실행 순서
+
+1. 먼저 [activated-extension-extractor](../activated-extension-extractor/README.md)를 실행합니다.
+   결과는 `activated-extension-extractor/reports/yyyyMMdd_HHmmss_고유값/`에 저장됩니다.
+2. 이 도구를 실행합니다. 기본으로 `../activated-extension-extractor/reports`에서 **가장 최근 결과 폴더**를 골라 사용합니다.
+   - 고르는 기준: 폴더 이름(`yyyyMMdd_HHmmss_`)이 가장 늦은 것. 이 형식의 폴더가 없으면 `extension-activation.csv`의 수정 시각이 가장 늦은 것.
+   - 사용한 결과 폴더는 콘솔 `Extractor result:`와 `summary.csv`의 `extractor_report`에 남습니다.
+
+extractor 결과가 없으면 분석하지 않고 종료 코드 1로 끝납니다. extractor 결과에서 다음 파일을 읽습니다.
+
+| 파일 | 사용 내용 |
+| --- | --- |
+| `summary.csv` | `hybris_home`(분석 루트), `localextensions_file`, 찾은/파싱한 XML 수, `scan_complete` |
+| `extension-activation.csv` | 발견한 extension(이름당 사용하는 정의 하나)과 선택 상태·사유·근거, `extensioninfo.xml` 경로 |
+| `activation-issues.csv` | 선택 판정 문제 (`selection_complete`) |
+| `extension-duplicates.csv`, `activation-notes.csv`, `scan-failures.csv` | 중복 정의, 참고 기록, 스캔 실패 (없으면 0건으로 처리) |
+
 ## 실행 인자
 
-전체 분석은 **Program arguments를 비운 상태로 실행**하면 됩니다. 기본 분석 루트는 `C:\hybris`입니다.
-경로만 바꾸려면 첫 번째 인자만 입력하세요. 다음 예시는 특정 Extension의 트리도 추가로 보고 싶은 경우입니다.
+전체 분석은 **Program arguments를 비운 상태로 실행**하면 됩니다. 분석 루트는 extractor 결과의 `hybris_home`입니다.
 
 **Run → Run Configurations → Java Application → ExtensionScanner → Arguments → Program arguments**:
 
 ```text
-"C:\hybris" mmmcore
+--extractor "C:\work\activated-extension-extractor\reports" "C:\hybris" mmmcore
 ```
 
 `mmmcore`는 익명화된 예시입니다. 실제 `extensioninfo.xml`의 `extension name`으로 바꾸세요.
 경로에 공백이 있으면 큰따옴표로 감쌉니다.
 
-- 인자 없음: 기본 경로 `C:\hybris` 전체 검색·파싱·의존관계 분석 및 CSV 저장
-- 첫 번째 인자: 검색할 SAP Commerce 루트
+- 인자 없음: 기본 위치의 최신 extractor 결과로 의존관계·Spring 분석 및 CSV 저장
+- `--extractor <폴더>`: extractor의 `reports` 폴더(최신 결과 자동 선택) 또는 결과 폴더 하나.
+  VM arguments의 `-Danalyzer.extractor=<폴더>`로도 지정할 수 있습니다. 기본값은 `../activated-extension-extractor/reports`(작업 디렉터리 기준)
+- 첫 번째 인자: 선택 사항. SAP Commerce 루트. extractor 결과의 `hybris_home`과 다르면 **오류로 종료**합니다
+  (다른 설치의 선택 결과를 섞지 않기 위해서입니다)
 - 두 번째 인자: 선택 사항. 지정한 Extension의 트리를 추가 출력 (대소문자 구분)
 - `--help`: 사용법 출력
+
+예전의 `-Danalyzer.localextensions`는 없어졌습니다. 다른 `localextensions.xml`로 판정하려면
+extractor를 `-Dextractor.localextensions=<파일>`로 실행한 뒤 그 결과를 사용하세요.
 
 예상 출력 형태:
 
 ```text
-=== Analysis Summary ===
+=== SAP Commerce Extension Analyzer ===
+Extractor result: C:\...\activated-extension-extractor\reports\20261126_101500_...
+Hybris root     : C:\hybris
+
+=== Analysis Summary (from activated-extension-extractor) ===
 Found XML files : ...
 Parsed          : ...
 Failed          : 0
 Unique names    : ...
-Duplicate files : 0
+Unused duplicates: 0
 Access failures : 0
 
 === Full Dependency Analysis ===
@@ -87,14 +112,14 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 
 | 파일 | 내용 |
 | --- | --- |
-| `summary.csv` | 검색·파싱·접근 실패, Extension·의존관계·누락·순환 그룹 수, 스캔 완전성 |
+| `summary.csv` | 검색·파싱·접근 실패, Extension·의존관계·누락·순환 그룹 수, 스캔 완전성, 사용한 extractor 결과 폴더(`extractor_report`) |
 | `extensions.csv` | 모든 Extension의 XML 경로, 직접 의존 수, 자신을 참조하는 Extension 수, 누락 수, 순환 그룹 |
 | `dependencies.csv` | 출발 Extension → 직접 의존 Extension, 대상 발견 여부, 순환 그룹 |
 | `reverse-dependencies.csv` | 의존 대상 → 이를 사용하는 Extension. 누락 대상도 포함 |
 | `missing-dependencies.csv` | 찾지 못한 대상과 이를 참조한 Extension 및 XML 경로 |
 | `cycles.csv` | 순환 그룹 번호별 소속 Extension 및 XML 경로 |
-| `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 |
-| `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 |
+| `extension-activation.csv` | 모든 발견된 Extension의 설정 기반 선택 상태와 사유·선택 근거 (extractor 결과를 그대로 옮김) |
+| `activation-issues.csv` | 설정 파일·지정 이름·경로·의존관계 해석 문제 (extractor 결과를 그대로 옮김) |
 | *(카테고리 값 전체)* | 모든 CSV의 상태·종류 열에 들어가는 값과 뜻: `docs/CSV_CATEGORY_REFERENCE.md` |
 | `extension-duplicates.csv` | 같은 이름의 정의 중 사용하지 않은 것과 그 이유(`SHADOWED_BY_EARLIER_PATH`, `OUT_OF_LOOKUP`, `SAME_PATH_AMBIGUOUS`, `OVERRIDDEN_BY_DIR_DECLARATION`) |
 | `spring-xml-files.csv` | 선택된 Extension에서 조사한 XML, Spring 여부, 파싱 결과, import 수 |
@@ -137,139 +162,61 @@ CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이�
   파싱 실패 등일 수 있으며 실제 Extension 부재를 단정하지 않습니다.
 - `[ALREADY VISITED]`: 앞에서 분석한 Extension. 하위 트리의 중복 출력을 생략합니다.
 - `[CYCLE]`: 현재 탐색 경로에 있는 Extension을 다시 참조합니다.
-- 동일 이름의 XML이 여러 개면 분석을 중단하지 않고 `localextensions.xml`의 lookup 순서로 하나를 고릅니다.
-  규칙은 아래 「localextensions.xml 기반 활성 대상 추정」의 「같은 이름의 정의가 여러 개일 때」를 참고하세요.
+- 동일 이름의 XML이 여러 개면 extractor가 `localextensions.xml`의 lookup 순서로 고른 정의 하나를 사용합니다.
+  규칙은 activated-extension-extractor README를 참고하세요.
   고르지 않은 정의는 콘솔 `[DUPLICATE]`와 `extension-duplicates.csv`에 남습니다.
 - 파싱 또는 접근 실패가 있으면 결과가 불완전할 수 있습니다. 정상 종료 코드는 0,
-  검색·파싱 오류/선택 해석 문제(같은 lookup 경로 안의 중복 포함)/시작 Extension 누락은 1입니다. 하위 의존관계의 `[NOT FOUND]`는
+  extractor 결과 없음/hybris-root 불일치/extractor의 스캔 실패(`scan_complete=false`)/
+  결과에 적힌 `extensioninfo.xml`을 지금 읽을 수 없거나 이름이 바뀜(결과가 오래됨)/
+  선택 해석 문제(같은 lookup 경로 안의 중복 포함)/시작 Extension 누락은 1입니다. 하위 의존관계의 `[NOT FOUND]`는
   표시만 하며 단독으로 종료 코드를 변경하지 않습니다.
+- extractor 결과는 실행 시점의 설치 상태입니다. 설치나 `localextensions.xml`을 바꿨다면 extractor를 다시 실행하세요.
 - 전체 분석의 누락 참조와 순환 그룹도 단독으로 종료 코드를 변경하지 않습니다.
   파싱·접근 실패 시 가능한 범위에서 CSV를 저장하고 `scan_complete=false`로 표시합니다.
 - 활성 대상 판정 문제가 있으면 CSV는 저장하고 종료 코드는 1입니다.
 - 결과는 발견된 정의를 기준으로 합니다. 비활성 Extension이나 템플릿이 포함될 수 있어,
   검출된 순환이 실행 환경의 실제 순환이라고 단정할 수 없습니다.
-- 심볼릭 링크를 따라가지 않습니다. `temp` 등 제외 경로의 정의는 검색하지 않습니다.
-- DOCTYPE가 있는 XML은 이 버전의 파서에서 거부합니다.
+- 검색 범위(제외 폴더, 심볼릭 링크)는 extractor의 규칙을 따릅니다.
+- DOCTYPE가 있는 `extensioninfo.xml`은 이 버전의 파서에서 거부합니다.
 
 ## 소스 구조
 
 ```text
 src/com/sapcommerce/analyzer/
-├── ExtensionScanner.java
+├── ExtensionScanner.java       진입점
+├── ExtractorReport.java        activated-extension-extractor 결과 폴더 선택·읽기
+├── ExtensionActivation.java    선택 상태·이슈·중복 정의 데이터
 ├── ExtensionInfoParser.java
 ├── ExtensionInfo.java
 ├── ExtensionDependencyAnalyzer.java
 ├── DependencyReportWriter.java
-└── ActiveExtensionAnalyzer.java
+└── Spring*.java 등             Spring XML·로딩·Bean 분석
 ```
 
 소스 및 Eclipse 설정만 제공하며 컴파일 산출물은 포함하지 않습니다.
 실제 SAP Commerce 환경에서의 검증은 개발 PC에서 수행하세요.
 
-## localextensions.xml 기반 활성 대상 추정
+## 활성 extension 정보 (activated-extension-extractor로 분리)
 
-### 분석 순서: 설치 루트 전체 스캔 → localextensions.xml로 선택 판정
+`extensioninfo.xml` 전체 검색과 `localextensions.xml` 기반 선택 판정은
+[activated-extension-extractor](../activated-extension-extractor/README.md)로 분리했습니다.
+판정 규칙(`EXPLICIT`/`AUTOLOAD`/`PLATFORM`/`DEPENDENCY`/`NOT_SELECTED`/`UNKNOWN`, 같은 이름의 정의가 여러 개일 때의 처리,
+`<extension>` 중복 선언, 지원하는 `${...}` 속성 등)과 그 근거는 extractor README에 있습니다.
 
-extension 선택은 두 단계로 진행합니다. `localextensions.xml`에 적힌 것만 찾아보는 방식이 아닙니다.
+이 도구는 extractor 결과를 그대로 사용합니다.
 
-1. **설치 루트 전체 스캔:** 분석 루트(기본 `C:\hybris`) 아래의 **모든 `extensioninfo.xml`**을 찾습니다
-   (`node_modules`, `.git`, `temp` 제외). `localextensions.xml`에 선언되었는지와 관계없이 찾은 정의는 모두 후보입니다.
-2. **localextensions.xml로 선택 판정:** 찾은 extension마다 `localextensions.xml`의 규칙
-   (`<extension>` 선언, `<path>` 검색 범위와 `autoload`, `<extensions autoload>`, `requires-extension` 연쇄)을 적용해
-   선택 여부와 이유를 정합니다.
+- extension 목록: extractor의 `extension-activation.csv`에 있는 정의(이름당 사용하는 정의 하나)입니다.
+  그래서 의존관계 CSV의 범위도 "설치 루트에서 발견한 extension"으로 이전과 같습니다.
+- 의존 목록: 위 정의의 `extensioninfo.xml`을 이 도구가 다시 읽어서 얻습니다.
+  읽을 수 없거나 extension 이름이 바뀌었으면 그 extension은 분석에서 빼고 `[FAIL]`로 출력하며 종료 코드는 1입니다.
+- 선택 상태: Spring XML·JAR·속성 해석의 대상 범위(선택된 extension)와 비선택 보조 검색의 범위를 정합니다.
+- `extension-activation.csv`, `activation-issues.csv`, `extension-duplicates.csv`는 이 도구의 결과 폴더에도 그대로 옮겨 씁니다.
+- `summary.csv`의 `selection_complete`는 extractor의 `activation-issues.csv`가 비어 있는지입니다.
+  `scan_complete`는 extractor의 스캔 완전성과, 이 도구가 정의를 다시 읽은 결과를 합친 값입니다.
 
-이 순서 때문에 결과를 다음과 같이 읽습니다.
-
-| 상황 | 나오는 곳 |
-| --- | --- |
-| 폴더에 있고 규칙으로 선택됨 | `extension-activation.csv`에 `EXPLICIT`/`AUTOLOAD`/`PLATFORM`/`DEPENDENCY` |
-| 폴더에 있지만 어떤 규칙으로도 선택되지 않음 | `extension-activation.csv`에 `NOT_SELECTED` (예: 사용하지 않는 모듈, 템플릿 extension) |
-| `localextensions.xml`에 선언했지만 폴더를 찾지 못함 | `extension-activation.csv`에는 **행이 없음**. `activation-issues.csv`에 `Name not found within configured lookup paths` |
-| `requires-extension` 대상을 찾지 못함 | `extension-activation.csv`에는 행이 없음. `activation-issues.csv`, `missing-dependencies.csv` |
-
-`extension-activation.csv`는 **찾은 `extensioninfo.xml` 하나당(이름이 같으면 사용하는 정의 하나당) 한 행**입니다.
-그래서 행 수는 "설치 루트에 있는 extension 수"이며 "로드되는 extension 수"가 아닙니다.
-
-기존처럼 **Program arguments 없이 실행**합니다. 기본 파일은
-`C:\hybris\config\localextensions.xml`입니다. 다른 루트를 첫 인자로 주면 그 루트의
-`config/localextensions.xml`을 읽습니다. 기존 파일은 수정하지 않습니다.
-
-다른 설정 파일을 분석하려면 VM arguments에서 지정할 수 있습니다.
-
-```text
--Danalyzer.localextensions="C:\config-copy\localextensions.xml"
-```
-
-Console에는 `Extension Selection Analysis (STATIC INFERENCE)`가 추가됩니다.
-Selected는 다음 네 상태의 합이며, Extension별로 하나의 주된 선택 근거를 기록합니다.
-
-| 상태 | 의미 |
-| --- | --- |
-| `EXPLICIT` | `<extension name="...">` 또는 `<extension dir="...">`로 지정 |
-| `AUTOLOAD` | `<path autoload="true">` 범위에서 발견 |
-| `PLATFORM` | 기본 `bin/platform/ext` 자동 포함 |
-| `DEPENDENCY` | 선택된 Extension의 `requires-extension`을 재귀적으로 따라 포함 |
-| `NOT_SELECTED` | 해석 가능한 설정·스캔 범위에서 선택되지 않음 |
-| `UNKNOWN` | 설정/스캔이 불완전해서 선택 여부를 판단할 수 없음 |
-
-이미 확인한 선택 근거는 판정 문제가 있어도 유지하며, 선택되지 않은 나머지를 UNKNOWN으로 표시합니다.
-`NOT_SELECTED`는 실행 서버의 비활성 상태를 확인했다는 뜻이 아닙니다.
-직접 지정이 자동 로딩보다 우선하며, 여러 의존 경로가 있으면 최초 선택 근거 하나를 기록합니다.
-전체 의존 간선은 기존 `dependencies.csv`에서 확인합니다.
-
-처리하는 규칙:
-
-- `name`은 검색된 정의와 lookup 경로를 함께 확인합니다.
-- `dir`은 해당 폴더의 `extensioninfo.xml`과 대조합니다. name도 있으면 일치 여부를 확인합니다.
-- `<path>`는 기본 lookup 역할이며 `autoload=true`인 경우에만 그 범위 전체를 선택합니다.
-- `depth` 기본값은 10입니다. 지정 폴더 자체는 깊이 0, 직접 하위 Extension 폴더는 깊이 1로 계산합니다.
-- `<extensions autoload="false">`이면 플랫폼 기본 자동 포함을 끕니다.
-- `bin/platform/ext`를 검색 경로로 쓰는지는 `<extensions autoload>`에 따릅니다.
-  `true`(생략 시 기본값)이면 그 아래 extension이 모두 로드되므로 검색 경로로도 사용합니다.
-  `false`이면 암묵적으로 검색하지 않습니다. 플랫폼 extension도 `<extension>`으로 선언하거나
-  의존 대상이 되어야 하며, 선언된 `<path>` 아래에 있어야 찾습니다(예: `<path dir="${HYBRIS_BIN_DIR}"/>`).
-- `${HYBRIS_BIN_DIR}`, `${HYBRIS_CONFIG_DIR}`, `${HYBRIS_PLATFORM_DIR}`를 분석 루트 기준으로 확장합니다.
-- 필수 의존 대상은 지정 lookup 경로에서 확인되어야 합니다. 이미 명시 지정된 대상도 사용할 수 있습니다.
-- XML 주석은 무시하고, 순환 의존관계에서도 탐색을 종료합니다.
-- `<webapp>` 선언은 콘솔 `[SELECTION NOTE]`로 기록만 하고 선택 판정에는 영향을 주지 않습니다.
-
-같은 이름의 정의가 여러 개일 때:
-
-| 경우 | 처리 | `extension-duplicates.csv`의 reason |
-| --- | --- | --- |
-| 서로 다른 `<path>` 아래에 있음 | 먼저 적힌 `<path>` 아래의 정의를 사용 | `SHADOWED_BY_EARLIER_PATH` |
-| 어느 lookup 경로에도 속하지 않음(백업 복사본 등) | 무시 | `OUT_OF_LOOKUP` |
-| `<extension dir>`로 위치를 지정함 | 지정한 폴더의 정의를 사용 | `OVERRIDDEN_BY_DIR_DECLARATION` |
-| 같은 `<path>` 아래에 둘 이상 | 경로순 첫 번째를 쓰되 `activation-issues.csv`에 문제로 기록(선택 미완료) | `SAME_PATH_AMBIGUOUS` |
-
-- 근거: SAP Help 「Configuration Options in localextensions.xml」의 Loading Extensions by Name Note
-  ("loaded from a location your first provided path points to").
-- `<extensions autoload>`가 `true`이면 `bin/platform/ext`를 첫 번째 lookup으로 취급합니다(중복 판정 순서). 문서에 명시되지 않은 가정입니다.
-- 같은 `<path>` 안의 우선순위는 문서에 없습니다. 빌드 로그의 `path:` 또는 bootstrap 코드로 확인하세요.
-
-같은 extension을 `<extension>`으로 두 번 이상 선언했을 때:
-
-- 같은 이름 반복, 같은 폴더 반복, `name`과 `dir`이 다른 폴더를 가리키는 경우를 **모두 이슈로 기록**합니다
-  (`activation-issues.csv`, "Duplicate <extension> declaration"). SAP 문서에 동작이 없어 자동으로 판정하지 않습니다.
-- 선택 상태(`EXPLICIT`)는 유지하지만 선택 결과는 미완료(`selection_complete=false`)가 됩니다.
-- `dir`로 서로 다른 폴더를 두 번 선언하면 먼저 적힌 `dir`의 폴더를 잠정 사용합니다. 실제 폴더는 빌드 로그의 `path:`로 확인하세요.
-
-이 버전은 검색 루트 안에서 수집한 정의만 사용합니다. 외부 경로, 상대 경로, 알 수 없는
-`${...}` 속성은 임의 해석하지 않고 `activation-issues.csv`에 남깁니다.
-필요하면 별도의 설정 복사본에 절대 경로를 지정하고 위 VM 옵션으로 분석하세요.
-서버·Ant 설정의 속성 확장 전체, 사용자 정의 빌드 로직, 실제 테넌트/서버 로딩 결과는 재현하지 않습니다.
-파일이 없거나 XML이 잘못되면 전체 Extension 의존관계 CSV는 계속 생성하고, 활성 판정은 UNKNOWN입니다.
-`summary.csv`의 `selection_complete`는 지원하는 정적 규칙의 해석 완전성입니다.
-`scan_complete`와 구분되며 런타임 검증을 뜻하지 않습니다.
-`extensions.csv`에도 `selection_status` 열을 추가했습니다. 기존 6개 파일은 전체 발견 범위를 유지합니다.
-
-설정 규칙 참고:
-[SAP Configuration Options in localextensions.xml](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html),
-[SAP Extension Dependencies](https://help.sap.com/docs/SAP_COMMERCE_CLOUD_PUBLIC_CLOUD/20125f0eca6340dba918bda360e3cdfa/8bbf3a9d86691014aa4189bf3ac0eb88.html).
-
-검증용 소스는 `test/com/sapcommerce/analyzer/ActiveExtensionAnalyzerTest.java`에 있습니다.
-외부 라이브러리 없이 Java 21에서 src와 함께 별도의 작업 폴더로 컴파일해 실행할 수 있습니다.
-Eclipse의 기본 src에는 테스트를 포함하지 않으므로 운영 실행에는 영향을 주지 않습니다.
+검증용 소스는 `test/com/sapcommerce/analyzer/ExtractorReportTest.java`입니다.
+최신 결과 선택, CSV 읽기, 오래된 결과 검출, hybris-root 불일치, 22개 CSV 출력까지 확인합니다.
+판정 규칙 자체의 테스트는 extractor의 `ActivatedExtensionExtractorTest`에 있습니다.
 
 ## Spring XML import 분석
 

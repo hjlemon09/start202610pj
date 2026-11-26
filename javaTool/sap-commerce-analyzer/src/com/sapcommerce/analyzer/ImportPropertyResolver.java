@@ -27,7 +27,7 @@ public final class ImportPropertyResolver {
     private ImportPropertyResolver(boolean selectionComplete) { this.selectionComplete = selectionComplete; }
 
     public static ImportPropertyResolver load(Path root, Map<String, ExtensionInfo> extensions,
-            ActiveExtensionAnalyzer.Result activation) {
+            ExtensionActivation.Result activation) {
         ImportPropertyResolver resolver = new ImportPropertyResolver(activation.complete());
         resolver.platform.putAll(resolver.read(root.resolve("bin/platform/project.properties")));
         for (String name : extensions.keySet().stream().sorted().toList()) {

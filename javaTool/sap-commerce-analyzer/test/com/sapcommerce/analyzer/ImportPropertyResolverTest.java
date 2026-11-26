@@ -13,10 +13,10 @@ public final class ImportPropertyResolverTest {
                 "a", new ExtensionInfo("a", root.resolve("a/extensioninfo.xml"), List.of()),
                 "b", new ExtensionInfo("b", root.resolve("b/extensioninfo.xml"), List.of()),
                 "off", new ExtensionInfo("off", root.resolve("off/extensioninfo.xml"), List.of()));
-        var selected = new ActiveExtensionAnalyzer.Selection("EXPLICIT", "fixture", "");
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
+        var selected = new ExtensionActivation.Selection("EXPLICIT", "fixture", "");
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
                 Map.of("a", selected, "b", selected,
-                        "off", new ActiveExtensionAnalyzer.Selection("NOT_SELECTED", "fixture", "")), List.of());
+                        "off", new ExtensionActivation.Selection("NOT_SELECTED", "fixture", "")), List.of());
         put(root.resolve("bin/platform/project.properties"),
                 "route=platform.xml\nplatformOnly=config/platform.xml\ncycleA=${cycleB}\ncycleB=${cycleA}\n");
         put(root.resolve("a/project.properties"),
@@ -70,8 +70,8 @@ public final class ImportPropertyResolverTest {
         check(!audit.contains("DO_NOT_EXPORT_THIS") && !audit.contains("database.password"), "Unrelated properties leaked");
         check(Files.readString(report.resolve("spring-imports.csv")).contains("resolved_resource"), "Expanded path column missing");
 
-        var partial = new ActiveExtensionAnalyzer.Result(activation.config(), activation.selections(),
-                List.of(new ActiveExtensionAnalyzer.Issue("fixture", "incomplete")));
+        var partial = new ExtensionActivation.Result(activation.config(), activation.selections(),
+                List.of(new ExtensionActivation.Issue("fixture", "incomplete")));
         var partialResolver = ImportPropertyResolver.load(root, definitions, partial);
         check(partialResolver.resolve("${route}").complete(), "Known local value should survive incomplete selection");
         check(!partialResolver.resolve("${missing:fallback}").complete(), "Cannot claim key absence in incomplete selection");

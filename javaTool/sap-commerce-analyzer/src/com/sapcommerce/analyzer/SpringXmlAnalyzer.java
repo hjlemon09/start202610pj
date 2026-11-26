@@ -72,7 +72,7 @@ public final class SpringXmlAnalyzer {
     private SpringXmlAnalyzer supplementary;
     private Path hybrisRoot;
     private Map<String, ExtensionInfo> extensions;
-    private ActiveExtensionAnalyzer.Result activation;
+    private ExtensionActivation.Result activation;
     private ImportPropertyResolver properties;
     private final List<PropertyResolution> propertyResolutions = new ArrayList<>();
     private final Map<JarKey, JarXmlFile> jarXmlFiles = new LinkedHashMap<>();
@@ -80,7 +80,7 @@ public final class SpringXmlAnalyzer {
     private final List<SpringLoadingAnalyzer.Problem> loadingProblems = new ArrayList<>();
 
     public static Result analyze(Path hybrisRoot, Map<String, ExtensionInfo> extensions,
-            ActiveExtensionAnalyzer.Result activation) {
+            ExtensionActivation.Result activation) {
         SpringXmlAnalyzer analyzer = new SpringXmlAnalyzer();
         analyzer.hybrisRoot = hybrisRoot;
         analyzer.extensions = extensions;

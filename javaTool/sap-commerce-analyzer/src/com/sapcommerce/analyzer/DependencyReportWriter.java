@@ -22,11 +22,11 @@ public final class DependencyReportWriter {
     private DependencyReportWriter() {
     }
 
-    public record ScanSummary(Path root, int found, int parsed, int failed, int accessFailures) {
+    public record ScanSummary(Path root, int found, int parsed, int failed, int accessFailures, Path extractorReport) {
     }
 
     public static Path write(Path reportRoot, Map<String, ExtensionInfo> extensions,
-            Analysis analysis, ScanSummary scan, ActiveExtensionAnalyzer.Result activation,
+            Analysis analysis, ScanSummary scan, ExtensionActivation.Result activation,
             SpringXmlAnalyzer.Result spring) throws IOException {
         Files.createDirectories(reportRoot);
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -110,7 +110,7 @@ public final class DependencyReportWriter {
     }
 
     private static void writeFiles(Path directory, Map<String, ExtensionInfo> extensions,
-            Analysis analysis, ScanSummary scan, ActiveExtensionAnalyzer.Result activation) throws IOException {
+            Analysis analysis, ScanSummary scan, ExtensionActivation.Result activation) throws IOException {
         Map<String, Integer> incomingCount = new HashMap<>();
         Map<String, Integer> missingCount = new HashMap<>();
         Map<String, Integer> cycleIds = new HashMap<>();
@@ -184,7 +184,8 @@ public final class DependencyReportWriter {
             row(out, "scan_complete", scan.failed() == 0 && scan.accessFailures() == 0);
             row(out, "active_extensions_evaluated", activation.complete());
             row(out, "selection_attempted", true);
-            row(out, "selection_basis", "STATIC_CONFIG_INFERENCE; runtime not inspected");
+            row(out, "selection_basis", "activated-extension-extractor (STATIC_CONFIG_INFERENCE; runtime not inspected)");
+            row(out, "extractor_report", scan.extractorReport());
             row(out, "localextensions_file", activation.config());
             row(out, "selection_complete", activation.complete());
             row(out, "selected_extensions", activation.selectedCount());
@@ -196,14 +197,14 @@ public final class DependencyReportWriter {
         try (BufferedWriter out = csv(directory.resolve("extension-activation.csv"))) {
             row(out, "extension", "selection_status", "reason", "selected_by", "xml_path", "basis");
             for (ExtensionInfo info : new TreeMap<>(extensions).values()) {
-                ActiveExtensionAnalyzer.Selection selection = activation.selections().get(info.getName());
+                ExtensionActivation.Selection selection = activation.selections().get(info.getName());
                 row(out, info.getName(), selection.status(), selection.reason(), selection.selectedBy(),
                         info.getXmlPath(), "STATIC_CONFIG_INFERENCE");
             }
         }
         try (BufferedWriter out = csv(directory.resolve("activation-issues.csv"))) {
             row(out, "reference", "message");
-            for (ActiveExtensionAnalyzer.Issue issue : activation.issues()) {
+            for (ExtensionActivation.Issue issue : activation.issues()) {
                 row(out, issue.reference(), issue.message());
             }
         }

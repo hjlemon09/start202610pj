@@ -23,7 +23,7 @@ public final class BeanXmlDocumentsTest {
                 zip.putNextEntry(new ZipEntry(item.getKey())); zip.write(item.getValue().getBytes(StandardCharsets.ISO_8859_1)); zip.closeEntry();
             }
         }
-        var activation=new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),Map.of("a",new ActiveExtensionAnalyzer.Selection("EXPLICIT","fixture","")),List.of());
+        var activation=new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),Map.of("a",new ExtensionActivation.Selection("EXPLICIT","fixture","")),List.of());
         var definitions=Map.of("a",new ExtensionInfo("a",root.resolve("a/extensioninfo.xml"),List.of()));
         var xml=SpringXmlAnalyzer.analyze(root,definitions,activation);
         check(xml.files().stream().anyMatch(f->f.path().endsWith("not-a-suffix.xml") && !f.spring() && f.parseStatus().equals("NOT_SPRING_BEAN_GENERATION_XML")),"Schema-based exclusion, not filename-based");

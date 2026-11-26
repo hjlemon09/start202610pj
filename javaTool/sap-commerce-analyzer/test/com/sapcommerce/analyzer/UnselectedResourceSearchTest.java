@@ -13,10 +13,10 @@ public final class UnselectedResourceSearchTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("unselected-resource-test-");
         Map<String, ExtensionInfo> definitions = new LinkedHashMap<>();
-        Map<String, ActiveExtensionAnalyzer.Selection> selections = new LinkedHashMap<>();
+        Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("app", "personalizationcmsweb", "swaggerintegration", "other", "unknown")) {
             definitions.put(name, new ExtensionInfo(name, root.resolve(name + "/extensioninfo.xml"), List.of()));
-            selections.put(name, new ActiveExtensionAnalyzer.Selection(name.equals("app") ? "EXPLICIT"
+            selections.put(name, new ExtensionActivation.Selection(name.equals("app") ? "EXPLICIT"
                     : name.equals("unknown") ? "UNKNOWN" : "NOT_SELECTED", "fixture", ""));
         }
         String personalization = "personalizationwebservices/additional-web-spring-context.xml";
@@ -44,7 +44,7 @@ public final class UnselectedResourceSearchTest {
             zip.closeEntry();
         }
         Files.writeString(root.resolve("other/lib/broken.jar"), "invalid ZIP");
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
                 Map.copyOf(selections), List.of());
         var result = SpringXmlAnalyzer.analyze(root, definitions, activation);
         check(result.supplementarySearched(), "Fallback was not attempted");

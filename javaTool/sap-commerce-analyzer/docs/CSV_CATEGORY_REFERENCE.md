@@ -66,14 +66,14 @@
 
 ### `extension-activation.csv`
 
-`localextensions.xml` 해석 결과입니다. 분석은 **설치 루트 전체 스캔 → `localextensions.xml`로 선택 판정**의 순서로 진행합니다.
+activated-extension-extractor의 `localextensions.xml` 해석 결과를 그대로 옮긴 파일입니다. 판정은 extractor가 **설치 루트 전체 스캔 → `localextensions.xml`로 선택 판정**의 순서로 진행합니다.
 먼저 설치 루트 아래의 모든 `extensioninfo.xml`을 찾고, 찾은 extension마다 `localextensions.xml` 규칙으로 선택 여부를 정합니다.
 
 - 행은 **찾은 `extensioninfo.xml` 하나당**(같은 이름이면 사용하는 정의 하나당) 한 행입니다. 행 수는 로드되는 extension 수가 아닙니다.
 - `NOT_SELECTED`는 "폴더에는 있지만 선택되지 않음"입니다. "선언했는데 없음"이 아닙니다.
 - `localextensions.xml`에 선언했지만 폴더를 찾지 못한 extension은 이 파일에 **행이 없고**, `activation-issues.csv`에만 기록됩니다.
 
-자세한 흐름은 README 「localextensions.xml 기반 활성 대상 추정」의 「분석 순서」를 참고하세요.
+자세한 흐름은 activated-extension-extractor README의 「판정 방법」을 참고하세요.
 
 | 열 | 값 | 뜻 |
 | --- | --- | --- |

@@ -32,7 +32,7 @@ public final class SpringLoadingAnalyzer {
     private SpringLoadingAnalyzer(ImportPropertyResolver properties) { this.properties = properties; }
 
     public static Plan discover(Path root, Map<String, ExtensionInfo> extensions,
-            ActiveExtensionAnalyzer.Result activation) {
+            ExtensionActivation.Result activation) {
         SpringLoadingAnalyzer analyzer = new SpringLoadingAnalyzer(ImportPropertyResolver.load(root, extensions, activation));
         for (var problem : analyzer.properties.problems()) {
             analyzer.problems.add(new Problem(problem.path().toString(), "PROPERTY_FILE_ERROR", problem.detail()));

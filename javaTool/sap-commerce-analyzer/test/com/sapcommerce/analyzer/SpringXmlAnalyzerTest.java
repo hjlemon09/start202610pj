@@ -13,12 +13,12 @@ public final class SpringXmlAnalyzerTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("spring-import-test-");
         Map<String, ExtensionInfo> extensions = new LinkedHashMap<>();
-        Map<String, ActiveExtensionAnalyzer.Selection> selections = new LinkedHashMap<>();
+        Map<String, ExtensionActivation.Selection> selections = new LinkedHashMap<>();
         for (String name : List.of("a", "b", "off")) {
             Path xml = root.resolve(name + "/extensioninfo.xml");
             Files.createDirectories(xml.getParent());
             extensions.put(name, new ExtensionInfo(name, xml, List.of()));
-            selections.put(name, new ActiveExtensionAnalyzer.Selection(
+            selections.put(name, new ExtensionActivation.Selection(
                     name.equals("off") ? "NOT_SELECTED" : "EXPLICIT", "fixture", ""));
         }
         Path main = root.resolve("a/resources/main.xml");
@@ -55,7 +55,7 @@ public final class SpringXmlAnalyzerTest {
         put(root.resolve("a/resources/internal-entity.xml"),
                 "<!DOCTYPE beans [<!ENTITY hidden \"<import resource='hidden.xml'/>\">]>"
                 + "<beans>&hidden;</beans>");
-        var activation = new ActiveExtensionAnalyzer.Result(root.resolve("config/localextensions.xml"),
+        var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
                 Map.copyOf(selections), List.of());
         var result = SpringXmlAnalyzer.analyze(root, extensions, activation);
         check(result.files().stream().noneMatch(file -> file.extension().equals("off")), "Unselected extension leaked");
