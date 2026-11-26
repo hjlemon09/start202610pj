@@ -64,4 +64,37 @@
 SAP Commerce 2211 API — PlatformConfig
 https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/bootstrap/config/PlatformConfig.html
 
+## 2-2.5 프로그램에서의 처리 (extension-analyzer)
+
+2-2장의 선후관계는 [extension-analyzer](../javaTool/extension-analyzer/README.md)가 계산한다.
+2장의 선택 판정 바로 다음에, **선택된 extension끼리만** 계산한다.
+
+### 구성 위치
+
+|소스|하는 일|
+|---|---|
+|`ExtensionInfoParser.java`|`extensioninfo.xml`에서 `<requires-extension>`과 `<meta key="load-prior-to" value="…"/>`를 읽는다.|
+|`ExtensionOrder.java`|선택된 extension 사이의 보장된 순서를 부분 순서로 만든다. 직접 관계를 모은 뒤 전이적으로 펼치고, 서로 도달하는 쌍(순환)은 미확정으로 둔다.|
+|`ExtensionAnalyzer.java`|선택 판정이 끝난 뒤 선택된 extension만 골라 `ExtensionOrder`에 넘긴다.|
+|`ReportWriter.java`|순서 결과를 CSV로 쓴다.|
+
+### 2-2장의 절과의 대응
+
+|2-2장의 절|프로그램의 처리|
+|---|---|
+|2-2.1 코어 로더가 읽는 최종 자료구조|**하지 않는다.** 실제 코어 로더의 순회 순서(`PlatformConfig.getExtensionInfosInBuildOrder()` 등)는 재현하지 않는다.|
+|2-2.2 빌드 자료의 순서 재사용|**하지 않는다.** 빌드 결과나 메타데이터의 순서는 읽지 않는다.|
+|2-2.3 의존성으로 보장되는 선후관계|한다. 아래 세 가지 관계만 "보장된 순서"로 쓰고, 전이적으로 펼친다.<br>• B가 `requires-extension` A → A가 먼저 (`REQUIRES`)<br>• A는 `bin/platform/ext` 아래, B는 아님 → A가 먼저 (`PLATFORM`)<br>• A의 `load-prior-to`에 B → A가 먼저 (`LOAD_PRIOR_TO`)<br>• 다른 extension을 거쳐서만 이어지는 관계 (`TRANSITIVE`)|
+|2-2.4 순서 미확정의 영향 범위|한다. 위 관계로 정해지지 않는 쌍은 이름순·폴더순으로 정하지 않고 미확정으로 둔다. 순환 안의 extension끼리도 미확정이다. 전체 절대 순번은 부여하지 않는다.|
+
+### 결과물
+
+|파일|내용|
+|---|---|
+|`extension-load-order.csv`|보장된 쌍만 한 행씩 기록한다. 열: `extension`(먼저 로드), `loads_before`(나중 로드), `basis`(`REQUIRES` / `PLATFORM` / `LOAD_PRIOR_TO` / `TRANSITIVE`, 직접 근거가 여럿이면 `;`로 연결). **이 파일에 없는 쌍은 순서 미확정이다.**|
+|`extensions.csv`|`load_prior_to`(선언된 이름), `platform_extension`(`bin/platform/ext` 아래 여부), `load_order_cycle`(순환에 속해 순서가 미확정인지) 열|
+|`summary.csv`|`load_order_pairs`(보장된 쌍 수), `load_order_cycle_extensions`(순환에 속한 extension 수), `load_order_basis`(사용한 근거)|
+
+spring-bean-analyzer-from-xml은 이 `extension-load-order.csv`와 `extensions.csv`의 `load_order_cycle`을 읽어(`com.extension.ExtensionOrder`), 같은 이름 빈의 최종 승자를 판정할 때 extension 사이의 순서로 쓴다. 표에 없는 쌍에서 같은 이름이 정의되면 승자를 고르지 않고 `UNDETERMINED_ORDER`로 남긴다.
+
 ## 3장에서 사용할 내용

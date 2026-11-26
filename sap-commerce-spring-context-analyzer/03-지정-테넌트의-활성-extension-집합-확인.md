@@ -1,4 +1,4 @@
-> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 3/13장. 이전: [2-2. extension 사이의 로드 순서 확인](02-2-extension-사이의-로드-순서-확인.md) · 다음: [4. extension별 코어 설정값과 출처 확인](04-extension별-코어-설정값과-출처-확인.md)
+> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 3/13장. 이전: [2-2. extension 사이의 로드 순서 확인](02_2-extension-사이의-로드-순서-확인.md) · 다음: [4. extension별 코어 설정값과 출처 확인](04-extension별-코어-설정값과-출처-확인.md)
 
 # 3. 지정 테넌트의 활성 extension 집합 확인
 
