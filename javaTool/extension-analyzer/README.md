@@ -98,7 +98,7 @@ $env:EXTENSION_ANALYZER_OPTS = '-Dextractor.output=C:\extension-results -Dextrac
 | `relative_dir` | `HYBRIS_HOME` 기준 상대 폴더 (예: `bin/custom/shop`) |
 | `xml_path` | `extensioninfo.xml` 절대 경로 |
 | `core_module` | `<coremodule>` 선언 여부 |
-| `web_module`, `webroot` | `<webmodule>` 선언 여부와 `webroot` 값 |
+| `web_module`, `webroot` | `<webmodule>` 선언 여부와 `webroot` 값(URL 컨텍스트 경로). 배경: [docs/background_knowledge_webmodule.md](docs/background_knowledge_webmodule.md) |
 | `direct_dependency_count`, `dependencies` | `requires-extension` 수와 목록 (`;`로 구분, 선언 순서) |
 | `selected_dependent_count` | 이 extension을 직접 요구하는 **선택된** extension 수 |
 | `missing_dependency_count` | 요구하지만 스캔에서 찾지 못한 extension 수 |
