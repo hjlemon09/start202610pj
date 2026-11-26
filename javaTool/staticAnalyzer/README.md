@@ -109,7 +109,7 @@ Eclipse에서 실행하면 보통 프로젝트 루트가 작업 디렉터리입�
 
 ## 호출 그래프 CSV (`controller-endpoints.csv`, `controller-call-edges.csv`)
 
-텍스트 호출 트리와 같은 폴더(`--out-dir`)에 CSV 두 개를 항상 함께 만듭니다. [controller-model-analyzer](../controller-model-analyzer/README.md)가 이 CSV를 입력으로 씁니다.
+텍스트 호출 트리와 같은 폴더(`--out-dir`)에 CSV 두 개를 항상 함께 만듭니다. [controller-model-analyzer](../controller-model-analyzer/README.md)와 [occ-response-analyzer](../occ-response-analyzer/README.md)가 이 CSV를 입력으로 씁니다.
 UTF-8 BOM, CRLF, 모든 값을 따옴표로 감쌉니다. 텍스트 출력의 내용과 형식은 바뀌지 않습니다.
 
 - 가지치기(`PRUNE_ENABLED`)와 관계없이 전개한 모든 노드를 기록합니다. 생략 규칙(model/data/form 계열, 단순 getter/setter)은 텍스트와 같습니다.
