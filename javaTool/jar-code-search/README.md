@@ -1,7 +1,7 @@
 # JAR Code Search
 
 지정한 폴더의 일반 파일과 JAR 내부 CLASS를 함께 검색하는 Java 21 도구입니다.
-기존 sap-commerce-analyzer와 독립된 프로젝트입니다. 검색 대상 클래스는 실행하지 않습니다.
+기존 sap-commerce-analyzer(현재 spring-bean-analyzer-from-xml)와 독립된 프로젝트입니다. 검색 대상 클래스는 실행하지 않습니다.
 
 ## 실행
 

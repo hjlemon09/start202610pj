@@ -99,7 +99,7 @@ public final class ExtractorReportTest {
             report = directories.findFirst().orElseThrow();
         }
         try (var files = Files.list(report)) {
-            check(files.count() == 22, "Expected nineteen reports plus three bean inventory reports");
+            check(files.count() == 27, "Expected 22 reports plus five bean winner reports");
         }
         String summary = Files.readString(report.resolve("summary.csv"));
         check(summary.contains("\"extractor_report\",\"" + newer + "\""), "Summary records the extractor result");

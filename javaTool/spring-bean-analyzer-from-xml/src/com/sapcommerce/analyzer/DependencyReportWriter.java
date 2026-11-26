@@ -58,6 +58,26 @@ public final class DependencyReportWriter {
                     java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                     .forEach((status, count) -> System.out.println("  " + status + ": " + count));
             System.out.println("Same-context/XML candidates only; parent visibility, active profiles and override winners are not determined.");
+            SpringBeanWinnerResolver.Result winners = SpringBeanWinnerResolver.analyze(spring, beans, extensions, activation, scan.root());
+            SpringBeanWinnerReportWriter.write(directory, winners);
+            System.out.println();
+            System.out.println("=== Spring Bean Final Winners (STATIC REGISTRATION ORDER) ===");
+            System.out.println("Registrations    : " + winners.registrations().size());
+            System.out.println("Bean names       : " + winners.beans().size());
+            winners.beans().stream().collect(java.util.stream.Collectors.groupingBy(SpringBeanWinnerResolver.Winner::status,
+                    java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                    .forEach((status, count) -> System.out.println("  " + status + ": " + count));
+            System.out.println("Alias names      : " + winners.aliases().size());
+            winners.aliases().stream().collect(java.util.stream.Collectors.groupingBy(SpringBeanWinnerResolver.Winner::status,
+                    java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                    .forEach((status, count) -> System.out.println("  " + status + ": " + count));
+            System.out.println("Final references : " + winners.references().size());
+            System.out.println("Winner issues    : " + winners.issues().size());
+            winners.issues().stream().collect(java.util.stream.Collectors.groupingBy(SpringBeanWinnerResolver.Issue::status,
+                    java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                    .forEach((status, count) -> System.out.println("  " + status + ": " + count));
+            System.out.println("Extension order uses requires-extension, platform/ext and load-prior-to only; "
+                    + "unrelated extensions stay UNDETERMINED_ORDER. Profiles and runtime registration are not evaluated.");
             try (BufferedWriter out = Files.newBufferedWriter(directory.resolve("summary.csv"),
                     StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)) {
                 row(out, "spring_xml_inspected", spring.inspected());

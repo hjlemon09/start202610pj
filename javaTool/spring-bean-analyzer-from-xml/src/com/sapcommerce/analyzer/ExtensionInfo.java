@@ -9,11 +9,18 @@ public final class ExtensionInfo {
     private final String name;
     private final Path xmlPath;
     private final List<String> dependencies;
+    private final List<String> loadPriorTo;
 
     public ExtensionInfo(String name, Path xmlPath, List<String> dependencies) {
+        this(name, xmlPath, dependencies, List.of());
+    }
+
+    /** loadPriorTo: names from {@code <meta key="load-prior-to" value="..."/>}; this extension loads before them. */
+    public ExtensionInfo(String name, Path xmlPath, List<String> dependencies, List<String> loadPriorTo) {
         this.name = Objects.requireNonNull(name);
         this.xmlPath = Objects.requireNonNull(xmlPath);
         this.dependencies = List.copyOf(dependencies);
+        this.loadPriorTo = List.copyOf(loadPriorTo);
     }
 
     public String getName() {
@@ -26,5 +33,9 @@ public final class ExtensionInfo {
 
     public List<String> getDependencies() {
         return dependencies;
+    }
+
+    public List<String> getLoadPriorTo() {
+        return loadPriorTo;
     }
 }

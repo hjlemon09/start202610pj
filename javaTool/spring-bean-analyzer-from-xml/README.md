@@ -1,6 +1,8 @@
-# SAP Commerce Analyzer
+# spring-bean-analyzer-from-xml
 
-첨부 문서의 STEP 10-2에서 전체 Extension 의존관계 분석 및 CSV 출력까지 확장한 독립 Java 분석 도구입니다.
+SAP Commerce의 Spring XML을 기반으로 Spring 빈과 그 **최종 승자**(같은 이름이 여러 번 정의될 때 실제로 남는 정의)를 추정하는 독립 Java 분석 도구입니다.
+예전 이름은 `sap-commerce-analyzer`입니다. 활성 extension 판정은 [activated-extension-extractor](../activated-extension-extractor/README.md)로 분리했습니다.
+첨부 문서의 STEP 10-2에서 전체 Extension 의존관계 분석 및 CSV 출력까지 확장한 도구에서 출발했습니다.
 Java 21 표준 API만 사용하며 Maven, Gradle, Spring Boot 및 외부 라이브러리는 필요하지 않습니다.
 SAP Commerce의 소스와 설정은 읽기만 합니다.
 
@@ -16,8 +18,10 @@ SAP Commerce의 소스와 설정은 읽기만 합니다.
 - 순환 참조와 이미 방문한 공유 의존관계 구분
 - XML 외부 엔티티, 외부 DTD 및 외부 스키마 접근 차단
 
+- 컨텍스트별 빈 이름·alias의 **최종 승자 결정**과 참조의 최종 연결 (「빈 최종 승자 결정」 참고)
+
 Spring 로딩 진입점과 XML Bean 선언·명시적 참조의 정적 목록을 포함합니다.
-최종 Bean 연결 결정, 시각화 및 실행 중 메서드 CallTrace는 이후 단계입니다.
+시각화, 애너테이션 기반 빈(소스 분석) 및 실행 중 메서드 CallTrace는 이 도구의 범위 밖입니다.
 
 ## Eclipse에서 가져오기
 
@@ -132,6 +136,11 @@ Eclipse의 기본 작업 디렉터리는 보통 프로젝트 폴더이며, 실�
 | `spring-loading-entrypoints.csv` | 로딩 진입점 선언·규칙과 대상 후보 |
 | `spring-loading-reachability.csv` | 진입점별 XML 도달 관계, 이전 XML과 깊이 |
 | `spring-loading-issues.csv` | 진입점/로더/도달 관계 해석의 한계 및 문제 |
+| `spring-bean-winners.csv` | 컨텍스트 × 빈 이름별 최종 승자 정의, 판정 상태, 선언/실효 클래스, 밀려난 정의, 순서 미확정 후보 |
+| `spring-alias-winners.csv` | 컨텍스트 × alias별 최종 대상, 판정 상태, 최종적으로 가리키는 빈 |
+| `spring-bean-registrations.csv` | 등록 재생 순서(sequence)·import 경로·결과(WINNER/OVERRIDDEN 등) |
+| `spring-bean-final-references.csv` | ref 등 명시 참조를 alias·부모 컨텍스트까지 따라간 최종 연결 대상 |
+| `spring-bean-winner-issues.csv` | 따라가지 못한 진입점·import, import 순환, 순서 순환 등 승자 판정의 한계 |
 
 CSV는 UTF-8 BOM, CRLF, 모든 필드 큰따옴표 및 내부 큰따옴표 이스케이프를 사용합니다.
 의존관계가 없거나 순환·누락이 없는 파일도 헤더를 생성합니다.
@@ -215,7 +224,7 @@ src/com/sapcommerce/analyzer/
   `scan_complete`는 extractor의 스캔 완전성과, 이 도구가 정의를 다시 읽은 결과를 합친 값입니다.
 
 검증용 소스는 `test/com/sapcommerce/analyzer/ExtractorReportTest.java`입니다.
-최신 결과 선택, CSV 읽기, 오래된 결과 검출, hybris-root 불일치, 22개 CSV 출력까지 확인합니다.
+최신 결과 선택, CSV 읽기, 오래된 결과 검출, hybris-root 불일치, 27개 CSV 출력까지 확인합니다.
 판정 규칙 자체의 테스트는 extractor의 `ActivatedExtensionExtractorTest`에 있습니다.
 
 ## Spring XML import 분석
@@ -506,3 +515,17 @@ lookup_modeled_context, candidate_count, candidate_details, lookup_warnings, ass
 CSV는 22개이며 참조는 문맥별 행으로 확장될 수 있습니다.
 후보 1개도 실제 바인딩 확정은 아닙니다. 부모 Context, profile/override 최종 선택은 미확정입니다.
 상세 목적·조건별 결과·검증: docs/BEAN_REFERENCE_CANDIDATES.md.
+## 빈 최종 승자 결정
+
+같은 빈 이름이나 alias가 여러 번 정의될 때 컨텍스트(CORE/GLOBAL/WEB/SERVLET)마다 실제로 남는 정의를 정합니다.
+CSV는 5개가 추가되어 전체 **27개**입니다.
+
+- Spring의 등록 순서를 재생합니다: 진입점 순서 → 문서 순서, `<import>`는 그 위치에서 대상 문서를 처리합니다.
+- extension 사이의 순서는 `requires-extension`(전이), `bin/platform/ext` 우선, `<meta key="load-prior-to">`로 **보장된 것만** 씁니다.
+  관계가 없는 extension끼리 같은 이름을 정의하면 승자를 고르지 않고 `UNDETERMINED_ORDER`로 후보를 모두 보여 줍니다.
+- `additionalWebSpringConfigs`(addon)는 `web.xml`의 설정 뒤에 로드되는 것으로 봅니다.
+- 상태: `CONFIRMED` / `UNDETERMINED_ORDER` / `PROFILE_DEPENDENT` / `RESOURCE_CHOICE_UNCERTAIN`
+- 참조는 alias를 먼저 따르고, 없으면 부모 컨텍스트(SERVLET → WEB → CORE → GLOBAL, SAP 표준 구성 가정)에서 찾습니다.
+- `extensioninfo.xml`의 `load-prior-to` meta를 이제 읽습니다.
+
+상세 규칙·근거·한계: docs/BEAN_FINAL_WINNERS.md. 검증: `test/com/sapcommerce/analyzer/SpringBeanWinnerResolverTest.java`.

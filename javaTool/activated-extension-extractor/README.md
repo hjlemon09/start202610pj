@@ -2,8 +2,8 @@
 
 지정한 `HYBRIS_HOME`에서 **활성화(선택)된 SAP Commerce extension만 추출**해서 CSV로 저장하는 Java 21 도구입니다.
 
-`sap-commerce-analyzer`에서 extension 검출과 선택 판정 부분만 떼어 낸 독립 프로젝트입니다. Spring XML, Bean, 의존관계 그래프 분석은 들어 있지 않습니다.
-`sap-commerce-analyzer`는 이제 자체 판정 대신 이 도구의 가장 최근 결과(`reports` 폴더)를 읽어서 사용합니다.
+`sap-commerce-analyzer`(현재 이름 `spring-bean-analyzer-from-xml`)에서 extension 검출과 선택 판정 부분만 떼어 낸 독립 프로젝트입니다. Spring XML, Bean, 의존관계 그래프 분석은 들어 있지 않습니다.
+[`spring-bean-analyzer-from-xml`](../spring-bean-analyzer-from-xml/README.md)은 자체 판정 대신 이 도구의 가장 최근 결과(`reports` 폴더)를 읽어서 사용합니다.
 Java 표준 API만 쓰기 때문에 Maven, Gradle, 외부 jar가 필요 없습니다. SAP Commerce 폴더는 읽기만 하고 수정하지 않습니다.
 
 > "활성화"는 **설정 파일을 읽고 정적 규칙으로 추정한 결과**입니다. 실행 중인 서버나 빌드 결과를 확인한 것이 아닙니다.

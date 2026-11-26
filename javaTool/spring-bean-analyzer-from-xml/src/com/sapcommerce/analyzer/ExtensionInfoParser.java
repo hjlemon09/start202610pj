@@ -68,13 +68,21 @@ public final class ExtensionInfoParser {
         Element extension = definitions.getFirst();
         String extensionName = requiredName(extension);
         Set<String> dependencies = new LinkedHashSet<>();
+        Set<String> loadPriorTo = new LinkedHashSet<>();
         for (Node child = extension.getFirstChild(); child != null; child = child.getNextSibling()) {
             if (isElement(child, "requires-extension")) {
                 dependencies.add(requiredName((Element) child));
+            } else if (isElement(child, "meta")
+                    && "load-prior-to".equals(((Element) child).getAttribute("key").trim())) {
+                for (String target : ((Element) child).getAttribute("value").split("[,;\\s]+")) {
+                    if (!target.isBlank()) {
+                        loadPriorTo.add(target.trim());
+                    }
+                }
             }
         }
         return new ExtensionInfo(extensionName, xmlPath.toAbsolutePath().normalize(),
-                new ArrayList<>(dependencies));
+                new ArrayList<>(dependencies), new ArrayList<>(loadPriorTo));
     }
 
     private static boolean isElement(Node node, String name) {

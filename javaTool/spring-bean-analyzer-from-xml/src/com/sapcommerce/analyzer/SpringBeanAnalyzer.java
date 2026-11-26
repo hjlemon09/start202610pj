@@ -22,12 +22,25 @@ public final class SpringBeanAnalyzer {
             String enclosingBean, String profiles, String defaultAttributes, String declarationKind, String declaredAttributes) { }
     public record Reference(String xml, String ownerKey, String kind, String member, String target, String profiles) { }
     public record Issue(String xml, String status, String detail) { }
+    /**
+     * A top-level registration element in document order: kind BEAN (beanKey), ALIAS (alias -> target) or
+     * IMPORT (resource). order counts these elements only, so imports can be replayed between declarations.
+     */
+    public record Site(String xml, int order, String kind, String beanKey, String alias, String target,
+            String resource, String profiles) { }
     public record Result(List<Bean> beans, List<Reference> references, List<Issue> issues, Map<String,String> reachability,
-            int inspected, Map<String,List<String>> modeledContexts) { }
+            int inspected, Map<String,List<String>> modeledContexts, List<Site> sites) {
+        public Result(List<Bean> beans, List<Reference> references, List<Issue> issues, Map<String,String> reachability,
+                int inspected, Map<String,List<String>> modeledContexts) {
+            this(beans, references, issues, reachability, inspected, modeledContexts, List.of());
+        }
+    }
     private final List<Bean> beans = new ArrayList<>();
     private final List<Reference> refs = new ArrayList<>();
     private final List<Issue> issues = new ArrayList<>();
+    private final List<Site> sites = new ArrayList<>();
     private int ordinal;
+    private int siteOrder;
     private final Set<String> customElements = new HashSet<>();
 
     public static Result analyze(SpringXmlAnalyzer.Result spring, SpringLoadingAnalyzer.Result loading) {
@@ -59,7 +72,7 @@ public final class SpringBeanAnalyzer {
         Map<String,List<String>> modeledContexts = new LinkedHashMap<>();
         contexts.forEach((location, names) -> modeledContexts.put(location, List.copyOf(names)));
         return new Result(List.copyOf(analyzer.beans), List.copyOf(analyzer.refs), List.copyOf(analyzer.issues),
-                Map.copyOf(evidence), inspected.size(), Map.copyOf(modeledContexts));
+                Map.copyOf(evidence), inspected.size(), Map.copyOf(modeledContexts), List.copyOf(analyzer.sites));
     }
 
     private void inspect(String xml, String extension, InputStream in) throws Exception {
@@ -90,6 +103,7 @@ public final class SpringBeanAnalyzer {
         }
         if (!standard(root) || !root.getLocalName().equals("beans")) throw new IOException("Expected Spring beans root");
         ordinal = 0;
+        siteOrder = 0;
         customElements.clear();
         walk(root, xml, extension, "", "", "", "");
     }
@@ -110,6 +124,7 @@ public final class SpringBeanAnalyzer {
                 beans.add(new Bean(key, xml, extension, ordinal, attr(element,"id"), attr(element,"name"), attr(element,"class"),
                         attr(element,"parent"), attr(element,"scope"), attr(element,"abstract"), attr(element,"factory-bean"),
                         attr(element,"factory-method"), owner, profiles, defaults, "BEAN", ""));
+                if (owner.isEmpty()) sites.add(new Site(xml, ++siteOrder, "BEAN", key, "", "", "", profiles));
                 if (!owner.isEmpty()) refs.add(new Reference(xml, owner, "INNER_BEAN", member, key, profiles));
                 owner = key;
                 member = "";
@@ -127,6 +142,9 @@ public final class SpringBeanAnalyzer {
                 }
             } else if (name.equals("alias")) {
                 refs.add(new Reference(xml, "", "ALIAS", attr(element,"alias"), attr(element,"name"), profiles));
+                if (owner.isEmpty()) sites.add(new Site(xml, ++siteOrder, "ALIAS", "", attr(element,"alias"), attr(element,"name"), "", profiles));
+            } else if (name.equals("import")) {
+                if (owner.isEmpty()) sites.add(new Site(xml, ++siteOrder, "IMPORT", "", "", "", attr(element,"resource"), profiles));
             } else if (name.equals("property") || name.equals("constructor-arg")) {
                 member = name + ":" + attr(element,"name") + (element.hasAttribute("index") ? "[" + attr(element,"index") + "]" : "");
                 addRef(xml,owner,name.equals("property") ? "PROPERTY_REF" : "CONSTRUCTOR_REF",member,attr(element,"ref"),profiles);
@@ -147,6 +165,7 @@ public final class SpringBeanAnalyzer {
             String attributes = utilAttributes(element, name);
             beans.add(new Bean(key, xml, extension, ordinal, attr(element,"id"), "", "", "", attr(element,"scope"), "", "", "",
                     owner, profiles, defaults, "UTIL_" + name.toUpperCase(Locale.ROOT), attributes));
+            if (owner.isEmpty()) sites.add(new Site(xml, ++siteOrder, "BEAN", key, "", "", "", profiles));
             if (!owner.isEmpty()) refs.add(new Reference(xml, owner, "INNER_UTIL_DECLARATION", member, key, profiles));
             owner = key;
             member = "util:" + name;
