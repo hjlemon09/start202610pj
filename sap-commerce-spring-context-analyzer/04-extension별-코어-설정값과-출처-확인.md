@@ -12,6 +12,48 @@
 
 출력. 키, 원문 후보, 적용값, 출처, 미설정 또는 값 미확정 여부.
 
+## 배경지식 — 코어 설정값이란
+
+이 장에서 말하는 **코어 설정값**은 각 extension의 **`<extension 이름>.application-context` 프로퍼티 값**이다.
+이 값은 그 extension이 **코어 컨텍스트에 어떤 Spring XML 파일을 올리는지**를 정한다.
+
+### "코어"는 Spring 컨텍스트의 한 종류다
+
+SAP Commerce에는 Spring 컨텍스트가 여러 개 있다(4.3절).
+
+|컨텍스트|무엇인가|어떤 XML을 올리는지 정하는 설정|
+|---|---|---|
+|**코어(core)**|테넌트의 기본 컨텍스트. 서비스, DAO, facade 같은 빈이 대부분 여기에 있다.|`<ext>.application-context`|
+|전역(global)|모든 테넌트가 함께 쓰는 컨텍스트|전역용 키 (4.3절)|
+|웹(web)|storefront 같은 웹 애플리케이션마다 따로 있는 컨텍스트|각 웹 모듈 `web.xml`의 `contextConfigLocation`|
+
+"코어 설정값"은 이 중 첫 번째, 코어 컨텍스트용 설정의 값이다.
+
+### 예
+
+```properties
+# bin/custom/melcocore/project.properties
+melcocore.application-context=melcocore-spring.xml,melcocore-overrides.xml
+```
+
+"melcocore extension은 코어 컨텍스트에 `melcocore-spring.xml`과 `melcocore-overrides.xml`을 올린다"는 뜻이다.
+
+### 이 장이 하는 일
+
+같은 키가 여러 파일에 있을 수 있으므로, **최종으로 적용되는 값과 그 값이 어디서 왔는지(출처)**를 정한다.
+
+- 키가 있을 수 있는 곳: extension의 `project.properties`, `bin/platform/project.properties`, `config/local.properties`, 테넌트별 설정 파일 등(4.2절)
+- 최종값은 5장에서 XML 파일 목록으로 나눈다.
+- 키가 없거나 값이 비어 있으면, 기본 파일명 규칙(`<ext>-application-context.xml`)이 적용되는지 5장에서 판단한다.
+
+### 프로그램에서는
+
+spring-bean-analyzer-from-xml이 처리한다.
+
+- `ImportPropertyResolver`가 `bin/platform/project.properties`, 선택된 extension의 `project.properties`, `config/local.properties`를 합쳐 값을 구한다. 테넌트별 파일과 환경 변수·JVM 시스템 프로퍼티는 읽지 않는다.
+- `SpringLoadingAnalyzer`가 그 값을 진입 XML 목록으로 만든다.
+- 결과는 `spring-loading-entrypoints.csv`에 나온다. `target_xml` 열이 진입 XML이고, `property_evidence` 열이 값의 출처다.
+
 ## 4.1 실제 키와 조회 메서드를 식별한다
 
 1. 대상 extension 이름이 melcocore면 melcocore.application-context를 정확한 문자열로 검색한다.
