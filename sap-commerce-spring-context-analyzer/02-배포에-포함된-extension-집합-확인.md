@@ -2,6 +2,10 @@
 
 # 2. 배포에 포함된 extension 집합 확인
 
+## 1장에서 확정한 내용
+
+## 2장의 내용
+
 작업 목적. 설치 디렉터리에 있는 모든 extension 중 대상 빌드가 실제로 선택한 집합을 구한다.
 
 입력. 1장에서 확정한 설치와 적용 설정, 대상 빌드 자료.
@@ -433,3 +437,5 @@ https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8b6ded0d
 - 판정은 설정 파일만 읽은 정적 추정이다. 실행 중인 서버나 빌드 결과는 확인하지 않는다.
 - 스캔이나 판정에 문제가 있으면 `summary.csv`의 `scan_complete`/`selection_complete`가 `false`가 된다. 이때 spring-bean-analyzer-from-xml은 결과를 만들되 종료 코드 1로 끝난다.
 - extension-analyzer는 2-2장 일부(의존성으로 보장되는 선후관계)도 함께 계산해 `extension-load-order.csv`로 낸다.
+
+## 2-2장에서 사용할 내용

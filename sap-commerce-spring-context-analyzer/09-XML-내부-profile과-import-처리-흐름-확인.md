@@ -2,6 +2,10 @@
 
 # 9. XML 내부 profile과 import 처리 흐름 확인
 
+## 8장에서 확정한 내용
+
+## 9장의 내용
+
 작업 목적. 진입 XML을 읽을 때 어떤 하위 XML을 어느 위치에서 처리하는지 재구성한다.
 
 입력. 6장과 8장의 진입 파일, 대상 Spring 버전, 해당 코어 컨텍스트의 환경 및 리소스 로더.
@@ -95,3 +99,5 @@ https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframewo
 
 Spring Framework 6.2 API — PathMatchingResourcePatternResolver
 https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/core/io/support/PathMatchingResourcePatternResolver.html
+
+## 10장에서 사용할 내용

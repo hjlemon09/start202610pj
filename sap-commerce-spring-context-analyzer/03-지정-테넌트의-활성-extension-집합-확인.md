@@ -2,6 +2,10 @@
 
 # 3. 지정 테넌트의 활성 extension 집합 확인
 
+## 2-2장에서 확정한 내용
+
+## 3장의 내용
+
 작업 목적. 대상 배포의 extension 중 지정 테넌트의 코어 구성에 사용되는 이름 집합을 식별한다.
 
 입력. 1장의 테넌트 ID와 적용 설정, 2장의 배포 포함 extension 집합, 대상 SAP Commerce의 플랫폼 소스 또는 JAR.
@@ -65,3 +69,5 @@ SAP Commerce 2211 API — Registry, Tenant, AbstractTenant
 https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/core/Registry.html
 https://help.sap.com/doc/789b8a6e1434444da824c2493c6faaa0/2211.4/en-us/de/hybris/platform/core/Tenant.html
 https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/platform/core/AbstractTenant.html
+
+## 4장에서 사용할 내용

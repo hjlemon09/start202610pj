@@ -2,6 +2,10 @@
 
 # 4. extension별 코어 설정값과 출처 확인
 
+## 3장에서 확정한 내용
+
+## 4장의 내용
+
 작업 목적. 지정 테넌트의 각 활성 extension에 대해 코어 로더가 읽는 최종 적용 프로퍼티 값을 구한다.
 
 입력. 3장의 활성 목록, 해당 코드가 사용하는 설정 읽기 경로, 대상 배포의 프로퍼티 파일.
@@ -62,3 +66,5 @@
 
 SAP Help — Where to Define Property Values
 https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/8b8e13c9866910149d40b151a9196543.html
+
+## 5장에서 사용할 내용

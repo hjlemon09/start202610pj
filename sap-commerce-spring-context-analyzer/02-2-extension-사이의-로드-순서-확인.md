@@ -2,6 +2,10 @@
 
 # 2-2. extension 사이의 로드 순서 확인
 
+## 2장에서 확정한 내용
+
+## 2-2장의 내용
+
 작업 목적. 지정 테넌트 코어 로더가 extension을 어떤 순서로 처리하는지 확정한다.
 
 입력. 2장의 의존성 관계, 3장의 테넌트별 목록 생성 경로, 대상 배포의 순서가 담긴 자료.
@@ -59,3 +63,5 @@
 
 SAP Commerce 2211 API — PlatformConfig
 https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/bootstrap/config/PlatformConfig.html
+
+## 3장에서 사용할 내용
