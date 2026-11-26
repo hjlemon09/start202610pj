@@ -43,9 +43,9 @@ Spring의 XML 리더가 빈을 등록하는 순서를 컨텍스트별로 재생�
 
 extension 부분 순서는 extension-analyzer가 계산해 `extension-load-order.csv`로 내보낸 것을 읽는다(`ExtensionOrder`). 그 파일은 SAP Help 「Extension Dependencies」가 보장하는 관계만 담는다.
 
-- B가 `requires-extension` A → A가 먼저 (전이적으로)
-- A가 `bin/platform/ext` 아래이고 B는 아님 → A가 먼저 (플랫폼 extension에 대한 암묵적 의존)
-- A의 `<meta key="load-prior-to" value="B"/>` → A가 먼저
+- `shop`의 `extensioninfo.xml`에 `<requires-extension name="core"/>`가 있으면(shop은 core가 필요) → **core가 먼저**. 다른 extension을 거쳐 이어지는 관계도 같다.
+- `core`는 `bin/platform/ext` 아래, `shop`은 아니면 → **core가 먼저** (플랫폼이 아닌 extension은 플랫폼 extension에 암묵적으로 의존)
+- `early`의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="other"/>`가 있으면 → **early가 먼저**
 - 그 밖의 쌍은 **순서 미확정**이다. 이름순이나 폴더순으로 임의로 정하지 않는다.
 - requires/load-prior-to가 순환하면 그 extension들 사이는 미확정이고 `EXTENSION_ORDER_CYCLE`로 기록한다.
 

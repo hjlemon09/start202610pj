@@ -55,9 +55,9 @@ spring-bean-analyzer-from-xml에 있던 extension CSV 설명을 이 도구로 �
 
 | 열 | 값 | 뜻 |
 | --- | --- | --- |
-| `basis` | `REQUIRES` | `loads_before`가 `extension`을 `requires-extension`으로 직접 요구함 |
-| | `PLATFORM` | `extension`은 `bin/platform/ext` 아래, `loads_before`는 아님 |
-| | `LOAD_PRIOR_TO` | `extension`의 `<meta key="load-prior-to">`에 `loads_before`가 있음 |
+| `basis` | `REQUIRES` | `loads_before`의 `extensioninfo.xml`에 `<requires-extension name="(extension)"/>`이 있음. 예: shop이 core를 요구하면 `"core","shop","REQUIRES"` (core가 먼저) |
+| | `PLATFORM` | `extension`은 `bin/platform/ext` 아래에 있고 `loads_before`는 아님. 예: `"core","shop","PLATFORM"` |
+| | `LOAD_PRIOR_TO` | `extension`의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="(loads_before)"/>`가 있음. 예: `"early","other","LOAD_PRIOR_TO"` |
 | | `TRANSITIVE` | 직접 근거는 없고 다른 extension을 거쳐서 보장됨 |
 | | 여러 값 `;` 구분 | 직접 근거가 둘 이상(예: `PLATFORM;REQUIRES`) |
 

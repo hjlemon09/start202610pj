@@ -16,9 +16,9 @@ import java.util.TreeSet;
  *
  * <p>Only these relations are treated as guaranteed (SAP Help "Extension Dependencies"):
  * <ul>
- * <li>B requires-extension A: A before B (transitively)</li>
+ * <li>B declares {@code <requires-extension name="A"/>} (B needs A): A before B (transitively)</li>
  * <li>A is under bin/platform/ext and B is not: A before B (non-platform extensions implicitly depend on platform)</li>
- * <li>A has meta load-prior-to=B: A before B</li>
+ * <li>A declares {@code <meta key="load-prior-to" value="B"/>}: A before B</li>
  * </ul>
  * Any other pair is not ordered; its relative order is reported as undetermined, never guessed.
  */

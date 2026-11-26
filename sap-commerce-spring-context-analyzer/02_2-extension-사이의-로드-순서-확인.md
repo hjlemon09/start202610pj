@@ -84,8 +84,20 @@ https://help.sap.com/doc/9fef7037b3304324b8891e84f19f2bf3/2211/en-US/de/hybris/b
 |---|---|
 |2-2.1 코어 로더가 읽는 최종 자료구조|**하지 않는다.** 실제 코어 로더의 순회 순서(`PlatformConfig.getExtensionInfosInBuildOrder()` 등)는 재현하지 않는다.|
 |2-2.2 빌드 자료의 순서 재사용|**하지 않는다.** 빌드 결과나 메타데이터의 순서는 읽지 않는다.|
-|2-2.3 의존성으로 보장되는 선후관계|한다. 아래 세 가지 관계만 "보장된 순서"로 쓰고, 전이적으로 펼친다.<br>• B가 `requires-extension` A → A가 먼저 (`REQUIRES`)<br>• A는 `bin/platform/ext` 아래, B는 아님 → A가 먼저 (`PLATFORM`)<br>• A의 `load-prior-to`에 B → A가 먼저 (`LOAD_PRIOR_TO`)<br>• 다른 extension을 거쳐서만 이어지는 관계 (`TRANSITIVE`)|
+|2-2.3 의존성으로 보장되는 선후관계|한다. 아래 「보장된 순서로 쓰는 관계」의 관계만 쓰고, 다른 extension을 거쳐 이어지는 관계까지 펼친다.|
 |2-2.4 순서 미확정의 영향 범위|한다. 위 관계로 정해지지 않는 쌍은 이름순·폴더순으로 정하지 않고 미확정으로 둔다. 순환 안의 extension끼리도 미확정이다. 전체 절대 순번은 부여하지 않는다.|
+
+### 보장된 순서로 쓰는 관계
+
+|관계 (어디에 무엇이 적혀 있나)|예시|로드 순서|`extension-load-order.csv`의 행|
+|---|---|---|---|
+|**필요로 하는 쪽**의 `extensioninfo.xml`에 `<requires-extension name="필요한 쪽"/>`이 있다|`shop`의 `extensioninfo.xml`에 `<requires-extension name="core"/>` (shop은 core가 필요하다)|**필요한 쪽(core)이 먼저**, 필요로 하는 쪽(shop)이 나중|`"core","shop","REQUIRES"`|
+|한쪽은 `bin/platform/ext` 아래에 있고, 다른 쪽은 아니다|`bin/platform/ext/core`와 `bin/custom/shop`|**플랫폼 쪽(core)이 먼저**. 플랫폼이 아닌 extension은 플랫폼 extension에 암묵적으로 의존한다.|`"core","shop","PLATFORM"`|
+|**먼저 로드되고 싶은 쪽**의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="나중 쪽"/>`이 있다|`early`의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="other"/>`|**적은 쪽(early)이 먼저**, 값에 적힌 쪽(other)이 나중|`"early","other","LOAD_PRIOR_TO"`|
+|위 관계가 다른 extension을 거쳐서 이어진다|`shop`이 `base`를 요구하고, `base`가 `core`를 요구한다|사슬의 맨 앞(core)이 먼저|`"core","shop","TRANSITIVE"` (직접 관계가 따로 있으면 그 근거가 적힌다)|
+
+한 쌍에 직접 근거가 둘 이상이면 `basis`에 `;`로 이어 적는다(예: `"core","shop","PLATFORM;REQUIRES"`).
+CSV의 한 행은 언제나 "`extension` 열이 `loads_before` 열보다 먼저 로드된다"는 뜻이다.
 
 ### 결과물
 

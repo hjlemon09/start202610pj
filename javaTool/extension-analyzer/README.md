@@ -169,12 +169,15 @@ $env:EXTENSION_ANALYZER_OPTS = '-Dextractor.output=C:\extension-results -Dextrac
 
 SAP Help 「Extension Dependencies」가 보장하는 관계만 씁니다.
 
-| 관계 | 순서 | `basis` |
-|---|---|---|
-| B가 `requires-extension` A | A가 먼저 | `REQUIRES` |
-| A는 `bin/platform/ext` 아래, B는 아님 | A가 먼저 (플랫폼 extension에 대한 암묵적 의존) | `PLATFORM` |
-| A의 `<meta key="load-prior-to" value="B"/>` | A가 먼저 | `LOAD_PRIOR_TO` |
-| 위 관계를 여러 번 거쳐서 이어짐 | 앞쪽이 먼저 | `TRANSITIVE` |
+| 관계 (어디에 무엇이 적혀 있나) | 예시 | 로드 순서 | `extension-load-order.csv`의 행 |
+|---|---|---|---|
+| **필요로 하는 쪽**의 `extensioninfo.xml`에 `<requires-extension name="필요한 쪽"/>`이 있다 | `shop`의 `extensioninfo.xml`에 `<requires-extension name="core"/>` (shop은 core가 필요하다) | **필요한 쪽(core)이 먼저**, 필요로 하는 쪽(shop)이 나중 | `"core","shop","REQUIRES"` |
+| 한쪽은 `bin/platform/ext` 아래에 있고, 다른 쪽은 아니다 | `bin/platform/ext/core`와 `bin/custom/shop` | **플랫폼 쪽(core)이 먼저**. 플랫폼이 아닌 extension은 플랫폼 extension에 암묵적으로 의존하기 때문 | `"core","shop","PLATFORM"` |
+| **먼저 로드되고 싶은 쪽**의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="나중 쪽"/>`이 있다 | `early`의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="other"/>` | **적은 쪽(early)이 먼저**, 값에 적힌 쪽(other)이 나중 | `"early","other","LOAD_PRIOR_TO"` |
+| 위 관계가 다른 extension을 거쳐서 이어진다 | `shop`이 `base`를 요구하고, `base`가 `core`를 요구한다 | 사슬의 맨 앞(core)이 먼저 | `"core","shop","TRANSITIVE"` (직접 관계가 따로 있으면 그 근거가 적힘) |
+
+한 쌍에 직접 근거가 둘 이상이면 `basis`에 `;`로 이어서 적습니다(예: core가 플랫폼이면서 shop이 core를 요구하면 `"core","shop","PLATFORM;REQUIRES"`).
+CSV의 한 행은 언제나 "`extension` 열이 `loads_before` 열보다 먼저 로드된다"는 뜻입니다.
 
 - 그 밖의 쌍은 **순서 미확정**이며 `extension-load-order.csv`에 행이 없습니다. 이름순이나 폴더순으로 임의로 정하지 않습니다.
 - requires/load-prior-to가 순환하면 순환 안의 extension끼리는 미확정이고, `extensions.csv`의 `load_order_cycle`이 `true`입니다.
