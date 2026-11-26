@@ -128,6 +128,26 @@ $env:EXTENSION_ANALYZER_OPTS = '-Dextractor.output=C:\extension-results -Dextrac
 |---|---|
 | `extension-load-order.csv` | 선택된 extension 사이에서 **로드 순서가 보장된 쌍**(`extension`이 `loads_before`보다 먼저)과 근거(`basis`) |
 
+`extension-load-order.csv`의 열은 다음과 같습니다. 한 행은 언제나 "**`extension`이 `loads_before`보다 먼저 로드된다**"는 뜻입니다.
+
+| 열 | 내용 |
+|---|---|
+| `extension` | **먼저** 로드되는 extension 이름 |
+| `loads_before` | **나중에** 로드되는 extension 이름 |
+| `basis` | 왜 `extension`이 먼저인지(근거). 근거가 여럿이면 `;`로 이어 적으며, 모두 같은 방향(`extension`이 먼저)을 뜻합니다.<br>• `REQUIRES`: `loads_before`가 `extension`을 필요로 한다(`loads_before`의 `extensioninfo.xml`에 `<requires-extension name="extension"/>`이 있다)<br>• `PLATFORM`: `extension`은 `bin/platform/ext` 아래에 있고 `loads_before`는 아니다<br>• `LOAD_PRIOR_TO`: `extension`의 `extensioninfo.xml`에 `<meta key="load-prior-to" value="loads_before"/>`가 있다<br>• `TRANSITIVE`: 직접 근거는 없고, 다른 extension을 거친 위 관계로 이어진다 |
+
+읽는 예:
+
+| 행 | 뜻 |
+|---|---|
+| `"core","shop","PLATFORM;REQUIRES"` | core가 shop보다 먼저 로드된다. shop이 core를 필요로 하고, core는 플랫폼 extension이고 shop은 아니기 때문이다. |
+| `"early","other","LOAD_PRIOR_TO"` | early가 other보다 먼저 로드된다. early가 `load-prior-to`로 other를 지정했기 때문이다. |
+| (행 없음) shop과 other | 두 extension 사이에는 보장된 순서가 없다(순서 미확정). |
+
+- 행은 `extension`, `loads_before`의 이름순으로 정렬합니다. 행의 순서는 로드 순서가 아닙니다.
+- 순서가 서로 반대인 근거가 모두 있는 쌍(순환)은 행을 만들지 않습니다. 이런 extension은 `extensions.csv`의 `load_order_cycle`이 `true`입니다.
+- 선택된 extension끼리만 계산합니다. 선택되지 않은 extension은 나오지 않습니다.
+
 ## 판정 방법
 
 1. **설치 폴더 전체 스캔**: `HYBRIS_HOME` 아래의 모든 `extensioninfo.xml`을 찾습니다. `localextensions.xml`에 적혀 있는지와 상관없이 전부 후보가 됩니다.
