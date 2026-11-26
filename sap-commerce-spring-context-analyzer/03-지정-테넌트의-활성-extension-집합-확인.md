@@ -1,4 +1,4 @@
-> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 3/13장. 이전: [2. 배포에 포함된 extension 집합 확인](02-배포에-포함된-extension-집합-확인.md) · 다음: [4. extension별 코어 설정값과 출처 확인](04-extension별-코어-설정값과-출처-확인.md)
+> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 3/13장. 이전: [2-2. extension 사이의 로드 순서 확인](02-2-extension-사이의-로드-순서-확인.md) · 다음: [4. extension별 코어 설정값과 출처 확인](04-extension별-코어-설정값과-출처-확인.md)
 
 # 3. 지정 테넌트의 활성 extension 집합 확인
 
@@ -36,7 +36,7 @@
 4. master가 대상이라면 MasterTenant 구현을, 추가 테넌트라면 그 배포에서 해당 ID에 구성되는 테넌트 구현을 확인한다.
 5. 구현이 빌드 목록, 설정 객체, 별도 목록을 조합한다면 각 입력이 어떤 순서로 읽히고 어떤 이름을 추가하거나 제외하는지 기록한다.
 6. Utilities.getExtensionNames(), Utilities.getInstalledExtensionNames(Tenant), PlatformConfig 등이 보이면 각 결과에 뒤따르는 필터와 호출자의 사용 방식을 읽는다.
-7. API에 반환형이 List로 표시되어 있어도 이 단계에서는 활성 집합의 출처를 판정한다. 실제 순회 순서는 7장에서 별도로 확인한다.
+7. API에 반환형이 List로 표시되어 있어도 이 단계에서는 활성 집합의 출처를 판정한다. 실제 순회 순서는 2-2장에서 별도로 확인한다.
 8. 코어 로더가 테넌트별 메서드의 결과를 그대로 쓰는지, 플랫폼 extension을 추가하거나 특정 종류를 제외하는지 확인한다.
 
 ## 3.3 설정 기반 분기를 정확한 키와 대조한다

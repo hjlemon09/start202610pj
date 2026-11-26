@@ -1,4 +1,4 @@
-> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 2/13장. 이전: [1. 지정 테넌트 ID와 대상 배포 확인](01-지정-테넌트-ID와-대상-배포-확인.md) · 다음: [3. 지정 테넌트의 활성 extension 집합 확인](03-지정-테넌트의-활성-extension-집합-확인.md)
+> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 2/13장. 이전: [1. 지정 테넌트 ID와 대상 배포 확인](01-지정-테넌트-ID와-대상-배포-확인.md) · 다음: [2-2. extension 사이의 로드 순서 확인](02-2-extension-사이의-로드-순서-확인.md)
 
 # 2. 배포에 포함된 extension 집합 확인
 
@@ -42,7 +42,7 @@
 |필요한 extension을 자동으로 포함한다.|`localextensions.xml`에 `myextension`만 적어도 `voucher`와 `cms`가 함께 로드된다. 필요한 extension은 따로 적지 않아도 된다.|2.2절|
 |필요한 extension을 `<path>`에서 찾는다.|이름만 있으므로 `localextensions.xml`의 `<path>`(lookup folder) 아래에서 폴더를 찾는다. 같은 이름이 여러 곳에 있으면 먼저 적힌 `<path>`의 위치가 우선한다.<br>근거: SAP Help [Configuration Options in localextensions.xml (2205)](https://help.sap.com/docs/SAP_COMMERCE/b490bb4e85bc42a7aa09d513d0bcb18e/cce26d8ef435425fb9e054d91794148c.html?locale=en-US) 「Loading Extensions by Name」의 Note ("…it is loaded from a location your first provided path points to"). 이 문서는 **같은 `<path>` 아래**의 중복은 다루지 않는다.|2.1.3절(검색 범위), 2.2절|
 |연쇄된다.|`voucher`도 자기 `extensioninfo.xml`에 `requires-extension`을 가질 수 있다. 새 이름이 나오지 않을 때까지 따라간다.|2.2절|
-|순서를 보장한다.|`myextension`은 `voucher`와 `cms`가 모두 빌드된 뒤에 빌드된다. 의존 관계가 선언되지 **않은** extension끼리의 빌드 순서와 초기화 순서는 정해져 있지 않다(non-deterministic).|7장|
+|순서를 보장한다.|`myextension`은 `voucher`와 `cms`가 모두 빌드된 뒤에 빌드된다. 의존 관계가 선언되지 **않은** extension끼리의 빌드 순서와 초기화 순서는 정해져 있지 않다(non-deterministic).|2-2장|
 |필요한 extension의 코어 소스를 쓸 수 있게 한다.|의존하는 extension은 필요한 extension의 `src`(coremodule) 클래스와 리소스를 사용할 수 있다. `web/src`(webmodule)의 클래스는 사용할 수 없다.|6장(클래스패스)|
 
 **예외 1: 플랫폼 extension에 대한 의존은 적지 않아도 된다.** `<HYBRIS_BIN_DIR>/platform/ext` 밖에 있는 extension은 모두 플랫폼 extension에 의존한다고 간주된다. 그래서 `core` 같은 플랫폼 extension은 `requires-extension`으로 적지 않는 경우가 많다. 2.2절에서 의존성을 따라갈 때, 플랫폼 extension이 선언에 없다고 의존 관계가 없다고 판단하지 않는다.
@@ -57,7 +57,7 @@
 **빈 목록과의 관계**
 
 - **누락 방지:** 의존성으로 포함된 extension의 Spring XML도 로드된다. `localextensions.xml`에 이름이 없다고 이 extension들을 빠뜨리면, 그 빈이 목록에서 누락된다.
-- **덮어쓰기 판단:** 여러 extension이 같은 빈 이름(또는 alias)을 정의하면, **나중에 로드된 extension의 정의가 앞의 정의를 덮어쓴다.** SAP Help는 의존 관계가 없는 두 extension이 같은 alias `myBean`을 정의하면, 로드 순서가 정해져 있지 않아 기대와 다른 빈이 최종 값이 될 수 있다는 예를 든다. 따라서 어떤 빈이 최종으로 남는지는 `requires-extension`과 `load-prior-to`로 정해지는 로드 순서로 판단하고, 둘 다 없으면 순서 미확정으로 기록한다(7장).
+- **덮어쓰기 판단:** 여러 extension이 같은 빈 이름(또는 alias)을 정의하면, **나중에 로드된 extension의 정의가 앞의 정의를 덮어쓴다.** SAP Help는 의존 관계가 없는 두 extension이 같은 alias `myBean`을 정의하면, 로드 순서가 정해져 있지 않아 기대와 다른 빈이 최종 값이 될 수 있다는 예를 든다. 따라서 어떤 빈이 최종으로 남는지는 `requires-extension`과 `load-prior-to`로 정해지는 로드 순서로 판단하고, 둘 다 없으면 순서 미확정으로 기록한다(2-2장).
 
 **예외 1의 전제.** 플랫폼 extension에 대한 위 자동 처리는 `localextensions.xml`의 **`<extensions>` 요소의 `autoload`**로 켜고 끈다. 생략하면 `true`이고, `false`이면 필요한 플랫폼 extension을 `localextensions.xml`에 직접 적어야 한다. 이것은 2.1.3절에서 다루는 `<path>`의 `autoload`(기본값 `false`)와 이름만 같은 다른 설정이다. 설치된 `extensions.xsd`에서 `extensionsType`의 `autoload`가 `use="optional" default="true"`로 정의되어 있고, 설명에 "Loads automatically all extensions of the platform"이라고 적혀 있는 것으로 확인했다.
 
@@ -243,7 +243,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 
 **왜 확인하는가**
 
-이후 장은 모두 **정식 extension 이름**을 기준으로 한다. 3장의 테넌트 활성 판정, 4장의 `<extension>.application-context` 프로퍼티 키, 7장의 의존 순서가 모두 이 이름을 쓴다. 폴더 이름으로 기록하면 이후 장에서 프로퍼티 키와 의존 관계를 잘못 찾는다.
+이후 장은 모두 **정식 extension 이름**을 기준으로 한다. 3장의 테넌트 활성 판정, 4장의 `<extension>.application-context` 프로퍼티 키, 2-2장의 의존 순서가 모두 이 이름을 쓴다. 폴더 이름으로 기록하면 이후 장에서 프로퍼티 키와 의존 관계를 잘못 찾는다.
 
 **어떻게 확인하는가**
 
@@ -314,7 +314,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 |---|---|---|
 |같은 이름의 extension 폴더가 여러 개|어느 폴더의 Spring XML을 분석할지 달라진다.|2.3.1|
 |요구된 extension의 폴더가 없음|그 extension의 빈이 빠지거나, 빌드 자체가 실패하는 구성일 수 있다.|2.3.2|
-|extension 사이의 순환 의존|선후 관계를 정할 수 없어 7장의 순서 판정에 영향을 준다.|2.3.3|
+|extension 사이의 순환 의존|선후 관계를 정할 수 없어 2-2장의 순서 판정에 영향을 준다.|2.3.3|
 
 세 경우 모두 **근거 없이 하나를 고르지 않는다.** 확인하지 못한 항목은 미확정으로 남기고, 영향을 받는 extension과 빈의 범위를 기록한다.
 
@@ -381,7 +381,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 
 |번호|확인 결과|판정|다음 작업|
 |---|---|---|---|
-|2.3.3-A|순환이 있지만 대상 빌드가 성공한다.|포함 여부는 확정한다(순환 안의 extension은 모두 포함). **선후 관계는 미확정**으로 둔다.|7장에서 순서를 판정할 때 이 extension들을 순서 미확정 그룹으로 다룬다.|
+|2.3.3-A|순환이 있지만 대상 빌드가 성공한다.|포함 여부는 확정한다(순환 안의 extension은 모두 포함). **선후 관계는 미확정**으로 둔다.|2-2장에서 순서를 판정할 때 이 extension들을 순서 미확정 그룹으로 다룬다.|
 |2.3.3-B|대상 빌드가 순환을 오류로 처리한다.|구성 오류로 기록한다.|해당 구성이 실제 대상 배포인지 1장으로 돌아가 다시 확인한다.|
 
 ### 이 절에서 지킬 원칙
@@ -395,7 +395,7 @@ extension의 Spring XML과 프로퍼티 파일은 그 extension 폴더 안에 �
 2. 정적으로 재구성한 이름 집합과 산출물에 기록된 이름 집합의 차이를 낸다.
 3. 차이가 생긴 이름마다 누락된 탐색 경로, 자동 로드 정책, 배포 생성 단계 중 무엇 때문인지 찾는다.
 4. 빌드 자료가 경로까지 제공하면 extensioninfo.xml 경로와 대조한다.
-5. 대상 자료가 목록의 순서를 나타내는지 여부는 7장에서 따로 판단한다.
+5. 대상 자료가 목록의 순서를 나타내는지 여부는 2-2장에서 따로 판단한다.
 
 완료 기준. 대상 배포의 포함 extension마다 이름, 실제 경로, 포함 이유가 있고, 각 requires-extension edge의 대상이 해석되었다.
 중복 후보나 누락이 남아 있다면 그 이름과 조건을 명시해 3장의 확정 범위를 제한한다.
@@ -432,4 +432,4 @@ https://help.sap.com/docs/SAP_COMMERCE/d0224eca81e249cb821f2cdf45a82ace/8b6ded0d
 
 - 판정은 설정 파일만 읽은 정적 추정이다. 실행 중인 서버나 빌드 결과는 확인하지 않는다.
 - 스캔이나 판정에 문제가 있으면 `summary.csv`의 `scan_complete`/`selection_complete`가 `false`가 된다. 이때 spring-bean-analyzer-from-xml은 결과를 만들되 종료 코드 1로 끝난다.
-- extension-analyzer는 7장 일부(의존성으로 보장되는 선후관계)도 함께 계산해 `extension-load-order.csv`로 낸다.
+- extension-analyzer는 2-2장 일부(의존성으로 보장되는 선후관계)도 함께 계산해 `extension-load-order.csv`로 낸다.

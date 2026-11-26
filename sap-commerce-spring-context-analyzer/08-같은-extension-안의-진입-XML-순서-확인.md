@@ -1,4 +1,4 @@
-> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 8/13장. 이전: [7. extension 사이의 로드 순서 확인](07-extension-사이의-로드-순서-확인.md) · 다음: [9. XML 내부 profile과 import 처리 흐름 확인](09-XML-내부-profile과-import-처리-흐름-확인.md)
+> SAP Commerce 2211 지정 테넌트의 코어 Spring XML 조사 절차서 — 8/13장. 이전: [6. 진입 XML의 실제 클래스패스·파일 위치 확인](06-진입-XML의-실제-클래스패스-파일-위치-확인.md) · 다음: [9. XML 내부 profile과 import 처리 흐름 확인](09-XML-내부-profile과-import-처리-흐름-확인.md)
 
 # 8. 같은 extension 안의 진입 XML 순서 확인
 
