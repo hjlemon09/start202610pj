@@ -198,6 +198,8 @@ import로 도달한 JAR 안의 XML입니다.
 | `UNRESOLVED_LOADING_PROPERTY` | 로딩 프로퍼티(`*.application-context` 등)의 `${…}`를 해석하지 못함 |
 | `EMPTY_CONTEXT_CONFIG` | `contextConfigLocation`이 비어 있음 |
 | `REGISTRATION_NOT_ESTABLISHED` | `resources/<extension>-spring.xml`은 있지만, `<extension>.application-context` 프로퍼티도 `<extension>-application-context.xml`도 없어 그 파일을 등록하는 근거를 찾지 못함 |
+| `WEB_XML_WITHOUT_WEBMODULE` | `web/webroot/WEB-INF/web.xml`은 있지만 `extensioninfo.xml`에 `<webmodule>`이 없음. 웹 애플리케이션으로 배포되지 않으므로 웹 컨텍스트, `web/webroot`의 XML·JAR를 분석하지 않음 |
+| `WEBMODULE_WITHOUT_WEB_XML` | `<webmodule>`은 선언했지만 `web/webroot/WEB-INF/web.xml`이 없음. 웹 컨텍스트를 만들지 않음 |
 | `NON_XML_CONTEXT` | `contextClass`가 XML 기반이 아닌 컨텍스트 |
 | `LOADER_IMPLEMENTATION_UNVERIFIED` | 웹 로더 구현을 확인하지 못함 |
 | `WEB_XML_INSPECTION_ERROR` | `web.xml` 검사 중 오류 |

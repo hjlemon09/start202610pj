@@ -57,6 +57,8 @@ public final class ExtensionReportTest {
         check(!loaded.activation().selections().get("unused").selected(), "NOT_SELECTED is not selected");
         check(loaded.extensions().size() == 4, "All listed definitions are read");
         check(loaded.extensions().get("app").getXmlPath().equals(app), "The effective copy is used");
+        check(loaded.extensions().get("app").isWebModule() && !loaded.extensions().get("service").isWebModule()
+                && !loaded.extensions().get("unused").isWebModule(), "web_module from extensions.csv (unlisted = false)");
         check(loaded.order().compare("platform", "app") == ExtensionOrder.Relation.BEFORE
                 && loaded.order().compare("service", "app") == ExtensionOrder.Relation.BEFORE
                 && loaded.order().compare("app", "service") == ExtensionOrder.Relation.AFTER, "Load order pairs are read");
@@ -73,8 +75,8 @@ public final class ExtensionReportTest {
                 row("app", "EXPLICIT", "Declared", "", app),
                 row("service", "DEPENDENCY", "Required", "app", service),
                 row("gone", "DEPENDENCY", "Required", "app", root.resolve("bin/gone/extensioninfo.xml"))));
-        csv(partial.resolve("extensions.csv"), List.of(List.of("extension", "load_order_cycle"),
-                List.of("app", "true"), List.of("service", "true")));
+        csv(partial.resolve("extensions.csv"), List.of(List.of("extension", "web_module", "load_order_cycle"),
+                List.of("app", "false", "true"), List.of("service", "false", "true")));
         csv(partial.resolve("activation-issues.csv"), List.of(List.of("reference", "message"),
                 List.of("notFound", "Name not found within configured lookup paths")));
         csv(partial.resolve("scan-failures.csv"), List.of(List.of("kind", "path", "message"),
@@ -172,10 +174,10 @@ public final class ExtensionReportTest {
         csv(dir.resolve("extension-activation.csv"), table);
         csv(dir.resolve("activation-issues.csv"), List.of(List.of("reference", "message")));
         List<List<String>> selected = new java.util.ArrayList<>();
-        selected.add(List.of("extension", "selection_status", "load_order_cycle"));
+        selected.add(List.of("extension", "selection_status", "web_module", "load_order_cycle"));
         for (List<String> row : activation) {
             if (!row.get(1).equals("NOT_SELECTED")) {
-                selected.add(List.of(row.get(0), row.get(1), "false"));
+                selected.add(List.of(row.get(0), row.get(1), row.get(0).equals("app") ? "true" : "false", "false"));
             }
         }
         csv(dir.resolve("extensions.csv"), selected);

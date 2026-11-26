@@ -32,12 +32,19 @@ SAP Commerce에서는 extension이 웹 애플리케이션을 가지는지를 **�
 
 `extensions.csv`는 선택된 extension만 담는다.
 
-## 다른 도구에서의 사용 (주의)
+## 다른 도구에서의 사용
 
-- spring-bean-analyzer-from-xml은 현재 이 `web_module` 값을 **보지 않는다.**
-- 대신 `web/webroot/WEB-INF/web.xml` 파일이 있으면 그 extension에 웹 컨텍스트가 있다고 판단한다(`SpringLoadingAnalyzer`).
-- 따라서 `<webmodule>` 선언 없이 `web.xml`만 남아 있는 extension도 웹 컨텍스트로 분석될 수 있다.
-- SAP의 배포 규칙에 맞추려면 `web_module=true`인 extension만 웹 컨텍스트로 보는 것이 맞다.
+spring-bean-analyzer-from-xml은 `extensions.csv`의 `web_module`을 읽어, **`web_module=true`인 extension만** 웹 쪽을 분석한다.
+
+|대상|`web_module=true`|`web_module=false`|
+|---|---|---|
+|웹 컨텍스트(`web.xml`의 `contextConfigLocation` 등)|분석한다|분석하지 않는다|
+|`web/webroot` 아래의 Spring XML 목록|포함한다|포함하지 않는다|
+|`web/webroot` 아래의 JAR(`WEB_LIBRARY`)|색인한다|색인하지 않는다|
+
+- `<webmodule>` 없이 `web.xml`만 남아 있으면 `spring-loading-issues.csv`에 `WEB_XML_WITHOUT_WEBMODULE`로 기록한다.
+- `<webmodule>`은 있지만 `web.xml`이 없으면 `WEBMODULE_WITHOUT_WEB_XML`로 기록한다.
+- 선택되지 않은 extension을 찾는 보조 검색(비선택 extension 검색)은 참고용이라, `web/webroot`의 JAR도 그대로 찾는다.
 
 ## 참고
 

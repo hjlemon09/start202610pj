@@ -160,7 +160,7 @@ public final class SpringBeanWinnerResolverTest {
 
     private static void extension(Map<String, ExtensionInfo> definitions, String name, String dir) throws Exception {
         Path xml = put(dir + "/extensioninfo.xml", "<extensioninfo><extension name='" + name + "'/></extensioninfo>");
-        definitions.put(name, new ExtensionInfo(name, xml));
+        definitions.put(name, new ExtensionInfo(name, xml, true));
     }
 
     private static Path put(String relative, String content) throws Exception {

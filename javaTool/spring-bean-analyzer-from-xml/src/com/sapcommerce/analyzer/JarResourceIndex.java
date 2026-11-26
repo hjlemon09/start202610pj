@@ -59,12 +59,14 @@ public final class JarResourceIndex {
         for (String name : extensions.keySet().stream().sorted().toList()) {
             var selection = activation.selections().get(name);
             if (unselected ? selection.status().equals("NOT_SELECTED") : selection.selected()) {
-                index.collect(extensions.get(name).getXmlPath().getParent(), name, "EXTENSION_LIBRARY");
+                // web/webroot jars are deployed only for <webmodule> extensions; unselected ones are a hint search and keep them.
+                index.collect(extensions.get(name).getXmlPath().getParent(), name, "EXTENSION_LIBRARY",
+                        unselected || extensions.get(name).isWebModule());
             }
         }
         if (!unselected) {
-            index.collect(root.resolve("bin/platform/lib"), "", "PLATFORM_SHARED");
-            index.collect(root.resolve("bin/platform/bootstrap/bin"), "", "PLATFORM_SHARED");
+            index.collect(root.resolve("bin/platform/lib"), "", "PLATFORM_SHARED", true);
+            index.collect(root.resolve("bin/platform/bootstrap/bin"), "", "PLATFORM_SHARED", true);
         }
         List<Entry> entries = new ArrayList<>();
         List<Archive> archives = new ArrayList<>();
@@ -87,7 +89,7 @@ public final class JarResourceIndex {
         return new Result(List.copyOf(entries), List.copyOf(archives), List.copyOf(index.problems));
     }
 
-    private void collect(Path directory, String extension, String defaultScope) {
+    private void collect(Path directory, String extension, String defaultScope, boolean includeWebroot) {
         if (!Files.isDirectory(directory)) { return; }
         Path normalized = directory.toAbsolutePath().normalize();
         Path webroot = normalized.resolve("web/webroot");
@@ -101,6 +103,7 @@ public final class JarResourceIndex {
                 }
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                    if (!includeWebroot && file.startsWith(webroot)) { return FileVisitResult.CONTINUE; }
                     if (attributes.isRegularFile() && file.toString().toLowerCase(java.util.Locale.ROOT).endsWith(".jar")) {
                         jars.putIfAbsent(file, new Owner(extension,
                                 file.startsWith(webroot) ? "WEB_LIBRARY" : defaultScope));

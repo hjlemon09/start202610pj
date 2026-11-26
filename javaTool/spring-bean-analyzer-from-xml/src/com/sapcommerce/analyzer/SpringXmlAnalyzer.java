@@ -106,7 +106,8 @@ public final class SpringXmlAnalyzer {
             if (!activation.selections().get(name).selected()) { continue; }
             Path directory = extensions.get(name).getXmlPath().getParent();
             analyzer.collect(name, directory.resolve("resources"), "RESOURCES");
-            analyzer.collect(name, directory.resolve("web/webroot"), "WEB");
+            // web/webroot is deployed only for <webmodule> extensions.
+            if (extensions.get(name).isWebModule()) { analyzer.collect(name, directory.resolve("web/webroot"), "WEB"); }
         }
         for (Location location : analyzer.locations.values()) { analyzer.inspect(location); }
         for (SpringLoadingAnalyzer.Declaration declaration : loadingPlan.declarations()) {

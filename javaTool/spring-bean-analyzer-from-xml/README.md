@@ -49,7 +49,7 @@ extension-analyzer 결과가 없으면 분석하지 않고 종료 코드 1로 �
 | `summary.csv` | `hybris_home`(분석 루트), `localextensions_file`, 찾은/파싱한 XML 수, `scan_complete` |
 | `extension-activation.csv` | 발견한 extension(이름당 사용하는 정의 하나)과 선택 상태·사유·근거, `extensioninfo.xml` 경로 |
 | `activation-issues.csv` | 선택 판정 문제 (`selection_complete`) |
-| `extensions.csv` | 선택된 extension의 `load_order_cycle`(requires/load-prior-to 순환 여부) |
+| `extensions.csv` | 선택된 extension의 `web_module`(`<webmodule>` 선언 여부)과 `load_order_cycle`(requires/load-prior-to 순환 여부) |
 | `extension-load-order.csv` | 선택된 extension 사이의 보장된 순서 쌍. 없는 쌍은 순서 미확정 |
 | `extension-duplicates.csv`, `activation-notes.csv`, `scan-failures.csv` | 중복 정의, 참고 기록, 스캔 실패 (없으면 0건으로 처리) |
 
@@ -406,7 +406,7 @@ Execute를 인자 없이 실행하면 import 분석 후
 - `<extension>.application-context` 속성: Core 설정 후보 (값은 쉼표/공백/세미콜론으로 구분)
 - `<extension>.global-context` 속성: Global 설정 후보
 - 명시 application-context 속성이 없고 resources/<extension>-application-context.xml이 존재하면 관례 후보
-- web/webroot/WEB-INF/web.xml의 context-param/contextConfigLocation: 웹 루트 후보
+- web/webroot/WEB-INF/web.xml의 context-param/contextConfigLocation: 웹 루트 후보. `<webmodule>`이 선언된 extension만 대상이며, 선언 없이 web.xml만 있으면 `WEB_XML_WITHOUT_WEBMODULE`로 기록 ([배경](../extension-analyzer/docs/background_knowledge_webmodule.md))
 - Servlet의 init-param/contextConfigLocation: 별도 Servlet 후보
 - 표준 Listener/DispatcherServlet의 XML 설정 기본 경로: 기본 규칙에 따른 후보
 - web.xml의 display-name 기반 additionalWebSpringConfigs 및 하위 키: SAP 웹 추가 설정 후보

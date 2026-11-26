@@ -59,8 +59,18 @@ public final class SpringLoadingAnalyzer {
                 }
             }
             analyzer.propertyRoot(name, name + ".global-context", "GLOBAL", "GLOBAL", dir.resolve("resources"));
+            // SAP deploys web/webroot only for extensions whose extensioninfo.xml declares <webmodule>.
             Path web = dir.resolve("web/webroot/WEB-INF/web.xml");
-            if (Files.isRegularFile(web)) { analyzer.web(name, web, dir.resolve("web/webroot")); }
+            boolean webModule = extensions.get(name).isWebModule();
+            if (webModule && Files.isRegularFile(web)) {
+                analyzer.web(name, web, dir.resolve("web/webroot"));
+            } else if (webModule) {
+                analyzer.problems.add(new Problem(web.toString(), "WEBMODULE_WITHOUT_WEB_XML",
+                        "extensioninfo.xml declares <webmodule>, but web/webroot/WEB-INF/web.xml is missing; no web context is modeled"));
+            } else if (Files.isRegularFile(web)) {
+                analyzer.problems.add(new Problem(web.toString(), "WEB_XML_WITHOUT_WEBMODULE",
+                        "web.xml exists, but extensioninfo.xml declares no <webmodule>; not deployed as a web application, not analyzed"));
+            }
         }
         return new Plan(List.copyOf(analyzer.declarations), List.copyOf(analyzer.problems));
     }

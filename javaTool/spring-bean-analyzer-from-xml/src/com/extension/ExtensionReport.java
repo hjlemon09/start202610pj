@@ -92,6 +92,18 @@ public final class ExtensionReport {
         Map<String, ExtensionActivation.Selection> selections = new TreeMap<>();
         Map<String, ExtensionInfo> extensions = new TreeMap<>();
         List<Unreadable> unreadable = new ArrayList<>();
+        // extensions.csv lists the selected extensions: <webmodule> declaration and load order cycle membership.
+        // Older extractor results lack load_order_cycle and are rejected.
+        java.util.Set<String> webModules = new java.util.HashSet<>();
+        List<String> cyclic = new ArrayList<>();
+        for (Map<String, String> row : read(directory, "extensions.csv", true, "extension", "web_module", "load_order_cycle")) {
+            if ("true".equals(row.get("web_module"))) {
+                webModules.add(row.get("extension"));
+            }
+            if ("true".equals(row.get("load_order_cycle"))) {
+                cyclic.add(row.get("extension"));
+            }
+        }
         for (Map<String, String> row : read(directory, MARKER, true,
                 "extension", "selection_status", "reason", "selected_by", "xml_path")) {
             String name = row.get("extension");
@@ -99,20 +111,14 @@ public final class ExtensionReport {
                     row.get("reason"), row.get("selected_by")));
             Path xml = Path.of(row.get("xml_path"));
             if (Files.isRegularFile(xml)) {
-                extensions.put(name, new ExtensionInfo(name, xml.toAbsolutePath().normalize()));
+                extensions.put(name, new ExtensionInfo(name, xml.toAbsolutePath().normalize(), webModules.contains(name)));
             } else {
                 unreadable.add(new Unreadable(name, xml,
                         "extensioninfo.xml no longer exists; the extension-analyzer result is out of date"));
             }
         }
 
-        // Guaranteed load order between selected extensions. Older extractor results lack these columns/files.
-        List<String> cyclic = new ArrayList<>();
-        for (Map<String, String> row : read(directory, "extensions.csv", true, "extension", "load_order_cycle")) {
-            if ("true".equals(row.get("load_order_cycle"))) {
-                cyclic.add(row.get("extension"));
-            }
-        }
+        // Guaranteed load order between selected extensions. Older extractor results lack this file.
         List<String[]> pairs = new ArrayList<>();
         for (Map<String, String> row : read(directory, "extension-load-order.csv", true, "extension", "loads_before")) {
             pairs.add(new String[] {row.get("extension"), row.get("loads_before")});

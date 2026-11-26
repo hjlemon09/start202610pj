@@ -13,9 +13,9 @@ public final class ImportPropertyResolverTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("import-property-test-");
         Map<String, ExtensionInfo> definitions = Map.of(
-                "a", new ExtensionInfo("a", root.resolve("a/extensioninfo.xml")),
-                "b", new ExtensionInfo("b", root.resolve("b/extensioninfo.xml")),
-                "off", new ExtensionInfo("off", root.resolve("off/extensioninfo.xml")));
+                "a", new ExtensionInfo("a", root.resolve("a/extensioninfo.xml"), true),
+                "b", new ExtensionInfo("b", root.resolve("b/extensioninfo.xml"), true),
+                "off", new ExtensionInfo("off", root.resolve("off/extensioninfo.xml"), true));
         var selected = new ExtensionActivation.Selection("EXPLICIT", "fixture", "");
         var activation = new ExtensionActivation.Result(root.resolve("config/localextensions.xml"),
                 Map.of("a", selected, "b", selected,
