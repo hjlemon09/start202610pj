@@ -2,28 +2,7 @@
 
 ---
 
-## [S1] 전제와 그 전제가 답에 주는 영향
-
-### [S1.1] 논의의 전제 (요약)
-
-- [S1.1-L1] 현행 Accelerator와 같은 소스·DB로 시작하고, zip에 포함된 OCC extension을 활성화해 OCC 구성(essential/project data, OAuth 클라이언트)을 더한다.
-- [S1.1-L2] Accelerator 관련 파일은 삭제하지 않고 충돌할 때만 조정한다.
-- [S1.1-L3] 이행 전부터 쓰던 Accelerator 관련 extension은 이행 시점에 **바로 비활성화한다**(병행 기간 없음).
-- [S1.1-L4] 작업의 약 90%는 Controller 계층이다. facade·service·dao·model은 재사용하고, 정말 필요할 때만 추가한다(model은 확실한 근거가 있을 때만).
-
-### [S1.2] 전제에서 바로 나오는 결론 7가지
-
-1. [S1.2-L1] **이행의 중심은 "Accelerator 컨트롤러가 하던 일을 OCC 컨트롤러로 옮기는 일"이다.** 메서드의 처리를 facade 호출(재사용), 컨트롤러 안의 로직(OCC 컨트롤러로 이전, 정말 필요하면 facade로), 화면 처리(프런트엔드·CMS)로 나눈다.
-2. [S1.2-L2] **Data 객체는 이미 있다.** Accelerator 화면의 커스텀 값은 대부분 `*Data`와 Populator로 채워져 있다. 그래서 0-2-1은 많은 경우 **WsDTO 필드와 fields 매핑 추가로 끝난다.**
-3. [S1.2-L3] **공유 계층을 바꾸면 같은 계층을 쓰는 다른 채널에도 적용된다.** facade·service·Populator를 바꾸면 OCC와 함께 배치, 메일, 백오피스, 외부 연동에도 적용된다. 업무 규칙의 차이는 공유 계층에서 고치는 선택지(패턴 D)를 쓸 수 있다.
-4. [S1.2-L4] **재사용할 수 있는 것은 "코어 쪽 빈"뿐이고, 스토어프런트 쪽은 비활성화와 함께 없어진다.** 스토어프런트 웹 애플리케이션 컨텍스트의 빈은 OCC 웹 컨텍스트에서 보이지 않는다. 비활성화 뒤에는 클래스 자체도 로드되지 않는다. 그래서 OCC에 필요한 것은 OCC 쪽으로 옮겨야 한다.
-5. [S1.2-L5] **Facade가 세션을 쓰는 것은 대체로 괜찮다.** OCC 필터 체인(`BaseSiteMatchingFilter`, `UserMatchingFilter`, `CartMatchingFilter` 등)이 요청마다 사이트·사용자·장바구니(`cartId`)를 세션에 설정하므로 `getSessionCart()` 같은 호출도 동작한다. 다만 **Accelerator 컨트롤러나 필터가 HTTP 세션에 직접 넣던 커스텀 속성**은 OCC에 없다.
-6. [S1.2-L6] **DB를 그대로 가져오므로 CMS 데이터도 그대로 있다.** Composable Storefront는 이를 CMS API로 읽으므로, 화면 구성 일부는 새 OCC 엔드포인트 없이 이행할 수 있다.
-7. [S1.2-L7] **비활성화 범위를 extension 의존관계로 정해야 한다.** 비활성화하는 extension에 OCC가 쓰는 빈이 있으면 OCC도 함께 동작하지 않는다. 예를 들면 커스텀 core·facades extension, addon의 코어 쪽 빈이 그렇다. 그래서 "스토어프런트(웹)만 끄는가, addon·accelerator 모듈까지 끄는가"를 정하고, OCC 쪽 extension의 의존관계(`requires-extension`)를 extension-analyzer로 확인한다.
-
----
-
-## [S2] 0. 이행 작업에서 나타나는 패턴의 전체 그림
+## [S2] 이행 작업에서 나타나는 패턴의 전체 그림
 
 ### [S2.1] Accelerator 엔드포인트의 종류와 이행 단위
 
@@ -41,28 +20,28 @@
 
 [S2.2-T1] (표)
 
-| 패턴 | 요약 | 이 전제에서의 주 작업 |
+| 패턴 | 요약 | 주 작업 |
 |---|---|---|
-| A. 표준 API로 대체 (0-1) | 표준 OCC + Spartacus 표준 기능 | 없음(필요한 OCC extension 활성화) |
-| B. 표준 API 조합 (0-5) | 표준 API 여러 개를 프런트엔드에서 조합 | 프런트엔드만 |
-| C. 응답 데이터 확장 (0-2-1) | 같은 URL의 응답에 필드 추가 | WsDTO + fields 매핑. Data·Populator는 대개 이미 있음 |
-| D. 하위 업무 로직 확장 (0-2-2) | 같은 계약, 처리 규칙만 변경 | Service·Strategy·Hook |
-| E. 요청 계약 확장 (0-2-2) | 선택 파라미터, 요청 DTO 필드 추가 | WsDTO, 컨트롤러 재정의 |
-| F. 같은 URL 재정의 (0-2-2) | `@RequestMappingOverride`로 처리 교체 | 커스텀 OCC 컨트롤러 |
-| G. 신규 엔드포인트 (0-3) | 새 URL, 새 계약 | 커스텀 OCC 컨트롤러 + 기존 facade 호출 |
+| A. 표준 API로 대체 | 표준 OCC + Spartacus 표준 기능 | 없음(필요한 OCC extension 활성화) |
+| B. 표준 API 조합 | 표준 API 여러 개를 프런트엔드에서 조합 | 프런트엔드만 |
+| C. 응답 데이터 확장 | 같은 URL의 응답에 필드 추가 | WsDTO + fields 매핑. Data·Populator는 대개 이미 있음 |
+| D. 하위 업무 로직 확장 | 같은 계약, 처리 규칙만 변경 | Service·Strategy·Hook |
+| E. 요청 계약 확장 | 선택 파라미터, 요청 DTO 필드 추가 | WsDTO, 컨트롤러 재정의 |
+| F. 같은 URL 재정의 | `@RequestMappingOverride`로 처리 교체 | 커스텀 OCC 컨트롤러 |
+| G. 신규 엔드포인트 | 새 URL, 새 계약 | 커스텀 OCC 컨트롤러 + 기존 facade 호출 |
 | H. API가 필요 없음 | CMS, 프런트엔드, 설정 | CMS 컴포넌트 매핑 |
 
-[S2.2-L2] 이 전제에서는 **G가 가장 많이 나올 가능성이 높다.** facade를 재사용하므로, 표준 OCC에 없는 기능은 대부분 "기존 facade를 부르는 새 OCC 컨트롤러"가 된다. C와 F가 그 다음이다. D는 업무 규칙 자체가 바뀌는 경우에 쓴다.
+[S2.2-L2] facade·service를 재사용하는 이행에서는 **G가 가장 많이 나올 가능성이 높다.** 표준 OCC에 없는 기능은 대부분 "기존 facade를 부르는 새 OCC 컨트롤러"가 된다. C와 F가 그 다음이다. D는 업무 규칙 자체가 바뀌는 경우에 쓴다.
 
 ---
 
-## [S3] 0-1. 기존 OCC API로 완전히 대체할 수 있는 경우
+## [S3] 기존 OCC API로 완전히 대체할 수 있는 경우
 
 ### [S3.1] 대체 가능 판정 조건 (모두 만족)
 
 1. [S3.1-L1] **입력**: Accelerator가 받던 파라미터를 OCC API의 경로·쿼리·본문으로 표현할 수 있다.
 2. [S3.1-L2] **처리**: 호출되는 facade/service가 같거나 업무상 같은 결과를 낸다. 부수 효과(이벤트, 메일, 감사 로그)도 포함한다.
-   - [S3.1-L3] 이 전제에서는 **같은 facade를 부르는지**를 호출 그래프로 비교하면 판정이 빠르다.
+   - [S3.1-L3] facade를 그대로 재사용하므로 **같은 facade를 부르는지**를 호출 그래프로 비교하면 판정이 빠르다.
 3. [S3.1-L4] **출력**: 화면에 필요한 값이 OCC 응답(fields 지정 포함)에 모두 있다.
 4. [S3.1-L5] **조건**: 권한, 로그인 여부, 사이트·통화·언어 컨텍스트가 같은 방식으로 적용된다.
 
@@ -79,11 +58,11 @@
 
 ---
 
-## [S4] 0-2. 기존 OCC API를 일부 수정하는 경우
+## [S4] 기존 OCC API를 일부 수정하는 경우
 
-### [S4.1] 0-2-1. 같은 엔드포인트에 응답 항목을 추가하기
+### [S4.1] 같은 엔드포인트에 응답 항목을 추가하기
 
-#### [S4.1.1] 구현 순서 (이 전제에서의 형태)
+#### [S4.1.1] 구현 순서 (기존 Data·Populator를 재사용하는 경우)
 
 [S4.1.1-L1] (코드 블록)
 ```text
@@ -102,14 +81,14 @@
 - [S4.1.1-L2] 1·2가 **OCC가 부르는 Converter에도 등록되어 있는지** 확인한다.
   - [S4.1.1-L3] Accelerator 컨트롤러는 다른 facade 메서드나 다른 ProductOption으로 같은 Data를 채웠을 수 있다.
   - [S4.1.1-L4] 예: 상품은 `getProductForCodeAndOptions(code, options)`에 넘기는 `ProductOption`에 따라 실행되는 Populator가 달라진다. OCC 상품 API가 어떤 옵션을 넘기는지는 **[미확인]**이다.
-- [S4.1.1-L5] 1·2가 **스토어프런트나 addon extension에 정의되어 있으면** 비활성화와 함께 없어진다(스토어프런트의 beans.xml·spring.xml 등). 이 경우 core·facades extension으로 옮긴다.
+- [S4.1.1-L5] 1·2가 **스토어프런트나 addon extension에 정의되어 있으면** 그 extension을 비활성화할 때 함께 없어진다(스토어프런트의 beans.xml·spring.xml 등). 이 경우 core·facades extension으로 옮긴다.
 - [S4.1.1-L6] 4를 하지 않아도 `fields=...,originCountry`처럼 명시 지정하면 응답에 나온다. 레벨에 넣는 것은 "레벨로만 fields를 지정하는 호출자에게도 기본으로 보일지"를 정하는 일이다.
 - [S4.1.1-L7] FieldSetLevelMapping 빈(`parent="fieldSetLevelMapping"`, `dtoClass`, `levelMapping`)은 **OCC 웹 컨텍스트에 정의해야 한다**. `DefaultFieldSetBuilder`가 같은 컨텍스트에서 읽기 때문이다.
 - [S4.1.1-L8] 같은 `dtoClass`에 빈을 하나 더 정의하면 기존 정의와 합쳐지는지 덮어쓰는지는 **[미확인]**이다. `DefaultFieldSetLevelHelper.addToLevelMap`의 동작을 소스로 확인한다. occ-response-analyzer는 이 경우를 `MULTIPLE_MAPPINGS`로 보고한다.
 
-#### [S4.1.2] 0-2-1-1. 어떤 경우에 이 패턴을 검토할 수 있는가?
+#### [S4.1.2] 응답 항목 추가를 검토할 수 있는 경우
 
-[S4.1.2-L1] 이 전제에서는 판단이 쉬워진다. 판단 기준은 두 가지다.
+[S4.1.2-L1] Accelerator 화면용 Data가 이미 있으므로 판단이 쉬워진다. 판단 기준은 두 가지다.
 
 - [S4.1.2-L2] **"Accelerator 화면이 어떤 Data의 커스텀 속성을 표시하고 있고, 그 Data가 표준 OCC 응답의 원천과 같은 Data인가"**
 - [S4.1.2-L3] 그리고 그 값이 **그 리소스의 속성**인가
@@ -140,18 +119,18 @@
 
 - [S4.1.2-L6] **컨트롤러가 Model에 따로 넣던 값**(예: `model.addAttribute("relatedBrands", brandFacade.get...)`)
   - [S4.1.2-L7] Data의 속성이 아니라 다른 facade 호출 결과다.
-  - [S4.1.2-L8] 그래서 별도 API(0-3) 또는 표준 API 조합(0-5)이 된다.
+  - [S4.1.2-L8] 그래서 별도 API(신규 엔드포인트) 또는 표준 API 조합이 된다.
   - [S4.1.2-L9] controller-model-analyzer의 결과에서 "Data 속성 경로"인지 "별도 Model 속성"인지로 구분할 수 있다.
 - [S4.1.2-L10] 다른 리소스 목록, 특정 화면 집계, 무거운 외부 조회, 입력에 따라 달라지는 계산 → 별도 API.
 
-### [S4.2] 0-2-2. 0-2-1 말고 다른 수정 패턴
+### [S4.2] 응답 항목 추가 외의 수정 패턴
 
 [S4.2-T1] (표)
 
 | 패턴 | 언제 | 구현 방법 | 영향 |
 |---|---|---|---|
 | D. 하위 업무 로직 확장 | 계약은 같고 처리 규칙만 다르다 | Service·Strategy 빈 교체(alias), Hook 추가, facade 확장 (대상 API에 어떤 확장 지점이 있는지는 **[미확인]**) | 같은 계층을 쓰는 모든 채널(배치, 메일, 백오피스)에 적용된다. 업무 규칙 자체의 변경이면 이것이 맞는 위치다. OCC 요청에만 필요한 처리면 OCC 컨트롤러 쪽(F 또는 G)에서 한다 |
-| D'. Validator 교체·추가 | 입력 검증 규칙만 다르다 | OCC 컨트롤러가 주입받는 Validator 빈을 OCC 웹 컨텍스트에서 교체·추가 | OCC 요청에만 적용. Accelerator 폼 Validator는 재사용할 수 없고 비활성화로 없어지므로, 규칙을 옮겨 다시 작성 |
+| D'. Validator 교체·추가 | 입력 검증 규칙만 다르다 | OCC 컨트롤러가 주입받는 Validator 빈을 OCC 웹 컨텍스트에서 교체·추가 | OCC 요청에만 적용. Accelerator 폼 Validator는 재사용할 수 없고 Accelerator extension 비활성화로 없어지므로, 규칙을 옮겨 다시 작성 |
 | E. 요청 계약 확장 | 선택 파라미터, 요청 본문 필드 추가 | 요청 WsDTO에 속성 추가 → Data로 매핑. 쿼리 파라미터는 F가 필요 | 필수로 만들면 기존 호출자가 깨진다. 반드시 선택 항목으로 |
 | F. 같은 URL 재정의 | 컨트롤러 수준의 처리 변경 | 커스텀 OCC extension에 **완전히 같은** 매핑의 메서드 + `@RequestMappingOverride`(아래 주의) | 원래 메서드는 호출되지 않는다. 업그레이드 시 표준 메서드의 변경을 직접 따라가야 한다 |
 | 응답 레벨만 조정 | 필드는 있으나 기본 레벨에 없다 | FieldSetLevelMapping 수정 | fields를 레벨(DEFAULT/FULL)로 지정하는 호출자의 응답에 필드가 늘어난다 |
@@ -164,7 +143,7 @@
 - [S4.2-L4] 우선순위는 `priorityProperty`로 지정한 프로퍼티나 `requestMappingOverride.<클래스 FQN>.<메서드명>.priority`로 정한다. 값이 없으면 0이고, **가장 높은 값**이 쓰인다.
 - [S4.2-L5] ASM 모드 등 특정 경로에서 재정의가 호출되지 않았다는 보고도 있다. 재정의한 API는 사용 경로별로 테스트한다.
 
-[S4.2-L6] **이 전제에서 권하는 검토 순서**
+[S4.2-L6] **권하는 검토 순서**
 - [S4.2-L7] 먼저 **C(응답 데이터)**로 되는지 본다.
 - [S4.2-L8] 남은 차이는 성격으로 나눈다.
   - [S4.2-L9] **업무 규칙 자체**(검증·계산·후처리)의 차이 → **D(공유 계층)**. 규칙은 facade·service에 하나만 두는 쪽이 이중 관리를 피한다.
@@ -173,7 +152,7 @@
 
 ---
 
-## [S5] 0-3. 완전히 새로운 OCC 엔드포인트를 작성하기
+## [S5] 완전히 새로운 OCC 엔드포인트를 작성하기
 
 ### [S5.1] 구성 요소
 
@@ -183,7 +162,7 @@
   ant extgen의 yocc 템플릿으로 생성. 이름은 occ로 끝나야 한다(예: xyzocc)
   2211부터 OCC는 addon이 아니라 extension 방식이다
   Controller (BaseController 상속, <ext>.controllers 패키지, @RequestMapping("/{baseSiteId}/..."))
-    - 기존 facade를 주입받아 호출  ← 이 전제의 핵심. 새 facade는 정말 필요할 때만
+    - 기존 facade를 주입받아 호출  ← 핵심. 새 facade는 정말 필요할 때만
     - 보안: @Secured({"ROLE_CUSTOMERGROUP", "ROLE_TRUSTED_CLIENT", ...}) 등, 익명 허용 여부
     - 문서: @ApiBaseSiteIdParam, @ApiFieldsParam
     - DataMapper.map(data, XxxWsDTO.class, fields)
@@ -197,15 +176,15 @@
 
 ### [S5.2] Accelerator 컨트롤러를 OCC 컨트롤러로 옮길 때의 변환표
 
-[S5.2-L1] 이 전제의 작업 90%가 여기에 해당한다.
+[S5.2-L1] 이행 작업의 대부분(약 90%)이 여기에 해당한다.
 
 [S5.2-T1] (표)
 
 | Accelerator 컨트롤러의 요소 | OCC 쪽 변환 |
 |---|---|
 | `@RequestMapping` URL (`/cart/add`, `/my-account/...`) | REST 리소스 경로로 다시 설계 (`/{baseSiteId}/users/{userId}/carts/{cartId}/...`) |
-| Form 클래스 + `@Valid` + 폼 Validator | 요청 WsDTO + OCC Validator. Validator는 스토어프런트 웹 컨텍스트에 있고 비활성화로 없어지므로 OCC extension에 다시 작성 |
-| 스토어프런트 전용 헬퍼·strategy·util | 비활성화로 없어진다. OCC에 필요한 것은 OCC extension으로 옮긴다 |
+| Form 클래스 + `@Valid` + 폼 Validator | 요청 WsDTO + OCC Validator. Validator는 스토어프런트 웹 컨텍스트에 있고 Accelerator extension 비활성화로 없어지므로 OCC extension에 다시 작성 |
+| 스토어프런트 전용 헬퍼·strategy·util | Accelerator extension 비활성화로 없어진다. OCC에 필요한 것은 OCC extension으로 옮긴다 |
 | `model.addAttribute(...)` | 응답 WsDTO의 필드. 여러 개라면 응답 DTO 하나로 묶거나 API를 나눈다 |
 | 반환 뷰 이름, `storeCmsPageInModel` | 없음. 화면 구성은 CMS API + 프런트엔드 |
 | `redirect:`, `GlobalMessages` | HTTP 상태 코드 + 오류 DTO. 메시지 표시는 프런트엔드 |
@@ -216,22 +195,22 @@
 | 세션 장바구니 (`cartFacade.getSessionCart()`) | 그대로 사용 가능. OCC의 `CartMatchingFilter`가 경로의 `cartId`로 세션 장바구니를 설정한다 |
 | 커스텀 MVC 인터셉터 | 스토어프런트의 인터셉터는 옮겨지지 않는다. 2211에서는 `commercewebservices` 웹 컨텍스트를 쓰므로, 인터셉터는 OCC extension의 web-spring.xml에서 다시 등록한다 |
 
-### [S5.3] URL 설계 기준과 장단점
+### [S5.3] URL 설계 기준
 
 - [S5.3-L1] **기존 리소스의 하위 리소스로 둔다**(예: `/{baseSiteId}/users/{userId}/carts/{cartId}/giftwrap`). 표준 경로와 겹치지 않게 하고, 표준 규칙(`current`·`anonymous`, `fields`, `currentPage`·`pageSize`·`sort`)을 따른다.
 
 ---
 
-## [S6] 0-4. 0-2(기존 확장)와 0-3(신규 작성)의 선택 기준
+## [S6] 기존 API 확장과 신규 엔드포인트 작성의 선택 기준
 
 ### [S6.1] 판단 흐름
 
 [S6.1-L1] (코드 블록)
 ```text
-Q1. 같은 리소스·같은 업무 동작인가?                ── 아니오 → 0-3 신규
+Q1. 같은 리소스·같은 업무 동작인가?                ── 아니오 → 신규 엔드포인트
      │ 예
 Q2. 차이가 "응답 데이터 부족"뿐이고, 값이 Data에 이미 있는가?
-                                                 ── 예 → 0-2-1 응답 확장 (C)
+                                                 ── 예 → 응답 데이터 확장 (C)
      │ 아니오
 Q3. 차이가 업무 규칙(검증·계산·후처리) 자체인가?
      ├ 예, 다른 채널(배치·메일·백오피스)에도 같은 규칙이 맞음 → D 하위 로직 확장
@@ -240,14 +219,14 @@ Q3. 차이가 업무 규칙(검증·계산·후처리) 자체인가?
 Q4. OCC 웹 계층(컨트롤러)에서 흡수할 수 있는가?
      ├ 기존 계약 그대로, 처리만 다름               → F 재정의
      ├ 선택 파라미터 추가로 표현 가능              → E 요청 확장 (+F)
-     └ 계약 자체가 다름                            → 0-3 신규
+     └ 계약 자체가 다름                            → 신규 엔드포인트
 ```
 
 ### [S6.2] 판단 요소별 비교
 
 [S6.2-T1] (표)
 
-| 판단 요소 | 0-2(기존 확장)이 유리 | 0-3(신규)이 유리 |
+| 판단 요소 | 기존 API 확장이 유리 | 신규 엔드포인트가 유리 |
 |---|---|---|
 | 리소스 | 기존 리소스의 속성·동작 | 새 리소스, 여러 리소스의 조합 |
 | 계약 | 기존 계약에 **추가만** 하면 된다 | 기존 계약을 바꾸거나 빼야 한다 |
@@ -259,15 +238,15 @@ Q4. OCC 웹 계층(컨트롤러)에서 흡수할 수 있는가?
 
 ### [S6.3] 실무상 기준
 
-- [S6.3-L1] **"기존 API의 의미가 바뀌는가"로 판단한다.** 의미가 그대로이고 정보만 늘면 0-2, 의미가 바뀌거나 새 의미가 필요하면 0-3이다.
-- [S6.3-L2] F는 0-2와 0-3의 중간이다. 표준 메서드를 통째로 복사하게 되거나 매핑을 완전히 맞추기 어렵다면 0-3(새 URL)을 먼저 검토한다.
+- [S6.3-L1] **"기존 API의 의미가 바뀌는가"로 판단한다.** 의미가 그대로이고 정보만 늘면 기존 API 확장, 의미가 바뀌거나 새 의미가 필요하면 신규 엔드포인트다.
+- [S6.3-L2] F는 기존 API 확장과 신규 엔드포인트의 중간이다. 표준 메서드를 통째로 복사하게 되거나 매핑을 완전히 맞추기 어렵다면 신규 엔드포인트(새 URL)를 먼저 검토한다.
 - [S6.3-L3] 업무 규칙은 공유 계층, OCC 요청 처리 방식은 OCC 웹 계층으로 나눈다.
 
 ---
 
-## [S7] 0-5. 그 밖의 이행 방법
+## [S7] 그 밖의 이행 방법
 
-### [S7.1] 5-1. 표준 OCC API 여러 개를 조합하기
+### [S7.1] 표준 OCC API 여러 개를 조합하기
 
 [S7.1-L1] 조합은 가능하다. 어디서 조합하느냐에 따라 두 가지가 있다.
 
@@ -276,8 +255,8 @@ Q4. OCC 웹 계층(컨트롤러)에서 흡수할 수 있는가?
 | 방식 | 내용 | 적합 | 부적합 |
 |---|---|---|---|
 | **프런트엔드 조합** | Spartacus에서 표준 API를 여러 번 호출해 한 화면 구성. Spartacus 표준 화면도 이 방식이다 | **조회**, 각 호출이 독립적, 일부 실패해도 표시 가능 | **원자성이 필요한 갱신**, 호출 횟수가 많아 성능 문제 |
-| **백엔드 조합** | 신규 OCC 엔드포인트에서 기존 facade 여러 개를 호출 | 순서·트랜잭션 보장, 호출 감소 | 결국 0-3이다. 다만 이 전제에서는 facade 재사용이라 비용이 작다 |
+| **백엔드 조합** | 신규 OCC 엔드포인트에서 기존 facade 여러 개를 호출 | 순서·트랜잭션 보장, 호출 감소 | 결국 신규 엔드포인트 작성이다. 다만 기존 facade를 재사용하면 비용이 작다 |
 
 - [S7.1-L2] 예: "장바구니 담기 후 배송 방법 설정"처럼 중간 실패 시 되돌릴 필요가 없으면 프런트엔드 순차 호출로 충분하다.
 - [S7.1-L3] 예: "포인트 사용과 주문 확정"처럼 한쪽만 성공하면 안 되면 백엔드에서 처리해야 한다.
-- [S7.1-L4] **Accelerator 페이지 컨트롤러가 facade 여러 개를 불러 Model을 채우던 경우**가 대표적인 조합 후보다. 각 facade에 대응하는 표준 API가 있으면 프런트엔드 조합으로, 없으면 그 부분만 0-3으로 한다.
+- [S7.1-L4] **Accelerator 페이지 컨트롤러가 facade 여러 개를 불러 Model을 채우던 경우**가 대표적인 조합 후보다. 각 facade에 대응하는 표준 API가 있으면 프런트엔드 조합으로, 없으면 그 부분만 신규 엔드포인트로 한다.

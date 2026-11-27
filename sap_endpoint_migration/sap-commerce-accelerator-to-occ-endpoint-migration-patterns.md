@@ -15,7 +15,7 @@
 - [S1.1-L1] 현행 Accelerator와 같은 소스·DB로 시작하고, zip에 포함된 OCC extension을 활성화해 OCC 구성(essential/project data, OAuth 클라이언트)을 더한다.
 - [S1.1-L2] Accelerator 관련 파일은 삭제하지 않고 충돌할 때만 조정한다.
 - [S1.1-L3] 이행 전부터 쓰던 Accelerator 관련 extension은 **최종적으로 비활성화한다**(서비스하지 않음).
-- [S1.1-L4] 작업의 약 90%는 Controller 계층이다. facade·service·dao·model은 재사용하고, 정말 필요할 때만 추가한다(model은 확실한 근거가 있을 때만).
+- [S1.1-L4] 작업의 약 90%는 **요청 처리부터 Controller까지의 웹 계층**(Controller와, Controller에 도달하기 전의 필터·인터셉터 등)이다. facade·service·dao·model은 재사용하고, 정말 필요할 때만 추가한다(model은 확실한 근거가 있을 때만).
 
 ### [S1.2] 전제에서 바로 나오는 결론 7가지
 
