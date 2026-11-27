@@ -2,11 +2,11 @@
 
 [S0-L1] 작성일: 2026-11-27
 
-[S0-L2] 이 문서는 변경된 `Question.txt`(논의 주제와 논의의 전제)에 대한 답변이다. 이번 전제에서 가장 큰 변화는 **표준 소스를 수정하지 않고, 표준 API를 바탕으로 할 때는 복사해서 새 클래스를 만든다**는 규칙이다. 이 규칙이 패턴 선택과 작업 방법에 주는 영향을 중심으로 정리했다.
+[S0-L2] 이 문서는 `Question.txt`(논의 주제와 논의의 전제)에 대한 답변이다. 이번 전제의 핵심은 **표준 소스를 수정하지 않고, 표준 extension(Aextension)을 통째로 복사해 `/bin/custom`에 새 extension(Mextension)을 만든 뒤, 두 extension의 충돌을 막는다**는 규칙이다. 이 규칙의 작업 방법과 주의점을 중심으로 정리했다.
 
 [S0-L3] 패턴 A~H의 정의는 같은 폴더의 축약본(`sap-commerce-accelerator-to-occ-endpoint-migration-patterns-summary.md`)과 같다. `@RequestMappingOverride`의 상세는 `occ-request-mapping-override.md`, Spartacus의 fields 조정은 `spartacus-occ-endpoint-fields-adjustment.md`를 본다.
 
-[S0-L4] 표기: 2211 소스로 직접 확인하지 못한 내용에는 **(확인 필요)**를 붙였다. 코드는 형태를 보이기 위한 예이며 컴파일하지 않았다.
+[S0-L4] 표기: 2211 소스로 직접 확인하지 못한 내용에는 **(확인 필요)**를 붙였다. 코드와 설정은 형태를 보이기 위한 예이며 실행하지 않았다.
 
 ---
 
@@ -22,15 +22,15 @@
 | Accelerator 관련 extension은 비활성화한다(파일은 남는다) | Accelerator의 웹 계층(필터~Controller)은 실행되지 않는다. 그 안의 로직은 OCC 쪽으로 옮기지 않으면 사라진다 |
 | 작업의 약 90%는 웹 계층(필터~Controller)이다 | 이행 단위는 "Accelerator 컨트롤러 메서드와 필터 하나하나"다 |
 | facade·service·dao는 꼭 필요할 때만, model은 근거가 확실할 때만 추가한다 | OCC 컨트롤러는 기존 facade를 부르는 얇은 층으로 만든다 |
-| 표준 소스는 그대로 두고, 표준 API를 바탕으로 할 때는 복사해서 새 클래스를 만든다 | 표준 클래스를 직접 고치지 않는다. 바꿀 것은 커스텀 extension에 둔다 |
-| 엔드포인트가 표준과 겹치면 표준 extension 비활성화 + 전체 복사, 또는 `@RequestMappingOverride` | 같은 URL을 쓸 때의 방법은 두 가지로 한정된다 |
+| 표준 소스는 그대로 두고 복사한다 | `/bin/platform`, `/bin/modules`의 파일은 한 줄도 고치지 않는다 |
+| Aextension을 복사해 `/bin/custom`에 Mextension을 만든다 | 바꿀 것은 모두 Mextension에서 바꾼다 |
+| Aextension과 Mextension의 충돌을 막는다 | 방법은 (1) Aextension 비활성화, (2) 둘 다 활성 + 엔드포인트를 겹치지 않게, 의 두 가지가 기본이다(S4) |
 
-### [S1.2] 해석이 필요한 점
+### [S1.2] 전제에 대한 의견
 
-- [S1.2-L1] "표준 API를 그대로 이용하는 경우는 반드시 복사한다"는 문장은 **표준 API를 바탕으로 무언가를 바꾸는 경우**로 읽는 것이 자연스럽다.
-- [S1.2-L2] 아무것도 바꾸지 않는 API(패턴 A, B)까지 복사하면, 같은 처리가 두 벌 생기고 업그레이드 때 따라가야 할 코드만 늘어난다. 이런 API는 **복사하지 않고 표준을 그대로 호출**하는 것을 권한다.
-- [S1.2-L3] 또 응답 필드 추가(C)나 업무 로직 변경(D)은 컨트롤러를 복사하지 않고도 설정 추가와 bean 재정의로 할 수 있다(S4.5). 이 방법도 표준 소스를 수정하지 않으므로 전제에 맞는다.
-- [S1.2-L4] 따라서 이 문서는 "표준 소스는 수정하지 않는다"를 절대 규칙으로, "복사해서 새 클래스를 만든다"를 **컨트롤러를 바꿔야 할 때의 방법**으로 다룬다. 이 해석이 의도와 다르면 S4의 선택표가 달라지므로 먼저 합의가 필요하다.
+- [S1.2-L1] extension 전체 복사는 **바꾸는 API가 그 extension에 많을 때** 효율적이다. 바꾸는 API가 몇 개뿐이면, 복사본 전체를 업그레이드 때마다 따라가야 하는 비용이 더 크다.
+- [S1.2-L2] 그래서 Aextension마다 "바꾸는 API의 수"를 먼저 세고, 적으면 S4.5의 가벼운 방법(필요한 컨트롤러만 커스텀 OCC extension에 두기, 설정·bean 추가)도 같이 검토하기를 권한다. 이 방법들도 표준 소스를 수정하지 않으므로 전제에는 어긋나지 않는다.
+- [S1.2-L3] 또 바꾸지 않는 API(패턴 A, B)만 쓰는 extension은 복사하지 않고 표준을 그대로 쓴다.
 
 ---
 
@@ -56,10 +56,10 @@
 
 1. [S2.2-L1] Accelerator의 컨트롤러 메서드와 커스텀 필터를 모두 목록으로 만든다.
 2. [S2.2-L2] 메서드마다 부르는 facade, 입력, 출력, 세션 사용, 권한을 적는다.
-3. [S2.2-L3] 같은 facade를 부르는 표준 OCC API가 있는지 찾는다.
+3. [S2.2-L3] 같은 facade를 부르는 표준 OCC API와, 그 API가 들어 있는 표준 extension(Aextension 후보)을 찾는다.
 4. [S2.2-L4] 차이를 보고 패턴(A~H)을 정한다(S3).
-5. [S2.2-L5] 패턴이 표준을 바꾸는 것이면 바꾸는 방법(복사, 재정의, 설정 추가)을 정한다(S4).
-6. [S2.2-L6] Spartacus 쪽 변경(endpoint 설정, fields, 화면)을 정한다(S6).
+5. [S2.2-L5] Aextension별로 바꾸는 API를 모아, 복사 여부와 충돌 방지 방법을 정한다(S4).
+6. [S2.2-L6] Spartacus 쪽 변경(endpoint 설정, fields, 화면)을 정한다(S7).
 
 ---
 
@@ -67,100 +67,102 @@
 
 [S3-T1] (표)
 
-| 패턴 | 표준 소스에 닿는가 | 이번 전제에서의 방법 |
+| 패턴 | Aextension 복사가 필요한가 | 이번 전제에서의 방법 |
 |---|---|---|
-| A. 표준 API로 대체 | 닿지 않는다 | 표준을 그대로 쓴다. 복사하지 않는다 |
-| B. 표준 API 조합 | 닿지 않는다 | 프런트엔드에서 조합한다 |
-| C. 응답 데이터 확장 | 설정만 추가 | `beans.xml`로 WsDTO 속성 추가 + fields 매핑 추가(S4.5) |
-| D. 하위 업무 로직 확장 | 설정만 추가 | 커스텀 bean 정의로 Service·Strategy·Populator 교체, Hook 추가(S4.5) |
-| E. 요청 계약 확장 | 컨트롤러가 바뀐다 | 표준 컨트롤러를 복사해 바꾼다(S4.2~S4.4) |
-| F. 같은 URL 재정의 | 컨트롤러가 바뀐다 | 복사 + `@RequestMappingOverride`, 또는 extension 전체 복사(S4.3, S4.4) |
-| G. 신규 엔드포인트 | 닿지 않는다 | 새 컨트롤러 + 기존 facade. 표준을 참고해 복사하는 경우가 많다(S4.2) |
-| H. API가 필요 없음 | 닿지 않는다 | CMS, 프런트엔드, 설정 |
+| A. 표준 API로 대체 | 필요 없다 | 표준을 그대로 쓴다 |
+| B. 표준 API 조합 | 필요 없다 | 프런트엔드에서 조합한다 |
+| C. 응답 데이터 확장 | 대개 필요 없다 | WsDTO 속성 + fields 매핑 추가로 된다(S4.5). 복사본 안에서 해도 된다 |
+| D. 하위 업무 로직 확장 | 대개 필요 없다 | Service·Strategy·Populator 교체, Hook 추가(S4.5) |
+| E. 요청 계약 확장 | 필요하다 | Mextension의 컨트롤러에서 바꾼다 |
+| F. 같은 URL 재정의 | 필요하다 | Mextension에서 바꾸고, (1) A 비활성화 또는 S4.4의 `@RequestMappingOverride` |
+| G. 신규 엔드포인트 | 경우에 따라 | Aextension과 성격이 같은 API면 Mextension에 추가한다. 다르면 별도 커스텀 OCC extension |
+| H. API가 필요 없음 | 필요 없다 | CMS, 프런트엔드, 설정 |
 
-[S3-L1] 이번 전제에서 **복사가 실제로 필요한 것은 E, F, 그리고 표준을 바탕으로 만드는 G**다. 나머지는 복사 없이 처리할 수 있다.
+[S3-L1] 복사가 실제로 필요한 것은 **E, F, 그리고 Aextension 안에 넣을 G**다. 어느 Aextension을 복사할지는 이 패턴들에 해당하는 API가 어느 extension에 있는지로 정해진다.
 
 ---
 
-## [S4] 표준 소스를 수정하지 않고 바꾸는 방법
+## [S4] Aextension 복사와 충돌 방지
 
-### [S4.1] 선택지 전체
+### [S4.1] 복사 작업
+
+[S4.1-L1] Aextension은 대개 템플릿이 아니라서 `extgen`으로 새 이름의 extension을 만들 수 없다. 폴더를 복사한 뒤 이름을 직접 바꾼다. (확인 필요: 대상 extension이 템플릿으로 쓸 수 있는지)
 
 [S4.1-T1] (표)
 
-| 방법 | URL | 표준 extension | 언제 |
-|---|---|---|---|
-| ① 복사 + 새 URL | 새 URL | 그대로 | 계약이 표준과 달라지는 경우. 가장 안전 |
-| ② 복사 + 같은 URL + `@RequestMappingOverride` | 같은 URL | 그대로 | 같은 URL을 유지해야 하고, 바꾸는 메서드가 몇 개뿐인 경우 |
-| ③ 표준 extension 비활성 + extension 전체 복사 | 같은 URL | 비활성 | 그 extension의 API 대부분을 바꾸고, 다른 extension이 그것에 의존하지 않는 경우 |
-| ④ 복사 없이 설정·bean 추가 | 같은 URL | 그대로 | 응답 필드 추가(C), 업무 로직 변경(D) |
+| 바꿀 곳 | 내용 |
+|---|---|
+| 폴더 | `/bin/modules/.../aextension` → `/bin/custom/mextension` |
+| `extensioninfo.xml` | `extension name`, `classprefix`, `managername`, `jaloLogicalName`, webmodule의 `webroot` |
+| 파일 이름 | `aextension-spring.xml`, `-items.xml`, `-beans.xml`, `-web-spring.xml`, `buildcallbacks.xml`의 프로젝트명 |
+| 리소스 경로 | `resources/aextension/`, OCC extension이면 `resources/occ/v2/aextension/` 같은 extension 이름이 들어간 경로 |
+| `project.properties` | `aextension.` 로 시작하는 키 |
+| Java 패키지·클래스 | 패키지, `AextensionConstants` 등 extension 이름이 들어간 클래스 |
+| Spring bean 이름 | XML의 `id`, `alias`, `@Controller("...")`, `@Component("...")` |
+| `localextensions.xml` | Mextension 추가 (Aextension 처리는 S4.2, S4.3) |
 
-[S4.1-L1] 권하는 검토 순서는 **④ → ① → ② → ③**이다. 뒤로 갈수록 업그레이드 때 직접 따라가야 할 코드가 늘어난다.
+[S4.1-L2] 복사 후 `ant clean all`과 시스템 업데이트를 하고, 바꾸기 전 상태로 Aextension과 같은 응답이 나오는지 먼저 확인한다. 그 다음에 Mextension의 내용을 바꾼다.
 
-### [S4.2] ① 복사 + 새 URL
+[S4.1-L3] 복사 원본의 FQN과 2211 패치 버전을 Mextension의 README 등에 기록한다. SAP 패치로 Aextension이 바뀌어도 Mextension에는 반영되지 않으므로, 업그레이드 때마다 원본과 diff를 본다.
 
-- [S4.2-L1] 표준 컨트롤러 메서드를 커스텀 OCC extension의 새 컨트롤러에 복사하고, URL을 바꾼다. 표준 API와 공존하므로 충돌이 없다.
-- [S4.2-L2] **클래스 이름:** 같은 이름도 쓸 수 있지만, 패키지만 다르고 단순 클래스명이 같으면 Spring의 기본 bean 이름(예: `cartsController`)이 겹쳐 기동 시 bean 정의 충돌이 날 수 있다. 커스텀 OCC extension은 표준과 같은 웹 컨텍스트(`commercewebservices`)에 올라가기 때문이다. 같은 이름을 쓸 때는 `@Controller("customCartsController")`처럼 bean 이름을 명시한다. (확인 필요)
-- [S4.2-L3] **URL 설계:** 표준 경로 아래에 하위 경로를 붙이거나(`/carts/{cartId}/custom-entries`) 업무 이름으로 새 경로를 만든다. 경로 변수 이름은 표준과 맞추면(`baseSiteId`, `userId`, `cartId`) OCC 필터(사이트·사용자·장바구니 매칭)가 그대로 동작한다.
-- [S4.2-L4] **프런트엔드:** Spartacus의 endpoint 설정에 새 URL을 추가하고, 그 API를 부르는 Connector/Adapter를 만들어야 한다.
-- [S4.2-L5] **복사할 때 같이 가져와야 하는 것:** `@Secured`, `@SiteChannelRestriction`, `@CacheControl`, `@ApiBaseSiteIdAndUserIdParam` 같은 어노테이션, Validator 호출, fields 기본값. 빠뜨리면 권한이나 캐시 동작이 표준과 달라진다.
+### [S4.2] 방법 (1) Aextension 비활성화
 
-### [S4.3] ② 복사 + 같은 URL + `@RequestMappingOverride`
+[S4.2-L1] `localextensions.xml`에서 Aextension을 빼고 Mextension만 켠다. 같은 URL, 같은 이름의 클래스와 bean을 Mextension이 단독으로 가지므로 이름 충돌을 신경 쓰지 않아도 된다. 같은 URL을 유지하므로 Spartacus의 표준 기능을 그대로 쓸 수 있다.
 
-- [S4.3-L1] 표준 메서드를 복사해 커스텀 OCC extension의 컨트롤러에 두고, `@RequestMappingOverride`를 붙인다. 같은 URL의 요청은 커스텀 메서드로 간다.
-- [S4.3-L2] 이 전제에서는 표준 메서드를 **통째로 복사**하므로, "재정의하면 원래 메서드를 쓸 수 없다"는 문제가 복사로 자연스럽게 해결된다. 복사한 뒤 필요한 부분만 바꾼다.
-- [S4.3-L3] 어노테이션 없이 같은 매핑을 두 개 만들면 표준 Spring에서는 기동 시 "Ambiguous mapping" 오류가 난다. 매핑이 조금 다르면 요청 시 "Ambiguous handler methods"가 된다. 매핑은 메서드, 경로, 경로 변수 이름까지 완전히 같게 복사한다.
-- [S4.3-L4] 우선순위는 `requestMappingOverride.<클래스 FQN>.<메서드명>.priority`(또는 `priorityProperty`)로 정한다. 같은 URL을 재정의하는 extension이 둘 이상이면 반드시 지정한다.
-- [S4.3-L5] 재정의는 메서드 단위다. 같은 클래스의 다른 메서드는 표준이 계속 처리한다. 그래서 "바꾸는 메서드만 복사"하면 된다.
-- [S4.3-L6] 상세와 예시는 `occ-request-mapping-override.md`를 본다.
+- [S4.2-L2] **가장 큰 제약은 의존 관계다.** 다른 extension의 `extensioninfo.xml`이 Aextension을 `requires-extension`으로 요구하면, Aextension을 빼는 순간 빌드가 실패한다. 그 의존을 Mextension으로 바꾸려면 다른 표준 extension의 파일을 고쳐야 하므로 전제에 어긋난다.
+- [S4.2-L3] 따라서 이 방법은 **다른 extension이 요구하지 않는 extension**에만 쓸 수 있다. 먼저 `/bin` 아래의 모든 `extensioninfo.xml`에서 `requires-extension name="aextension"`을 검색한다.
+- [S4.2-L4] 특히 `commercewebservices`는 OCC의 웹 컨텍스트(`/occ/v2`) 자체이고, `cmsocc`, `b2bocc` 등 대부분의 OCC extension과 커스텀 OCC extension이 이것을 요구하고 이것에 붙어서 동작한다. **`commercewebservices`를 방법 (1)로 대체하는 것은 사실상 어렵다**고 본다. (확인 필요)
+- [S4.2-L5] **items.xml:** Aextension이 타입을 정의하면, 비활성화 후에는 Mextension이 같은 타입을 정의해야 한다. 현행 DB에는 그 타입이 Aextension 소유로 들어 있으므로, 시스템 업데이트에서 소유 extension이 바뀌는 동작을 검증한다. (확인 필요)
+- [S4.2-L6] **ImpEx:** 현행 DB를 그대로 가져오는 전제라 Aextension의 essential/project data는 이미 들어 있을 수 있다. Mextension의 같은 ImpEx가 데이터를 다시 넣거나 덮어쓰지 않는지 확인한다.
+- [S4.2-L7] **이름:** 비활성 상태라 같은 패키지·bean 이름이 남아도 기동은 될 수 있다. 하지만 Aextension을 다시 켜면 모두 충돌하므로, S4.1-T1의 이름 변경은 그대로 하기를 권한다.
 
-[S4.3-L7] (코드 블록)
-```java
-// 커스텀 OCC extension (예: customocc)
-@Controller("customCartEntriesController")          // bean 이름을 표준과 다르게
-@RequestMapping(value = "/{baseSiteId}/users/{userId}/carts")
-public class CustomCartEntriesController extends BaseController {
+### [S4.3] 방법 (2) 둘 다 활성 + 엔드포인트를 겹치지 않게
 
-    @RequestMappingOverride                          // 같은 URL을 이쪽이 받는다
-    @Secured({ "ROLE_CUSTOMERGROUP", "ROLE_GUEST", "ROLE_TRUSTED_CLIENT" })  // 표준에서 복사
-    @RequestMapping(value = "/{cartId}/entries", method = RequestMethod.POST)
-    @ResponseBody
-    public CartModificationWsDTO createCartEntry(/* 표준과 같은 파라미터 */) {
-        // 표준 메서드 본문을 복사하고, 바꿀 부분만 수정한다
-    }
-}
-```
+[S4.3-L1] Aextension과 Mextension을 둘 다 켜 두고, Mextension 쪽 엔드포인트를 새 URL로 바꾼다. 의존 관계는 그대로라 빌드 문제는 없지만, **엔드포인트 외에도 겹치는 것이 많다.**
 
-### [S4.4] ③ 표준 extension 비활성 + extension 전체 복사
+[S4.3-T1] (표)
 
-- [S4.4-L1] 표준 extension을 `localextensions.xml`에서 빼고, 그 extension을 통째로 복사한 커스텀 extension을 대신 넣는다. 같은 URL을 커스텀 쪽이 단독으로 갖게 된다.
-- [S4.4-L2] **가장 큰 제약은 의존 관계다.** 다른 extension의 `extensioninfo.xml`이 그 표준 extension을 `requires-extension`으로 요구하면, 표준을 빼는 순간 빌드가 실패한다. 그 의존을 바꾸려면 다른 표준 extension의 파일을 고쳐야 하므로 전제에 어긋난다.
-- [S4.4-L3] 특히 `commercewebservices`는 OCC의 웹 컨텍스트(`/occ/v2`) 그 자체이고, `cmsocc`, `b2bocc` 등 대부분의 OCC extension과 커스텀 OCC extension이 이것을 요구하고 이것에 붙어서 동작한다. **`commercewebservices`를 이 방법으로 대체하는 것은 사실상 어렵다**고 본다. (확인 필요)
-- [S4.4-L4] 이 방법이 현실적인 것은, 아무도 요구하지 않는 말단의 OCC extension이고 그 API 대부분을 바꿔야 하는 경우뿐이다. 먼저 `extensioninfo.xml`을 검색해 그 extension을 요구하는 extension이 없는지 확인한다.
-- [S4.4-L5] **복사할 때의 주의:**
-  - [S4.4-L6] extension 이름, 패키지, Spring bean 이름, `project.properties`의 키 접두사를 새 이름으로 바꾼다. 원본이 비활성이라 같은 이름이 남아도 기동은 될 수 있지만, 나중에 원본을 다시 켜면 모두 충돌한다.
-  - [S4.4-L7] 복사한 extension에 `items.xml`이 있으면 같은 타입을 두 extension이 정의하게 된다. 이미 DB에 있는 타입의 소유 extension이 바뀌는 셈이므로, 타입 정의는 복사하지 말고 다른 extension에 맡길 수 있는지 먼저 본다. (확인 필요)
-  - [S4.4-L8] 복사한 extension의 essential/project data(ImpEx)가 원본과 같은 데이터를 다시 넣지 않는지 확인한다. 현행 DB를 그대로 가져오는 전제라 원본의 데이터는 이미 들어 있을 수 있다.
-  - [S4.4-L9] SAP 패치로 원본이 바뀌어도 복사본에는 반영되지 않는다. 복사한 시점의 2211 패치 버전을 기록하고, 업그레이드 때마다 원본과 diff를 본다.
+| 겹치는 것 | 그대로 두면 | 조치 |
+|---|---|---|
+| 엔드포인트(URL + 메서드) | 기동 시 "Ambiguous mapping", 또는 요청 시 "Ambiguous handler methods" | Mextension의 URL을 바꾼다(S4.3-L2) |
+| Java 패키지·클래스(FQN) | 같은 FQN의 클래스가 두 개 클래스패스에 올라가 어느 쪽이 로드될지 알 수 없다 | 패키지를 바꾼다 |
+| Spring bean 이름 | 나중에 로드된 정의가 앞의 것을 **조용히 덮어쓴다**. Aextension의 bean이 의도치 않게 바뀐다 | 모든 bean 이름을 바꾼다 |
+| `items.xml`의 타입 | 같은 타입 코드를 두 번 정의해 빌드나 시스템 업데이트가 실패한다 | Mextension에서 `items.xml`의 타입 정의를 지운다(Aextension의 타입을 그대로 쓴다) |
+| `beans.xml`의 Data·WsDTO | 같은 클래스를 두 extension이 정의해 병합된다. 속성 타입이 다르면 생성 오류 | 바꾸지 않는 bean 정의는 지운다. 추가 속성만 남긴다 |
+| `webroot`(웹 모듈) | 같은 컨텍스트 경로로 기동이 실패한다 | 다른 webroot를 쓴다(S4.3-L4) |
+| `project.properties` 키 | 같은 키를 두 extension이 다른 값으로 정의해 어느 값이 쓰일지 헷갈린다 | 키 접두사를 바꾼다 |
+| ImpEx(essential/project data) | 같은 데이터가 두 번 들어가거나 서로 덮어쓴다 | Mextension에서 지우거나 새 데이터만 남긴다 |
+| FieldSetLevelMapping, Swagger 설정 | 같은 WsDTO에 매핑이 두 개 생기거나 API 문서가 섞인다 | 바꾸는 것만 남긴다 |
 
-### [S4.5] ④ 복사 없이 설정과 bean 추가로 바꾸기
+- [S4.3-L2] **URL 설계:** 경로에 구분자를 넣는다(예: `/{baseSiteId}/custom/carts/...`). 경로 변수 이름은 표준과 맞추면(`baseSiteId`, `userId`, `cartId`) OCC 필터(사이트·사용자·장바구니 매칭)가 그대로 동작한다.
+- [S4.3-L3] **복사본 정리:** 이 방법에서는 Mextension에 **바꾸는 API와 새 API만 남기고 나머지는 지운다**. 바꾸지 않는 API까지 남기면 같은 기능이 두 URL로 생기고, S4.3-T1의 충돌 대상만 늘어난다. 결과적으로 Mextension은 "Aextension의 일부를 복사한 커스텀 extension"이 된다.
+- [S4.3-L4] **웹 모듈인 Aextension(예: `commercewebservices`):** Mextension이 별도 webroot(예: `/customocc`)의 별도 웹 애플리케이션이 된다. 필터 체인, 보안 설정, CORS가 따로 생기고, Spartacus는 기본 prefix(`/occ/v2/`) 밖의 URL을 불러야 한다. Spartacus에서 endpoint별로 다른 prefix를 쓰는 설정 방법은 확인이 필요하다. (확인 필요)
+- [S4.3-L5] **OCC extension인 Aextension(예: `cmsocc` 같은, `commercewebservices`에 붙는 extension):** Mextension도 같은 OCC 웹 컨텍스트에 붙는다. 같은 컨텍스트이므로 URL과 bean 이름의 충돌 관리가 특히 중요하다. (확인 필요: OCC extension을 웹 컨텍스트에 붙이는 설정이 extension 이름에 의존하는지)
+- [S4.3-L6] **프런트엔드:** 새 URL이므로 Spartacus의 endpoint 설정, Connector·Adapter, 화면을 바꿔야 한다. Spartacus 표준 기능(장바구니, 체크아웃 등)을 그대로 쓰는 API라면 이 변경이 크다.
 
-[S4.5-L1] 아래 방법은 표준 소스를 수정하지 않고, 컨트롤러도 복사하지 않는다. 커스텀 extension에 파일을 **추가**하는 것만으로 표준 API의 동작을 바꾼다.
+### [S4.4] 방법 (3) 둘 다 활성 + 같은 URL을 `@RequestMappingOverride`로
+
+[S4.4-L1] 전제의 "등"에 해당하는 세 번째 방법이다. 방법 (2)처럼 둘 다 켜 두되, 바꾸는 메서드에 `@RequestMappingOverride`를 붙여 **같은 URL을 Mextension 쪽이 받게** 한다.
+
+- [S4.4-L2] 방법 (1)을 쓸 수 없는 extension(다른 extension이 요구하는 `commercewebservices` 등)에서, 같은 URL을 유지해야 할 때 현실적인 방법이다.
+- [S4.4-L3] Aextension의 메서드를 복사한 뒤 붙이므로 "재정의하면 원래 메서드를 쓸 수 없다"는 문제는 복사로 해결된다. 매핑은 메서드, 경로, 경로 변수 이름까지 완전히 같아야 한다.
+- [S4.4-L4] 재정의는 메서드 단위다. Mextension에는 바꾸는 메서드만 남기고, 나머지는 Aextension이 계속 처리한다. S4.3-T1의 엔드포인트 외 충돌 조치는 그대로 필요하다.
+- [S4.4-L5] Spartacus 쪽은 계약이 같으면 변경이 없다. 계약을 바꾸면 그 API를 쓰는 표준 기능 전체를 점검한다.
+- [S4.4-L6] 상세와 예시는 `occ-request-mapping-override.md`를 본다.
+
+### [S4.5] 보완: 복사 없이 바꾸는 방법
+
+[S4.5-L1] 바꾸는 API가 적은 경우나 C, D 패턴에는 아래 방법이 더 가볍다. 커스텀 extension에 파일을 **추가**할 뿐 표준 소스는 수정하지 않는다.
 
 [S4.5-T1] (표)
 
 | 바꾸려는 것 | 방법 | 비고 |
 |---|---|---|
 | 응답에 필드 추가(C) | 커스텀 extension의 `beans.xml`에서 WsDTO에 속성 추가 + OCC 웹 컨텍스트에 FieldSetLevelMapping 추가 | Data 쪽 값이 없으면 Populator도 추가 |
-| Data에 값 채우기 | Populator를 새로 만들고 기존 Converter의 populator 목록에 추가(modifyPopulatorList 등) | 표준 Converter 정의는 그대로 |
-| 업무 로직 변경(D) | 같은 bean 이름(또는 alias)으로 커스텀 Service·Strategy를 정의 | 마지막에 로드된 정의가 이긴다. extension 로드 순서 확인 |
-| 장바구니 등의 전후 처리 | Commerce Hook(예: 장바구니 추가 Hook) 추가 | 모든 채널에 적용된다 |
-| 입력 검증 추가 | Validator bean 교체 또는 추가 | OCC의 Validator 정의 위치는 2211에서 확인 (확인 필요) |
-| 필터 처리 추가 | OCC 필터 체인 목록에 커스텀 필터 추가 | 체인 bean 이름과 병합 방법은 2211에서 확인 (확인 필요) |
-
-[S4.5-L2] 이 방법은 같은 URL과 같은 계약을 유지하므로 Spartacus 쪽은 fields 조정만 필요하거나 변경이 없다. 응답 필드 추가가 기존 화면에 주는 영향은 축약본 S4.1을 본다.
-
-[S4.5-L3] 단, bean 재정의(D)는 OCC만이 아니라 같은 Service를 쓰는 다른 채널(Backoffice, 다른 API, 배치)에도 적용된다. OCC에만 적용하고 싶으면 ②로 컨트롤러에서 처리한다.
+| Data에 값 채우기 | Populator를 새로 만들고 기존 Converter의 populator 목록에 추가 | 표준 Converter 정의는 그대로 |
+| 업무 로직 변경(D) | 같은 bean 이름(또는 alias)으로 커스텀 Service·Strategy를 정의 | 다른 채널(Backoffice, 배치)에도 적용된다 |
+| 장바구니 등의 전후 처리 | Commerce Hook 추가 | 모든 채널에 적용된다 |
+| 컨트롤러 몇 개만 변경 | 필요한 메서드만 커스텀 OCC extension에 복사(새 URL 또는 `@RequestMappingOverride`) | extension 전체 복사보다 따라갈 코드가 적다 |
 
 ### [S4.6] 어느 방법을 고를까
 
@@ -168,23 +170,23 @@ public class CustomCartEntriesController extends BaseController {
 
 | 질문 | 예 | 아니오 |
 |---|---|---|
-| 1. 컨트롤러를 바꾸지 않고 설정·bean 추가로 끝나는가 | ④ | 2로 |
-| 2. 계약(URL, 파라미터, 응답 구조)이 표준과 달라지는가 | ① 새 URL | 3으로 |
-| 3. 같은 URL을 유지해야 하는 이유가 있는가(Spartacus 표준 기능을 그대로 쓰는 등) | 4로 | ① 새 URL |
-| 4. 그 extension을 다른 extension이 요구하지 않고, API 대부분을 바꾸는가 | ③ 전체 복사 | ② `@RequestMappingOverride` |
+| 1. 바꾸는 API가 그 extension에 많은가 | 2로 | S4.5 검토 |
+| 2. Aextension을 다른 extension이 `requires-extension`으로 요구하지 않는가 | 3으로 | 4로 |
+| 3. 같은 URL을 유지해야 하는가(Spartacus 표준 기능을 그대로 쓰는 등) | (1) 비활성화 | (1) 또는 (2) |
+| 4. 같은 URL을 유지해야 하는가 | (3) `@RequestMappingOverride` | (2) 새 URL |
 
-[S4.6-L1] 같은 URL을 유지하는 이점은 Spartacus의 표준 Connector·Adapter·화면을 그대로 쓸 수 있다는 점이다. 이 이점이 없으면 ①이 가장 단순하다.
+[S4.6-L1] `commercewebservices`의 API(장바구니, 사용자, 주문 등 대부분의 표준 API)를 바꾸는 경우는 질문 2에서 "아니오"가 되므로, **방법 (2) 또는 (3)**이 된다.
 
 ---
 
 ## [S5] 복사할 때의 공통 규칙
 
-- [S5-L1] **복사 원본 기록:** 클래스 주석이나 별도 목록에 원본 클래스 FQN, 메서드, 2211 패치 버전을 남긴다. 업그레이드 때 원본과의 diff 대상이 된다.
-- [S5-L2] **최소 복사:** 클래스 전체가 아니라 바꾸는 메서드만 복사한다. 바꾸지 않는 메서드는 표준이 계속 처리한다(②의 경우).
-- [S5-L3] **이름 규칙:** 새 이름을 쓸 때는 `Custom` 접두사 등 팀 규칙을 정한다. 같은 이름을 쓸 때는 패키지와 bean 이름으로 구분한다.
-- [S5-L4] **의존 클래스:** 표준 컨트롤러는 `commercewebservices`의 웹 클래스(BaseController, 헬퍼, 상수 등)에 의존한다. 커스텀 OCC extension에서 이것들이 컴파일 경로에 있는지 확인한다. 없으면 필요한 헬퍼도 복사 대상이 된다. (확인 필요)
-- [S5-L5] **테스트:** 복사한 API는 표준 API와 같은 요청으로 응답을 비교한다(같은 fields, 같은 사용자 종류: 익명, 로그인, 게스트, ASM).
-- [S5-L6] **Swagger:** 표준과 같은 URL의 메서드가 API 문서에 두 번 나오지 않는지, 새 URL이 문서에 나오는지 확인한다.
+- [S5-L1] **복사 원본 기록:** 원본 extension 이름, 클래스 FQN, 2211 패치 버전을 남긴다. 업그레이드 때 원본과의 diff 대상이 된다.
+- [S5-L2] **이름 규칙:** extension 이름, 패키지, bean 이름, 프로퍼티 접두사에 쓸 규칙(예: `custom` 접두사)을 팀에서 정한다.
+- [S5-L3] **최소 유지:** 방법 (2), (3)에서는 Mextension에 바꾸는 것과 새것만 남긴다.
+- [S5-L4] **의존 클래스:** 복사한 컨트롤러가 Aextension의 웹 클래스(BaseController, 헬퍼, 상수 등)에 의존하면, Mextension의 컴파일 경로에 그것이 있는지 확인한다. 웹 클래스는 다른 extension에서 보이지 않을 수 있다. (확인 필요)
+- [S5-L5] **테스트:** 바꾸기 전에 Mextension이 Aextension과 같은 응답을 내는지 확인하고(S4.1-L2), 바꾼 뒤에는 사용자 종류(익명, 로그인, 게스트, ASM)별로 테스트한다.
+- [S5-L6] **복사할 때 같이 가져와야 하는 것:** `@Secured`, `@SiteChannelRestriction`, `@CacheControl` 같은 어노테이션, Validator 호출, fields 기본값. 빠뜨리면 권한이나 캐시 동작이 표준과 달라진다.
 
 ---
 
@@ -201,7 +203,7 @@ public class CustomCartEntriesController extends BaseController {
 
 - [S6.2-L1] Accelerator의 커스텀 필터마다 OCC 필터 체인에 같은 처리가 필요한지 판단했는가. 사이트·언어·통화 설정은 OCC 표준 필터가 하므로 대개 필요 없다.
 - [S6.2-L2] 로그인 여부와 권한 확인을 `@Secured`와 OAuth 클라이언트 권한으로 바꿨는가.
-- [S6.2-L3] CSRF 토큰 처리는 토큰 인증의 OCC에서는 필요 없다. 대신 CORS 설정(`corsfilter.commercewebservices.*`)을 Spartacus의 도메인에 맞췄는가.
+- [S6.2-L3] CSRF 토큰 처리는 토큰 인증의 OCC에서는 필요 없다. 대신 CORS 설정(`corsfilter.commercewebservices.*`)을 Spartacus의 도메인에 맞췄는가. 방법 (2)에서 별도 webroot를 쓰면 그쪽 CORS도 설정한다.
 - [S6.2-L4] OAuth 클라이언트(ImpEx로 등록)의 권한과 scope가 Spartacus에서 쓰는 API에 맞는가.
 
 ---
@@ -212,26 +214,26 @@ public class CustomCartEntriesController extends BaseController {
 
 | 방법 | Spartacus 쪽 작업 |
 |---|---|
-| ④ 응답 필드 추가 | endpoint `fields`에 필드 추가, 모델 타입 확장(module augmentation). 기존 화면은 영향 없음 |
-| ④ 업무 로직 변경 | 대개 없음. 오류 응답이 늘면 오류 처리 추가 |
-| ① 새 URL | endpoint 설정 추가, Connector·Adapter·Normalizer, 화면 |
-| ② 같은 URL 재정의 | 계약이 같으면 없음. 계약이 바뀌면 그 API를 쓰는 표준 기능 전체를 점검 |
-| ③ extension 전체 복사 | ②와 같다 |
+| (1) Aextension 비활성화 | 계약이 같으면 없음. 계약을 바꾸면 그 API를 쓰는 표준 기능 전체를 점검 |
+| (2) 새 URL | endpoint 설정 추가, Connector·Adapter·Normalizer, 화면. 별도 webroot면 prefix 설정도 |
+| (3) `@RequestMappingOverride` | (1)과 같다 |
+| 보완: 응답 필드 추가 | endpoint `fields`에 필드 추가, 모델 타입 확장(module augmentation). 기존 화면은 영향 없음 |
 
 [S7-L1] fields 조정의 상세는 `spartacus-occ-endpoint-fields-adjustment.md`를 본다.
 
-[S7-L2] ②와 ③에서 계약을 바꾸면, 같은 API를 부르던 Spartacus의 표준 기능(장바구니, 체크아웃 등)이 모르는 사이에 영향을 받는다. 같은 URL을 유지하면서 계약을 바꾸는 것은 피하고, 계약이 바뀌면 ①을 쓴다.
+[S7-L2] 같은 URL을 유지하면서 계약을 바꾸면, 같은 API를 부르던 Spartacus의 표준 기능이 모르는 사이에 영향을 받는다. 계약이 바뀌면 방법 (2)를 쓰는 것을 권한다.
 
 ---
 
 ## [S8] 확인이 필요한 사항
 
-- [S8-L1] 표준과 같은 단순 클래스명의 컨트롤러를 커스텀 OCC extension에 두었을 때 bean 이름 충돌이 나는지(S4.2-L2).
-- [S8-L2] `commercewebservices`를 요구하는 표준 extension의 목록과, 이를 비활성화했을 때의 빌드 결과(S4.4-L3).
-- [S8-L3] extension 전체 복사 시 `items.xml`의 타입 소유 extension이 바뀌는 경우의 시스템 업데이트 동작(S4.4-L7).
-- [S8-L4] 표준 컨트롤러가 의존하는 웹 클래스가 커스텀 OCC extension에서 컴파일 가능한지(S5-L4).
-- [S8-L5] OCC의 Validator와 필터 체인을 표준 파일 수정 없이 확장하는 bean 정의 방법(S4.5-T1).
-- [S8-L6] 위 항목은 2211 소스와 실제 기동으로 확인한 뒤 이 문서에 반영한다.
+- [S8-L1] 복사 대상 extension이 `extgen` 템플릿으로 쓸 수 있는지(S4.1-L1).
+- [S8-L2] `commercewebservices`를 요구하는 표준 extension의 목록과, 이를 비활성화했을 때의 빌드 결과(S4.2-L4).
+- [S8-L3] Aextension 비활성화 후 Mextension이 같은 타입을 정의할 때의 시스템 업데이트 동작(S4.2-L5).
+- [S8-L4] 웹 모듈을 별도 webroot로 복사했을 때 Spartacus에서 그 URL을 부르는 설정 방법(S4.3-L4).
+- [S8-L5] OCC extension을 OCC 웹 컨텍스트에 붙이는 설정이 extension 이름에 의존하는지(S4.3-L5).
+- [S8-L6] 복사한 컨트롤러가 의존하는 웹 클래스가 Mextension에서 컴파일 가능한지(S5-L4).
+- [S8-L7] 위 항목은 2211 소스와 실제 기동으로 확인한 뒤 이 문서에 반영한다.
 
 ---
 
