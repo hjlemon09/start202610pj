@@ -132,59 +132,10 @@
 | D. 하위 업무 로직 확장 | 계약은 같고 처리 규칙만 다르다 | Service·Strategy 빈 교체(alias), Hook 추가, facade 확장 (대상 API에 어떤 확장 지점이 있는지는 **[미확인]**) | 같은 계층을 쓰는 모든 채널(배치, 메일, 백오피스)에 적용된다. 업무 규칙 자체의 변경이면 이것이 맞는 위치다. OCC 요청에만 필요한 처리면 OCC 컨트롤러 쪽(F 또는 G)에서 한다 |
 | D'. Validator 교체·추가 | 입력 검증 규칙만 다르다 | OCC 컨트롤러가 주입받는 Validator 빈을 OCC 웹 컨텍스트에서 교체·추가 | OCC 요청에만 적용. Accelerator 폼 Validator는 재사용할 수 없고 Accelerator extension 비활성화로 없어지므로, 규칙을 옮겨 다시 작성 |
 | E. 요청 계약 확장 | 선택 파라미터, 요청 본문 필드 추가 | 요청 WsDTO에 속성 추가 → Data로 매핑. 쿼리 파라미터는 F가 필요 | 필수로 만들면 기존 호출자가 깨진다. 반드시 선택 항목으로 |
-| F. 같은 URL 재정의 | 컨트롤러 수준의 처리 변경 | 커스텀 OCC extension에 **완전히 같은** 매핑의 메서드 + `@RequestMappingOverride`(아래 주의) | 원래 메서드는 호출되지 않는다. 업그레이드 시 표준 메서드의 변경을 직접 따라가야 한다 |
+| F. 같은 URL 재정의 | 컨트롤러 수준의 처리 변경 | 커스텀 OCC extension에 **완전히 같은** 매핑의 메서드 + `@RequestMappingOverride`(자세한 내용은 같은 폴더의 `occ-request-mapping-override.md`) | 원래 메서드는 호출되지 않는다. 업그레이드 시 표준 메서드의 변경을 직접 따라가야 한다 |
 | 응답 레벨만 조정 | 필드는 있으나 기본 레벨에 없다 | FieldSetLevelMapping 수정 | fields를 레벨(DEFAULT/FULL)로 지정하는 호출자의 응답에 필드가 늘어난다 |
 | HTTP 공통 처리 | 헤더, 로깅, 공통 검사 | OCC 웹 컨텍스트의 Filter·Interceptor | 모든 OCC 요청 |
 | 오류 응답 변환 | 커스텀 예외를 특정 오류 코드로 | 예외 → 오류 DTO 변환 설정 | 프런트엔드 오류 처리에 영향 |
-
-[S4.2-L1] **F(`@RequestMappingOverride`)의 주의점** (공개 예제 기준)
-
-[S4.2-L2] **구체적 예시:** Accelerator의 장바구니 담기 컨트롤러에 있던 커스텀 확인(구매 수량 제한)을, 표준 OCC의 장바구니 항목 추가 API(`POST /{baseSiteId}/users/{userId}/carts/{cartId}/entries`)에 넣는 경우다. 코드는 형태를 보이기 위한 요약이다. 표준 메서드의 실제 시그니처와 처리는 2211 소스에서 확인한다.
-
-[S4.2-L3] Accelerator(현행): 컨트롤러 안에서 확인한 뒤 표준 facade를 부른다.
-[S4.2-L4] (코드 블록)
-```java
-@RequestMapping(value = "/cart/add", method = RequestMethod.POST)
-public String addToCart(@RequestParam("productCodePost") String code, Model model,
-                        @Valid AddToCartForm form, BindingResult bindingErrors) {
-    if (!purchaseLimitFacade.canAdd(code, form.getQty())) {   // 커스텀 확인
-        GlobalMessages.addErrorMessage(model, "basket.error.limit");
-        return ControllerConstants.Views.Fragments.Cart.AddToCartPopup;
-    }
-    CartModificationData modification = cartFacade.addToCart(code, form.getQty());
-    model.addAttribute("modifications", List.of(modification));
-    return ControllerConstants.Views.Fragments.Cart.AddToCartPopup;
-}
-```
-
-[S4.2-L5] OCC(재정의): 커스텀 OCC extension에 표준과 **완전히 같은 매핑**의 메서드를 만들고 `@RequestMappingOverride`를 붙인다.
-[S4.2-L6] (코드 블록)
-```java
-@Controller
-@RequestMapping(value = "/{baseSiteId}/users/{userId}/carts")
-public class CustomCartEntriesController extends BaseController {
-    @RequestMappingOverride
-    @RequestMapping(value = "/{cartId}/entries", method = RequestMethod.POST)
-    @ResponseBody
-    public CartModificationWsDTO createCartEntry(@PathVariable String baseSiteId, @PathVariable String userId,
-            @PathVariable String cartId, @RequestBody OrderEntryWsDTO entry,
-            @RequestParam(defaultValue = "DEFAULT") String fields) {
-        if (!purchaseLimitFacade.canAdd(entry.getProduct().getCode(), entry.getQuantity())) {   // 옮겨 온 확인
-            throw new CartException("purchase limit exceeded");   // 오류 응답으로 변환
-        }
-        // 이하 표준 메서드가 하던 처리를 여기서 다시 구현한다
-        CartModificationData modification = cartFacade.addToCart(entry.getProduct().getCode(), entry.getQuantity());
-        return getDataMapper().map(modification, CartModificationWsDTO.class, fields);
-    }
-}
-```
-
-- [S4.2-L7] **재정의하면 원래 메서드는 쓸 수 없다.** 같은 매핑의 요청은 모두 재정의한 메서드로 가고, 표준 메서드는 더 이상 호출되지 않는다. 상속이 아니라 매핑을 바꿔 끼우는 방식이라 `super`로 표준 처리를 부를 수도 없다. 그래서 표준 메서드가 하던 처리(입력 검증, 픽업 매장 처리, 응답 구성 등)는 재정의한 메서드 안에서 같은 facade를 불러 **다시 구현**해야 한다. 업그레이드로 표준 메서드가 바뀌면 그 변경도 직접 반영해야 한다.
-- [S4.2-L8] 이 예의 확인이 모든 채널에 필요한 업무 규칙이라면, 재정의(F)보다 공유 계층의 확장(D, 장바구니 담기 Hook 등)이 더 맞다.
-- [S4.2-L9] 어노테이션: `de.hybris.platform.commerceservices.request.mapping.annotation.RequestMappingOverride`.
-- [S4.2-L10] 매핑이 **완전히 같아야** 한다. 경로 변수 이름만 달라도(`{productCode}`와 `{productId}`) 다른 매핑으로 취급된다. 이때는 기동 시가 아니라 **요청 시** "Ambiguous handler methods" 오류가 난다. 원래 `PUT, POST` 매핑의 `PUT`만 재정의하는 것도 안 된다.
-- [S4.2-L11] 우선순위는 `priorityProperty`로 지정한 프로퍼티나 `requestMappingOverride.<클래스 FQN>.<메서드명>.priority`로 정한다. 값이 없으면 0이고, **가장 높은 값**이 쓰인다.
-- [S4.2-L12] ASM 모드 등 특정 경로에서 재정의가 호출되지 않았다는 보고도 있다. 재정의한 API는 사용 경로별로 테스트한다.
 
 [S4.2-L13] **권하는 검토 순서**
 - [S4.2-L14] 먼저 **C(응답 데이터)**로 되는지 본다.
