@@ -10,37 +10,18 @@
 
 ### 논의의 전제 (요약)
 
-| 항목 | 전제 |
-|---|---|
-| 백엔드 소스 | 현행 Accelerator와 완전히 같은 구성(SAP 2211-jdk21 zip + custom·config 등)으로 시작한다 |
-| OCC extension | zip에 이미 포함되어 있다. `localextensions.xml`에서 활성화 → `ant clean all` → essential/project data 반영 → OAuth 클라이언트를 ImpEx로 등록 |
-| DB | 현행 내장 DB 데이터를 그대로 가져오고, 그 위에 OCC용 구성을 반영한다 |
-| 기존 파일 | Accelerator 관련 파일은 삭제하지 않는다. 충돌할 때만 조정한다 |
-| 작업 대상 | 약 90%가 Accelerator **Controller 계층**이다. facade·service·dao·model은 대부분 재사용한다 |
-| 추가 | 정말 필요할 때만 facade·service·dao를 추가한다. model은 확실한 근거가 없으면 추가하지 않는다 |
+- 현행 Accelerator와 같은 소스·DB로 시작하고, zip에 포함된 OCC extension을 활성화해 OCC 구성(essential/project data, OAuth 클라이언트)을 더한다.
+- Accelerator 관련 파일은 삭제하지 않고 충돌할 때만 조정한다.
+- 작업의 약 90%는 Controller 계층이다. facade·service·dao·model은 재사용하고, 정말 필요할 때만 추가한다(model은 확실한 근거가 있을 때만).
 
 ### 전제에서 바로 나오는 결론 6가지
 
-1. **이행 작업은 "Accelerator 컨트롤러가 하던 일을 OCC 컨트롤러로 옮기는 일"이 중심이다.**
-   - 각 Accelerator 컨트롤러 메서드의 처리를 다음 세 가지로 나눈다.
-     - Facade 호출: 그대로 재사용한다.
-     - 컨트롤러 안의 로직: OCC 컨트롤러로 옮기거나, 정말 필요하면 facade로 내린다.
-     - 화면 처리: 프런트엔드나 CMS로 넘긴다.
-2. **Data 객체는 이미 있다.**
-   - Accelerator 화면에 쓰던 커스텀 값은 대부분 이미 `*Data`와 Populator로 채워져 있다.
-   - 그래서 0-2-1(응답 항목 추가)은 많은 경우 **WsDTO 필드와 fields 매핑을 추가하는 것으로 끝난다**(아래 0-2-1).
-3. **Accelerator 스토어프런트가 같은 서버에 남는다.**
-   - facade·service·Populator를 바꾸면 OCC와 Accelerator 화면에 **동시에** 적용된다.
-   - 반대로 OCC 쪽 웹 계층(컨트롤러, WsDTO, OCC용 web-spring 빈)만 바꾸면 Accelerator에는 영향이 없다.
-4. **재사용할 수 있는 것은 "코어 쪽 빈"뿐이다.**
-   - Accelerator 스토어프런트의 웹 애플리케이션 컨텍스트에 정의된 빈은 OCC 웹 컨텍스트에서 보이지 않는다(아래 표 참고).
-5. **Facade가 세션을 쓰는 것은 대체로 괜찮다.**
-   - OCC는 요청마다 필터로 사이트·사용자·통화·언어·장바구니(`cartId`)를 세션에 설정한다.
-   - 그래서 `getSessionCart()` 같은 facade 호출도 동작한다.
-   - 다만 **Accelerator 컨트롤러나 필터가 HTTP 세션에 직접 넣던 커스텀 속성**은 OCC에 없다.
-6. **DB를 그대로 가져오므로 CMS 데이터(페이지·컴포넌트)도 그대로 있다.**
-   - Composable Storefront는 이 CMS 데이터를 CMS API로 읽는다.
-   - 그래서 화면 구성 일부는 OCC 엔드포인트를 새로 만들지 않고 이행할 수 있다(0-5).
+1. **이행의 중심은 "Accelerator 컨트롤러가 하던 일을 OCC 컨트롤러로 옮기는 일"이다.** 메서드의 처리를 facade 호출(재사용), 컨트롤러 안의 로직(OCC 컨트롤러로 이전, 정말 필요하면 facade로), 화면 처리(프런트엔드·CMS)로 나눈다.
+2. **Data 객체는 이미 있다.** Accelerator 화면의 커스텀 값은 대부분 `*Data`와 Populator로 채워져 있다. 그래서 0-2-1은 많은 경우 **WsDTO 필드와 fields 매핑 추가로 끝난다.**
+3. **Accelerator 스토어프런트가 같은 서버에 남는다.** facade·service·Populator를 바꾸면 OCC와 Accelerator 화면에 **동시에** 적용된다. OCC 웹 계층(컨트롤러, WsDTO, OCC용 web-spring 빈)만 바꾸면 Accelerator에는 영향이 없다.
+4. **재사용할 수 있는 것은 "코어 쪽 빈"뿐이다.** 스토어프런트 웹 애플리케이션 컨텍스트의 빈은 OCC 웹 컨텍스트에서 보이지 않는다(아래 표).
+5. **Facade가 세션을 쓰는 것은 대체로 괜찮다.** OCC는 요청마다 사이트·사용자·통화·언어·장바구니(`cartId`)를 세션에 설정하므로 `getSessionCart()` 같은 호출도 동작한다. 다만 **Accelerator 컨트롤러나 필터가 HTTP 세션에 직접 넣던 커스텀 속성**은 OCC에 없다.
+6. **DB를 그대로 가져오므로 CMS 데이터도 그대로 있다.** Composable Storefront는 이를 CMS API로 읽으므로, 화면 구성 일부는 새 OCC 엔드포인트 없이 이행할 수 있다(0-5).
 
 ### 재사용 가능 여부: 정의 위치로 판정
 
@@ -353,13 +334,11 @@ Q4. (Q3이 불가능할 때만) Accelerator 화면에도 같이 적용되어도 
 
 ### 5-6. Commerce 밖의 조합 계층 (BFF 등)
 
-- 여러 시스템을 합쳐야 할 때 쓸 수 있는 구성이다.
-- 이 전제("같은 백엔드에 OCC를 얹는다")와 방향이 달라서 우선순위는 낮다.
+여러 시스템을 합칠 때 쓸 수 있으나, 이 전제("같은 백엔드에 OCC를 얹는다")와 방향이 달라 우선순위는 낮다.
 
 ### 5-7. 이행하지 않기
 
-- Accelerator 전용 동작(JSP 조각 반환 AJAX, 세션 기반 임시 처리, 쓰지 않는 화면)은 대상에서 뺀다.
-- Accelerator 쪽 코드는 삭제하지 않는다는 전제이므로, 판정 결과로 "이행 불필요"를 기록해 두는 것으로 충분하다.
+Accelerator 전용 동작(JSP 조각 반환 AJAX, 세션 기반 임시 처리, 쓰지 않는 화면)은 대상에서 뺀다. 코드는 삭제하지 않으므로 "이행 불필요"로 판정 결과만 기록한다.
 
 ---
 
@@ -415,10 +394,4 @@ Q4. (Q3이 불가능할 때만) Accelerator 화면에도 같이 적용되어도 
 
 ## 참고 (SAP 공식 문서, 대상 버전에 맞춰 확인)
 
-- Extending the REST API: 커스텀 OCC 컨트롤러와 `@RequestMappingOverride`
-- Fields Configuration Format: BASIC·DEFAULT·FULL과 FieldSetLevelMapping
-- Data Mapping Mechanism: Data와 WsDTO 매핑
-- Converters and Populators
-- Composable Storefront 문서: Extending Built-in Models, Connecting to Other Systems, Configuring Endpoints, CMS Components
-
-링크는 루트의 `sap-commerce-composable-storefront-migration-discussion.md` 7장에 있다.
+Extending the REST API(`@RequestMappingOverride`), Fields Configuration Format, Data Mapping Mechanism, Converters and Populators, Composable Storefront의 Extending Built-in Models·Connecting to Other Systems·Configuring Endpoints·CMS Components. 링크는 루트의 `sap-commerce-composable-storefront-migration-discussion.md` 7장에 있다.
