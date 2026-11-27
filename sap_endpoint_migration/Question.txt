@@ -1,27 +1,19 @@
-<accelerator에서 composable storefront로 이행하는 경우, accelerator의 엔드포인트를 occ엔드포인트로 변환할 필요가 있는데 이경우 occ api를신규작성하는케이스와 기존 occ api를확장하여작성하는케이스에 대한 이행방법론 조사 및검토>
+[논의주제]
+accelerator에서 composable storefront로 이행하는 경우, accelerator의 엔드포인트를 occ엔드포인트로 변환할 필요가 있다. 이때 어떻게 변경할 것인가?
 
 [논의의전제]
-이행 방법으로는 현행 accelerator의 소스(sap commerce cloud 2211-jdk21를 sap에서 zip으로다운받고 그안에 custom, config폴더및 기타설정을더하여구성)와 완전히 동일한방법으로 Composable storefront의 백엔드소스를구성하고, 여기에 occ api를사용하기위한설정을더해간다.
+이행 방법으로는 현행 accelerator의 소스(sap에서 기본제공하는 commerce cloud 2211-jdk21 설치파일(zip)을 sap에서 다운받고 같은 root폴더 안에 custom, config폴더및 기타설정을더하여구성)와 완전히 동일한방법으로 Composable storefront의 백엔드소스를구성하고, 여기에 occ api를사용하기위한설정을추가한다.
 (즉, 현행과 완전히 같은 기반파일, 공통파일, accelerator기능사용을 위한 엑스텐션, Controller, facade, service, dao, model, impEx관련 파일들이 시작점 상태가 된다.)
-엑스텐션의 경우 occ api를 사용하기 위한 엑스텐션은 이미 모두 zip파일에 포함되어있으며, 이들은 localextensions.xml에서 필요한 엑스텐션을 활성화하여 사용하도록 한다.
+엑스텐션의 경우 occ api를 사용하기 위한 엑스텐션은 이미 모두 sap가 제공하는 표준설치파일에 포함되어있으며, 이들은 localextensions.xml에서 필요한 엑스텐션을 활성화하여 사용하도록 한다.
 (활성화 후의 작업으로 ant clean all로 빌드한 후  추가한 엑스텐션의 essential/project data를 반영한다. 
 OAuth클라이언트를 등록한다.(ImpEx로등록))
 db의 경우 현행에서 내장db를 사용중인데, 이 내장 db데이터를 완전히 그대로가져온다음 그 위에 occ api를사용하기위한 db구성을반영한다.
 복사한 프로젝트에 대해 이후 occ api를 사용하기 위해 필요한 부분을 새로 추가해나간다.
-이행의 기본 방향으로, 기존accelerator관련 파일들은 삭제는 기본적으로 하지 않으며 충돌할 경우에만 조정한다.
-accelerator관련엑스텐션(이행전)은 최종적으로 비활성화(서비스하지않음)으로 변경될 예정이다.
-이러한 이유로 이행작업의 대상은 accelerator Controller계층이 90%정도를 차지할 것으로 보고있다. OCC는 같은 facade/service레이어 위에 REST계층을 하나 더 얹는 구조로 인식하고 있기 이유로 facade, service, dao, model등은 거의대부분 occ api에서도 재사용가능한것으로 간주하기 때문이다.
+이행의 기본 방향으로, 기존accelerator관련 엑스텐션을 비활성화한다(파일은 그대로 남아있다). 이러한 이유로 이행작업의 대상은 accelerator 웹계층(필터~Controller까지의 계층)이 90%정도를 차지할 것으로 보고있다. OCC는 같은 facade/service레이어 위에 REST계층을 하나 더 얹는 구조로 인식하고 있으므로 facade, service, dao, model등은 거의대부분 occ api에서도 재사용가능한것으로 간주하기 때문이다.
 나머지는 정말 필요한 경우 facade나 service, dao를 추가하는정도다. 특히 model은 추가할 근거가 매우 확실히 있지 않으면 추가할 필요가 없는것으로 간주한다.
 
-0.accelerator에서 composable storefront로 이행하는 경우, accelerator의 엔드포인트를 occ엔드포인트로 변환하는 작업에서 어떤 패턴이 나타날 수 있는가?
-0-1.완전히 기존occ api로 대체가능한 경우: 대체하기
-0-2.기존occ api를 일부 수정하기
-0-2-1.기존 occ api와 같은 엔드포인트 이용하되, 레스폰스에 항목을 추가하기
-0-2-1-1.어떤 경우에 이러한 패턴으로 이행가능하다고검토할 수있는가?(예가 잘 안떠올라서)
-0-2-1-2.0-2-1.의경우 원래의 api를 그대로 이용할 예정이었던 기능에 영향이 있는가? 특히 프론트엔드에서 영향이 있는가?
-0-2-2.0-2-1.외에 다른 패턴의 수정방법이 있는가?
-0-3.완전히 새로운 occ api엔드포인트를 작성하기
-0-4.0-2.,0-3.은 어떤 경우에 0-2.가적절한지,0-3.가 적절한지를 고려해야할까?
-0-5.위에서 언급한 방법 외에 이행할 수 있는 또다른 방법이 있는가?(두가지 표준occ api를 조합하는 방법이 있는가?등등 내가모르는방법이있다면알려주기를.)
+이행방법면에서 큰 전제가되는것은,
+표준api를 그대로 이용하는 경우는 반드시 표준소스를 그대로 두고 내용을 그대로 복사하여 새로운 클래스를 만든다는것이다(같은이름 그대로 쓸수도 있고, 새로운이름으로 쓸수도 있다.
+엔드포인트를그대로이용할수도있고,엔드포인트를새롭게바꾸어이용할수도있다.이경우표준과엔드포인트가겹치는문제에직면한경우는 표준extension을 비active상태로두고표준 extension을완전히카피하여신규 extension으로두거나, 그렇지않고성격이다른 extension내에서엔드포인트만가져다쓰고싶은경우에는 @RequestMappingOverride를이용하여커스텀소스쪽을채용하도록한다)
 
-400줄 이내로 간단히 대답해주면 그것을 검토하고 더 논의가 필요한 부분은 추가 논의할게요
+
